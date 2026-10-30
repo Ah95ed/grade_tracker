@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+
 import 'widgets/term_selector_bar.dart';
 import 'widgets/term_summary_table.dart';
 
@@ -23,4 +24,3 @@ class TermCalculationView extends StatelessWidget {
     );
   }
 }
-

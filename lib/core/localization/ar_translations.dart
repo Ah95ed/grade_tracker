@@ -9,6 +9,34 @@ final Map<String, String> arTranslations = {
   AppKeys.tabCards: 'الكروت',
   AppKeys.tabAdmin: 'الإدارة',
 
+  // Authentication & Session
+  AppKeys.login: 'تسجيل الدخول',
+  AppKeys.register: 'إنشاء حساب جديد',
+  AppKeys.email: 'البريد الإلكتروني',
+  AppKeys.password: 'كلمة المرور',
+  AppKeys.displayName: 'اسم المعلم / الأستاذ',
+  AppKeys.forgotPassword: 'نسيت كلمة المرور؟',
+  AppKeys.sendResetLink: 'إرسال رابط استعادة كلمة المرور',
+  AppKeys.backToLogin: 'العودة لتسجيل الدخول',
+  AppKeys.loginWithGoogle: 'المتابعة باستخدام حساب Google',
+  AppKeys.freeTrial: 'تجربة مجانية فورية',
+  AppKeys.freeTrialSubtitle: 'تجربة كاملة مجاناً بدون تسجيل',
+  AppKeys.haveAccount: 'لديك حساب بالفعل؟ تسجيل الدخول',
+  AppKeys.noAccount: 'ليس لديك حساب؟ إنشاء حساب جديد',
+  AppKeys.authSubtitle: 'المنصة الذكية لرصد الدرجات الشهرية، احتساب الفصول، وإصدار بطاقات النتائج',
+  AppKeys.authBadge: '🎓 مخصص لأساتذة الجامعات، المدرسين، والمعلمين',
+  AppKeys.fillAllFields: 'يرجى ملء جميع الحقول المطلوبة.',
+  AppKeys.invalidEmail: 'صيغة البريد الإلكتروني غير صالحة.',
+  AppKeys.passwordTooShort: 'كلمة المرور يجب أن لا تقل عن 6 أحرف.',
+  AppKeys.loginSuccess: 'تم تسجيل الدخول بنجاح!',
+  AppKeys.registerSuccess: 'تم إنشاء الحساب بنجاح!',
+  AppKeys.resetSentSuccess: 'تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك الإلكتروني.',
+  AppKeys.accountCancelled: 'تم إلغاء حسابك من قِبل إدارة النظام.',
+  AppKeys.trialActiveBanner: 'أنت في الوضع التجريبي المجاني',
+  AppKeys.syncNow: 'مزامنة سحابية الآن',
+  AppKeys.syncSuccess: 'تمت المزامنة السحابية بنجاح!',
+  AppKeys.syncError: 'تعذر الاتصال بالخادم السحابي.',
+
   // Common Actions
   AppKeys.save: 'حفظ',
   AppKeys.cancel: 'إلغاء',
@@ -98,4 +126,3 @@ final Map<String, String> arTranslations = {
   AppKeys.liveSyncOnline: 'سحابي متصل',
   AppKeys.liveSyncOffline: 'محفوظ محلياً',
 };
-

@@ -7,6 +7,34 @@ class AppKeys {
   static const String tabCards = 'tabCards';
   static const String tabAdmin = 'tabAdmin';
 
+  // Authentication & Session
+  static const String login = 'login';
+  static const String register = 'register';
+  static const String email = 'email';
+  static const String password = 'password';
+  static const String displayName = 'displayName';
+  static const String forgotPassword = 'forgotPassword';
+  static const String sendResetLink = 'sendResetLink';
+  static const String backToLogin = 'backToLogin';
+  static const String loginWithGoogle = 'loginWithGoogle';
+  static const String freeTrial = 'freeTrial';
+  static const String freeTrialSubtitle = 'freeTrialSubtitle';
+  static const String haveAccount = 'haveAccount';
+  static const String noAccount = 'noAccount';
+  static const String authSubtitle = 'authSubtitle';
+  static const String authBadge = 'authBadge';
+  static const String fillAllFields = 'fillAllFields';
+  static const String invalidEmail = 'invalidEmail';
+  static const String passwordTooShort = 'passwordTooShort';
+  static const String loginSuccess = 'loginSuccess';
+  static const String registerSuccess = 'registerSuccess';
+  static const String resetSentSuccess = 'resetSentSuccess';
+  static const String accountCancelled = 'accountCancelled';
+  static const String trialActiveBanner = 'trialActiveBanner';
+  static const String syncNow = 'syncNow';
+  static const String syncSuccess = 'syncSuccess';
+  static const String syncError = 'syncError';
+
   // Common Actions
   static const String save = 'save';
   static const String cancel = 'cancel';
@@ -96,4 +124,3 @@ class AppKeys {
   static const String liveSyncOnline = 'liveSyncOnline';
   static const String liveSyncOffline = 'liveSyncOffline';
 }
-

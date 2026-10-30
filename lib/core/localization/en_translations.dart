@@ -9,6 +9,34 @@ final Map<String, String> enTranslations = {
   AppKeys.tabCards: 'Cards',
   AppKeys.tabAdmin: 'Admin',
 
+  // Authentication & Session
+  AppKeys.login: 'Sign In',
+  AppKeys.register: 'Create Account',
+  AppKeys.email: 'Email Address',
+  AppKeys.password: 'Password',
+  AppKeys.displayName: 'Teacher / Professor Name',
+  AppKeys.forgotPassword: 'Forgot Password?',
+  AppKeys.sendResetLink: 'Send Password Reset Link',
+  AppKeys.backToLogin: 'Back to Sign In',
+  AppKeys.loginWithGoogle: 'Continue with Google',
+  AppKeys.freeTrial: 'Instant Free Trial',
+  AppKeys.freeTrialSubtitle: 'Full access for evaluation without registration',
+  AppKeys.haveAccount: 'Already have an account? Sign In',
+  AppKeys.noAccount: "Don't have an account? Register now",
+  AppKeys.authSubtitle: 'Smart Gradebook Platform for Assessments, Term Calculations, and Report Cards',
+  AppKeys.authBadge: '🎓 Designed for University Professors & School Teachers',
+  AppKeys.fillAllFields: 'Please fill all required fields.',
+  AppKeys.invalidEmail: 'Please enter a valid email address.',
+  AppKeys.passwordTooShort: 'Password must be at least 6 characters.',
+  AppKeys.loginSuccess: 'Signed in successfully!',
+  AppKeys.registerSuccess: 'Account created successfully!',
+  AppKeys.resetSentSuccess: 'Password reset link sent to your email.',
+  AppKeys.accountCancelled: 'Your account has been deactivated by system admin.',
+  AppKeys.trialActiveBanner: 'You are using free trial mode',
+  AppKeys.syncNow: 'Sync with Cloud',
+  AppKeys.syncSuccess: 'Synced with cloud successfully!',
+  AppKeys.syncError: 'Could not connect to cloud server.',
+
   // Common Actions
   AppKeys.save: 'Save',
   AppKeys.cancel: 'Cancel',
@@ -98,4 +126,3 @@ final Map<String, String> enTranslations = {
   AppKeys.liveSyncOnline: 'Cloud Connected',
   AppKeys.liveSyncOffline: 'Saved Locally',
 };
-

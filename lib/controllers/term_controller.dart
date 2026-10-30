@@ -34,6 +34,14 @@ class TermController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setTerms(List<TermModel> terms) async {
+    _terms = terms;
+    if (_terms.isNotEmpty) {
+      _activeTermId = _terms.first.id;
+    }
+    await _persist();
+  }
+
   Future<void> addTerm(TermModel newTerm) async {
     _terms.add(newTerm);
     _activeTermId = newTerm.id;

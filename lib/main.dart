@@ -14,6 +14,7 @@ import 'controllers/term_controller.dart';
 import 'controllers/report_cards_controller.dart';
 import 'controllers/auth_controller.dart';
 import 'views/home/home_screen.dart';
+import 'views/auth/auth_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -75,7 +76,11 @@ class GradeTrackerApp extends StatelessWidget {
                 GlobalWidgetsLocalizations.delegate,
                 GlobalCupertinoLocalizations.delegate,
               ],
-              home: const HomeScreen(),
+              home: Consumer<AuthController>(
+                builder: (context, auth, _) {
+                  return auth.isAuthenticated ? const HomeScreen() : const AuthScreen();
+                },
+              ),
             );
           },
         );

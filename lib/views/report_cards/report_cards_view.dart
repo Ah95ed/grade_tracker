@@ -34,57 +34,42 @@ class ReportCardsView extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Responsive Top Action Bar (Zero overflow on mobile!)
-              Wrap(
-                alignment: WrapAlignment.spaceBetween,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                spacing: 8.w,
-                runSpacing: 8.h,
-                children: [
-                  Text(
-                    '${context.tr(AppKeys.tabCards)} (${summaries.length})',
-                    style: TextStyle(
-                      fontSize: 14.sp,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary,
+              // Responsive Top Action Bar (Zero overflow on mobile & desktop)
+              if (isMobile)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      '${context.tr(AppKeys.tabCards)} (${summaries.length})',
+                      style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
                     ),
-                  ),
-                  Wrap(
-                    spacing: 8.w,
-                    runSpacing: 6.h,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      OutlinedButton.icon(
-                        onPressed: () => showDialog(
-                          context: context,
-                          builder: (_) => const PrintSettingsDialog(),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: AppColors.borderWarm),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.r)),
-                          padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
-                        ),
-                        icon: Icon(Icons.settings_outlined, size: 16.r, color: AppColors.textSecondary),
-                        label: Text(
-                          context.tr(AppKeys.printSettings),
-                          style: TextStyle(fontSize: 11.sp, color: AppColors.textPrimary),
-                        ),
-                      ),
-                      CustomButton(
-                        label: context.tr(AppKeys.printCards),
-                        icon: Icons.print_rounded,
-                        backgroundColor: AppColors.cardsGreen,
-                        height: 38.h,
-                        onPressed: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(context.tr(AppKeys.printCards))),
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+                    SizedBox(height: 8.h),
+                    Row(
+                      children: [
+                        Expanded(child: _buildSettingsBtn(context, isMobile: true)),
+                        SizedBox(width: 8.w),
+                        Expanded(child: _buildPrintBtn(context)),
+                      ],
+                    ),
+                  ],
+                )
+              else
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      '${context.tr(AppKeys.tabCards)} (${summaries.length})',
+                      style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                    ),
+                    Row(
+                      children: [
+                        _buildSettingsBtn(context, isMobile: false),
+                        SizedBox(width: 8.w),
+                        _buildPrintBtn(context),
+                      ],
+                    ),
+                  ],
+                ),
               SizedBox(height: 12.h),
               if (summaries.isEmpty)
                 Center(
@@ -97,12 +82,11 @@ class ReportCardsView extends StatelessWidget {
                   ),
                 )
               else if (isMobile)
-                // Single column on mobile
                 ListView.separated(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   itemCount: summaries.length,
-                  separatorBuilder: (context, index) => SizedBox(height: 12.h),
+                  separatorBuilder: (_, _) => SizedBox(height: 10.h),
                   itemBuilder: (context, index) {
                     final summary = summaries[index];
                     return ReportCardItem(
@@ -110,16 +94,12 @@ class ReportCardsView extends StatelessWidget {
                       profile: profile,
                       onTap: () => showDialog(
                         context: context,
-                        builder: (_) => SingleStudentCardDialog(
-                          summary: summary,
-                          profile: profile,
-                        ),
+                        builder: (_) => SingleStudentCardDialog(summary: summary, profile: profile),
                       ),
                     );
                   },
                 )
               else
-                // Multi-column responsive grid on tablet & desktop
                 GridView.builder(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
@@ -137,10 +117,7 @@ class ReportCardsView extends StatelessWidget {
                       profile: profile,
                       onTap: () => showDialog(
                         context: context,
-                        builder: (_) => SingleStudentCardDialog(
-                          summary: summary,
-                          profile: profile,
-                        ),
+                        builder: (_) => SingleStudentCardDialog(summary: summary, profile: profile),
                       ),
                     );
                   },
@@ -148,6 +125,34 @@ class ReportCardsView extends StatelessWidget {
             ],
           ),
         );
+      },
+    );
+  }
+
+  Widget _buildSettingsBtn(BuildContext context, {required bool isMobile}) {
+    return OutlinedButton.icon(
+      onPressed: () => showDialog(context: context, builder: (_) => const PrintSettingsDialog()),
+      style: OutlinedButton.styleFrom(
+        side: const BorderSide(color: AppColors.borderWarm),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.r)),
+        padding: EdgeInsets.symmetric(horizontal: isMobile ? 8.w : 12.w, vertical: 8.h),
+      ),
+      icon: Icon(Icons.settings_outlined, size: 16.r, color: AppColors.textSecondary),
+      label: Text(
+        context.tr(AppKeys.printSettings),
+        style: TextStyle(fontSize: isMobile ? 11.sp : 12.sp, color: AppColors.textPrimary),
+      ),
+    );
+  }
+
+  Widget _buildPrintBtn(BuildContext context) {
+    return CustomButton(
+      label: context.tr(AppKeys.printCards),
+      icon: Icons.print_rounded,
+      backgroundColor: AppColors.cardsGreen,
+      height: 38.h,
+      onPressed: () {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.tr(AppKeys.printCards))));
       },
     );
   }

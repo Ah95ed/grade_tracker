@@ -3,6 +3,8 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
 import '../../../controllers/auth_controller.dart';
 import '../../../controllers/teacher_profile_controller.dart';
+import '../../../controllers/monthly_sheet_controller.dart';
+import '../../../controllers/term_controller.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../../../core/localization/translation_keys.dart';
 import '../../../core/theme/app_colors.dart';
@@ -104,6 +106,22 @@ class HomeHeader extends StatelessWidget {
           SyncBadge(
             isOnline: auth.isOnline,
             isSyncing: auth.isSyncing,
+            onTap: () async {
+              final models = context.read<MonthlySheetController>().models;
+              final terms = context.read<TermController>().terms;
+              final profile = context.read<TeacherProfileController>().profile;
+              final success = await auth.syncCloudData(models: models, terms: terms, profile: profile);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    duration: const Duration(seconds: 2),
+                    content: Text(
+                      success ? context.tr(AppKeys.syncSuccess) : context.tr(AppKeys.syncError),
+                    ),
+                  ),
+                );
+              }
+            },
           ),
           SizedBox(width: 8.w),
           // Tools & Menu Button

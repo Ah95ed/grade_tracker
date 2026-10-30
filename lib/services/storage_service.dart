@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/constants/app_constants.dart';
+import '../models/app_user.dart';
 import '../models/monthly_model.dart';
 import '../models/term_model.dart';
 import '../models/teacher_profile.dart';
@@ -18,13 +19,34 @@ class StorageService {
     return StorageService(prefs);
   }
 
-  // Teacher Profile
-  Future<void> saveProfile(TeacherProfile profile) async {
-    await _prefs.setString(AppConstants.keyProfile, jsonEncode(profile.toJson()));
+  // App User & Session
+  Future<void> saveCurrentUser(AppUser user) async {
+    await _prefs.setString(AppConstants.keyCurrentUser, jsonEncode(user.toJson()));
   }
 
-  TeacherProfile loadProfile() {
-    final raw = _prefs.getString(AppConstants.keyProfile);
+  AppUser? loadCurrentUser() {
+    final raw = _prefs.getString(AppConstants.keyCurrentUser);
+    if (raw != null) {
+      try {
+        return AppUser.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  Future<void> clearCurrentUser() async {
+    await _prefs.remove(AppConstants.keyCurrentUser);
+  }
+
+  // Teacher Profile
+  Future<void> saveProfile(TeacherProfile profile, {String? userUid}) async {
+    final key = userUid != null ? '${AppConstants.keyProfile}_$userUid' : AppConstants.keyProfile;
+    await _prefs.setString(key, jsonEncode(profile.toJson()));
+  }
+
+  TeacherProfile loadProfile({String? userUid}) {
+    final key = userUid != null ? '${AppConstants.keyProfile}_$userUid' : AppConstants.keyProfile;
+    final raw = _prefs.getString(key) ?? _prefs.getString(AppConstants.keyProfile);
     if (raw != null) {
       try {
         return TeacherProfile.fromJson(jsonDecode(raw) as Map<String, dynamic>);
@@ -34,13 +56,15 @@ class StorageService {
   }
 
   // Monthly Models
-  Future<void> saveModels(List<MonthlyModel> models) async {
+  Future<void> saveModels(List<MonthlyModel> models, {String? userUid}) async {
+    final key = userUid != null ? '${AppConstants.keyModels}_$userUid' : AppConstants.keyModels;
     final list = models.map((m) => m.toJson()).toList();
-    await _prefs.setString(AppConstants.keyModels, jsonEncode(list));
+    await _prefs.setString(key, jsonEncode(list));
   }
 
-  List<MonthlyModel> loadModels() {
-    final raw = _prefs.getString(AppConstants.keyModels);
+  List<MonthlyModel> loadModels({String? userUid}) {
+    final key = userUid != null ? '${AppConstants.keyModels}_$userUid' : AppConstants.keyModels;
+    final raw = _prefs.getString(key) ?? _prefs.getString(AppConstants.keyModels);
     if (raw != null) {
       try {
         final List<dynamic> list = jsonDecode(raw) as List<dynamic>;
@@ -51,13 +75,15 @@ class StorageService {
   }
 
   // Terms
-  Future<void> saveTerms(List<TermModel> terms) async {
+  Future<void> saveTerms(List<TermModel> terms, {String? userUid}) async {
+    final key = userUid != null ? '${AppConstants.keyTerms}_$userUid' : AppConstants.keyTerms;
     final list = terms.map((t) => t.toJson()).toList();
-    await _prefs.setString(AppConstants.keyTerms, jsonEncode(list));
+    await _prefs.setString(key, jsonEncode(list));
   }
 
-  List<TermModel> loadTerms() {
-    final raw = _prefs.getString(AppConstants.keyTerms);
+  List<TermModel> loadTerms({String? userUid}) {
+    final key = userUid != null ? '${AppConstants.keyTerms}_$userUid' : AppConstants.keyTerms;
+    final raw = _prefs.getString(key) ?? _prefs.getString(AppConstants.keyTerms);
     if (raw != null) {
       try {
         final List<dynamic> list = jsonDecode(raw) as List<dynamic>;
@@ -74,7 +100,6 @@ class StorageService {
   // Reset all to defaults
   Future<void> clearAll() async => await _prefs.clear();
 
-  // Initial Sample Models
   List<MonthlyModel> _getDefaultModels() {
     return [
       MonthlyModel(
@@ -116,64 +141,6 @@ class StorageService {
             writtenRawScore: 82,
             scores: {'col-1': 10, 'col-2': 10},
           ),
-          StudentRow(
-            id: 'st-4',
-            name: 'يوسف حيدر جاسم',
-            gradeLevel: 'الثالث متوسط',
-            section: 'ب',
-            writtenRawScore: 45,
-            scores: {'col-1': 6, 'col-2': 7},
-          ),
-        ],
-        createdAt: DateTime.now().toIso8601String(),
-      ),
-      MonthlyModel(
-        id: 'model-2',
-        name: 'الشهر الثاني',
-        subject: 'الرياضيات',
-        gradeLevel: 'الثالث متوسط',
-        academicYear: '2024 - 2025',
-        totalMaxScore: 100,
-        writtenMaxScore: 100,
-        writtenScoreMode: 'raw',
-        roundingMode: 'half_up',
-        customColumns: const [
-          CustomColumn(id: 'col-1', name: 'الشفهي', maxScore: 10),
-          CustomColumn(id: 'col-2', name: 'اليومي والنشاط', maxScore: 10),
-        ],
-        students: const [
-          StudentRow(
-            id: 'st-1',
-            name: 'أحمد محمود عباس',
-            gradeLevel: 'الثالث متوسط',
-            section: 'أ',
-            writtenRawScore: 80,
-            scores: {'col-1': 10, 'col-2': 9},
-          ),
-          StudentRow(
-            id: 'st-2',
-            name: 'حسين علي كاظم',
-            gradeLevel: 'الثالث متوسط',
-            section: 'أ',
-            writtenRawScore: 72,
-            scores: {'col-1': 8, 'col-2': 8},
-          ),
-          StudentRow(
-            id: 'st-3',
-            name: 'مصطفى رائد سعد',
-            gradeLevel: 'الثالث متوسط',
-            section: 'ب',
-            writtenRawScore: 88,
-            scores: {'col-1': 10, 'col-2': 10},
-          ),
-          StudentRow(
-            id: 'st-4',
-            name: 'يوسف حيدر جاسم',
-            gradeLevel: 'الثالث متوسط',
-            section: 'ب',
-            writtenRawScore: 50,
-            scores: {'col-1': 7, 'col-2': 6},
-          ),
         ],
         createdAt: DateTime.now().toIso8601String(),
       ),
@@ -187,11 +154,10 @@ class StorageService {
         name: 'الفصل الأول',
         subject: 'الرياضيات',
         gradeLevel: 'الثالث متوسط',
-        selectedModelIds: ['model-1', 'model-2'],
+        selectedModelIds: ['model-1'],
         calculationMode: 'average',
         roundingMode: 'half_up',
       ),
     ];
   }
 }
-

@@ -50,6 +50,14 @@ class MonthlySheetController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setModels(List<MonthlyModel> models) async {
+    _models = models;
+    if (_models.isNotEmpty) {
+      _activeModelId = _models.first.id;
+    }
+    await _persist();
+  }
+
   Future<void> addModel(MonthlyModel newModel) async {
     _models.add(newModel);
     _activeModelId = newModel.id;
