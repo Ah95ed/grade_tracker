@@ -1,0 +1,101 @@
+import 'translation_keys.dart';
+
+/// Arabic translations dictionary (اللغة العربية)
+final Map<String, String> arTranslations = {
+  // Navigation & Tabs
+  AppKeys.appTitle: 'راصد الدرجات',
+  AppKeys.tabMonthly: 'الجدول',
+  AppKeys.tabTerm: 'المعدل',
+  AppKeys.tabCards: 'الكروت',
+  AppKeys.tabAdmin: 'الإدارة',
+
+  // Common Actions
+  AppKeys.save: 'حفظ',
+  AppKeys.cancel: 'إلغاء',
+  AppKeys.delete: 'حذف',
+  AppKeys.edit: 'تعديل',
+  AppKeys.add: 'إضافة',
+  AppKeys.confirm: 'تأكيد',
+  AppKeys.close: 'إغلاق',
+  AppKeys.search: 'بحث عن طالب...',
+  AppKeys.print: 'طباعة',
+  AppKeys.exportBackup: 'تصدير نسخة احتياطية',
+  AppKeys.importBackup: 'استيراد نسخة احتياطية',
+  AppKeys.resetDefaults: 'إعادة ضبط للبداية',
+  AppKeys.logout: 'تسجيل الخروج',
+  AppKeys.deleteAccount: 'حذف الحساب نهائياً',
+  AppKeys.settings: 'الإعدادات',
+  AppKeys.toolsAndMore: 'الأدوات والمزيد',
+
+  // Teacher Profile
+  AppKeys.teacherProfile: 'بيانات المعلم والمدرسة',
+  AppKeys.teacherName: 'اسم المعلم',
+  AppKeys.schoolName: 'اسم المدرسة',
+  AppKeys.subject: 'المادة الدراسية',
+  AppKeys.academicYear: 'العام الدراسي',
+  AppKeys.governorate: 'المحافظة',
+  AppKeys.saveProfile: 'حفظ بيانات المعلم',
+  AppKeys.defaultTeacherTitle: 'الأستاذ',
+
+  // Monthly Sheet
+  AppKeys.addNewModel: 'إضافة شهر / نموذج جديد',
+  AppKeys.modelName: 'اسم الشهر (مثال: الشهر الأول)',
+  AppKeys.totalMaxScore: 'الدرجة الكلية (النهائية)',
+  AppKeys.writtenMaxScore: 'الدرجة القصوى للامتحان التحريري',
+  AppKeys.writtenWeight: 'وزن التحريري',
+  AppKeys.customColumns: 'الأعمدة المخصصة (يومي، شفهي، نشاط)',
+  AppKeys.addColumn: 'إضافة عمود',
+  AppKeys.columnName: 'اسم العمود',
+  AppKeys.columnMaxScore: 'الدرجة القصوى للعمود',
+  AppKeys.addStudent: 'إضافة طالب',
+  AppKeys.studentName: 'اسم الطالب الرباعي',
+  AppKeys.gradeLevel: 'الصف الدراسي',
+  AppKeys.section: 'الشعبة',
+  AppKeys.writtenScore: 'التحريري بالورقة',
+  AppKeys.finalScore: 'الدرجة النهائية',
+  AppKeys.rating: 'التقدير',
+  AppKeys.notes: 'ملاحظات',
+  AppKeys.roundingSettings: 'جبر الكسور والتقريب',
+  AppKeys.finalScoreOperation: 'عملية حسابية على الدرجة النهائية',
+  AppKeys.noStudentsYet: 'لا يوجد طلاب مضافين في هذا النموذج',
+  AppKeys.noModelsYet: 'لا توجد نماذج شهرية حالياً. ابدأ بإضافة نموذج جديد.',
+
+  // Rounding & Operations
+  AppKeys.roundingNone: 'بدون جبر (أعشار دقيقة)',
+  AppKeys.roundingHalfUp: 'جبر من النصف فأكثر (>= 0.5)',
+  AppKeys.roundingAnyFraction: 'جبر أي كسر عشري (>= 0.1)',
+  AppKeys.roundingCustom: 'عتبة مخصصة للجبر',
+  AppKeys.opDivide: 'قسمة (÷)',
+  AppKeys.opMultiply: 'ضرب (×)',
+  AppKeys.opAdd: 'إضافة (+)',
+  AppKeys.opSubtract: 'طرح (-)',
+  AppKeys.opNone: 'بدون عملية',
+  AppKeys.operationValue: 'القيمة الحسابية',
+
+  // Ratings
+  AppKeys.ratingExcellent: 'ممتاز',
+  AppKeys.ratingVeryGood: 'جيد جداً',
+  AppKeys.ratingGood: 'جيد',
+  AppKeys.ratingMedium: 'متوسط',
+  AppKeys.ratingPass: 'مقبول',
+  AppKeys.ratingFail: 'راسب',
+  AppKeys.ratingNotRecorded: 'غير مرصود',
+
+  // Terms & Cards
+  AppKeys.addTerm: 'إنشاء فصل دراسي',
+  AppKeys.termName: 'اسم الفصل (مثال: الفصل الأول)',
+  AppKeys.selectModels: 'اختر الأشهر الداخلة في الحساب',
+  AppKeys.calculationMode: 'طريقة الحساب',
+  AppKeys.calcAverage: 'المعدل (المتوسط الحسابي)',
+  AppKeys.calcSum: 'المجموع الكلي',
+  AppKeys.calcSingle: 'اعتماد درجة واحدة',
+  AppKeys.printCards: 'طباعة البطاقات والشهادات',
+  AppKeys.printSettings: 'إعدادات الطباعة',
+  AppKeys.cardStudent: 'بطاقة درجات الطالب',
+  AppKeys.schoolEmblem: 'شعار المدرسة',
+  AppKeys.switchLanguage: 'تغيير اللغة (English)',
+  AppKeys.contactSupport: 'اتصل بنا (الدعم الفني)',
+  AppKeys.liveSyncOnline: 'سحابي متصل',
+  AppKeys.liveSyncOffline: 'محفوظ محلياً',
+};
+

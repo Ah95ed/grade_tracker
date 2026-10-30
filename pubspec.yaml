@@ -1,0 +1,36 @@
+name: grade_tracker
+description: "راصد الدرجات - تطبيق متطور وشامل لإدارة وتتبع درجات وسجلات الطلاب"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.7
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # State Management (Provider / MVC)
+  provider: ^6.1.5+1
+
+  # Screen Adaptability & Responsive Design
+  flutter_screenutil: ^5.9.3
+
+  # Local Persistent Storage
+  shared_preferences: ^2.5.6
+
+  # HTTP Client & REST API
+  http: ^1.6.0
+
+  # Cupertino Icons
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

@@ -1,0 +1,101 @@
+import 'translation_keys.dart';
+
+/// English translations dictionary (English)
+final Map<String, String> enTranslations = {
+  // Navigation & Tabs
+  AppKeys.appTitle: 'Grade Tracker',
+  AppKeys.tabMonthly: 'Sheet',
+  AppKeys.tabTerm: 'Average',
+  AppKeys.tabCards: 'Cards',
+  AppKeys.tabAdmin: 'Admin',
+
+  // Common Actions
+  AppKeys.save: 'Save',
+  AppKeys.cancel: 'Cancel',
+  AppKeys.delete: 'Delete',
+  AppKeys.edit: 'Edit',
+  AppKeys.add: 'Add',
+  AppKeys.confirm: 'Confirm',
+  AppKeys.close: 'Close',
+  AppKeys.search: 'Search for student...',
+  AppKeys.print: 'Print',
+  AppKeys.exportBackup: 'Export Backup',
+  AppKeys.importBackup: 'Import Backup',
+  AppKeys.resetDefaults: 'Reset to Defaults',
+  AppKeys.logout: 'Logout',
+  AppKeys.deleteAccount: 'Delete Account Permanently',
+  AppKeys.settings: 'Settings',
+  AppKeys.toolsAndMore: 'Tools & More',
+
+  // Teacher Profile
+  AppKeys.teacherProfile: 'Teacher & School Profile',
+  AppKeys.teacherName: 'Teacher Name',
+  AppKeys.schoolName: 'School Name',
+  AppKeys.subject: 'Subject',
+  AppKeys.academicYear: 'Academic Year',
+  AppKeys.governorate: 'Governorate',
+  AppKeys.saveProfile: 'Save Profile',
+  AppKeys.defaultTeacherTitle: 'Teacher',
+
+  // Monthly Sheet
+  AppKeys.addNewModel: 'Add Month / Sheet',
+  AppKeys.modelName: 'Month Name (e.g. Month 1)',
+  AppKeys.totalMaxScore: 'Total Max Score',
+  AppKeys.writtenMaxScore: 'Written Exam Max Score',
+  AppKeys.writtenWeight: 'Written Weight',
+  AppKeys.customColumns: 'Custom Columns (Oral, Activity, etc.)',
+  AppKeys.addColumn: 'Add Column',
+  AppKeys.columnName: 'Column Name',
+  AppKeys.columnMaxScore: 'Column Max Score',
+  AppKeys.addStudent: 'Add Student',
+  AppKeys.studentName: 'Student Full Name',
+  AppKeys.gradeLevel: 'Grade Level',
+  AppKeys.section: 'Section',
+  AppKeys.writtenScore: 'Written Score',
+  AppKeys.finalScore: 'Final Score',
+  AppKeys.rating: 'Rating',
+  AppKeys.notes: 'Notes',
+  AppKeys.roundingSettings: 'Rounding & Fractions',
+  AppKeys.finalScoreOperation: 'Final Score Math Operation',
+  AppKeys.noStudentsYet: 'No students added in this model yet',
+  AppKeys.noModelsYet: 'No monthly models yet. Start by adding one.',
+
+  // Rounding & Operations
+  AppKeys.roundingNone: 'No Rounding (Exact Decimals)',
+  AppKeys.roundingHalfUp: 'Round Half Up (>= 0.5)',
+  AppKeys.roundingAnyFraction: 'Round Any Fraction (>= 0.1)',
+  AppKeys.roundingCustom: 'Custom Threshold',
+  AppKeys.opDivide: 'Divide (÷)',
+  AppKeys.opMultiply: 'Multiply (×)',
+  AppKeys.opAdd: 'Add (+)',
+  AppKeys.opSubtract: 'Subtract (-)',
+  AppKeys.opNone: 'None',
+  AppKeys.operationValue: 'Operation Value',
+
+  // Ratings
+  AppKeys.ratingExcellent: 'Excellent',
+  AppKeys.ratingVeryGood: 'Very Good',
+  AppKeys.ratingGood: 'Good',
+  AppKeys.ratingMedium: 'Medium',
+  AppKeys.ratingPass: 'Pass',
+  AppKeys.ratingFail: 'Fail',
+  AppKeys.ratingNotRecorded: 'Unrecorded',
+
+  // Terms & Cards
+  AppKeys.addTerm: 'Create Term',
+  AppKeys.termName: 'Term Name (e.g. Term 1)',
+  AppKeys.selectModels: 'Select Months for Calculation',
+  AppKeys.calculationMode: 'Calculation Mode',
+  AppKeys.calcAverage: 'Average',
+  AppKeys.calcSum: 'Total Sum',
+  AppKeys.calcSingle: 'Single Score',
+  AppKeys.printCards: 'Print Cards & Certificates',
+  AppKeys.printSettings: 'Print Settings',
+  AppKeys.cardStudent: 'Student Report Card',
+  AppKeys.schoolEmblem: 'School Emblem',
+  AppKeys.switchLanguage: 'Switch Language (العربية)',
+  AppKeys.contactSupport: 'Contact Support',
+  AppKeys.liveSyncOnline: 'Cloud Connected',
+  AppKeys.liveSyncOffline: 'Saved Locally',
+};
+
