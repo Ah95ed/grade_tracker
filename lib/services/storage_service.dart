@@ -5,8 +5,6 @@ import '../models/app_user.dart';
 import '../models/monthly_model.dart';
 import '../models/term_model.dart';
 import '../models/teacher_profile.dart';
-import '../models/custom_column.dart';
-import '../models/student_row.dart';
 
 /// Local offline-first persistent storage service
 class StorageService {
@@ -16,11 +14,26 @@ class StorageService {
 
   static Future<StorageService> init() async {
     final prefs = await SharedPreferences.getInstance();
-    return StorageService(prefs);
+    final service = StorageService(prefs);
+    service._purgeLegacyMockData();
+    return service;
+  }
+
+  void _purgeLegacyMockData() {
+    // Purge any stale mock models/profiles containing hardcoded student or teacher names
+    final rawModels = _prefs.getString(AppConstants.keyModels);
+    if (rawModels != null && rawModels.contains('أحمد محمود عباس')) {
+      _prefs.remove(AppConstants.keyModels);
+    }
+    final rawProfile = _prefs.getString(AppConstants.keyProfile);
+    if (rawProfile != null && rawProfile.contains('علي حسن')) {
+      _prefs.remove(AppConstants.keyProfile);
+    }
   }
 
   // App User & Session
-  Future<void> saveCurrentUser(AppUser user) async => await _prefs.setString(AppConstants.keyCurrentUser, jsonEncode(user.toJson()));
+  Future<void> saveCurrentUser(AppUser user) async =>
+      await _prefs.setString(AppConstants.keyCurrentUser, jsonEncode(user.toJson()));
 
   AppUser? loadCurrentUser() {
     final raw = _prefs.getString(AppConstants.keyCurrentUser);
@@ -45,7 +58,8 @@ class StorageService {
     final raw = _prefs.getString(key) ?? _prefs.getString(AppConstants.keyProfile);
     if (raw != null) {
       try {
-        return TeacherProfile.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+        final profile = TeacherProfile.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+        if (profile.teacherName != 'الأستاذ: علي حسن') return profile;
       } catch (_) {}
     }
     return const TeacherProfile();
@@ -63,10 +77,11 @@ class StorageService {
     if (raw != null) {
       try {
         final List<dynamic> list = jsonDecode(raw) as List<dynamic>;
-        return list.map((e) => MonthlyModel.fromJson(e as Map<String, dynamic>)).toList();
+        final models = list.map((e) => MonthlyModel.fromJson(e as Map<String, dynamic>)).toList();
+        return models.where((m) => !m.students.any((s) => s.name == 'أحمد محمود عباس')).toList();
       } catch (_) {}
     }
-    return _getDefaultModels();
+    return [];
   }
 
   // Terms
@@ -84,7 +99,7 @@ class StorageService {
         return list.map((e) => TermModel.fromJson(e as Map<String, dynamic>)).toList();
       } catch (_) {}
     }
-    return _getDefaultTerms();
+    return [];
   }
 
   // Language Locale Code
@@ -135,40 +150,4 @@ class StorageService {
   }
 
   Future<void> clearAll() async => await _prefs.clear();
-
-  List<MonthlyModel> _getDefaultModels() => [
-        MonthlyModel(
-          id: 'model-1',
-          name: 'الشهر الأول',
-          subject: 'الرياضيات',
-          gradeLevel: 'الثالث متوسط',
-          academicYear: '2024 - 2025',
-          totalMaxScore: 100,
-          writtenMaxScore: 100,
-          writtenScoreMode: 'raw',
-          roundingMode: 'half_up',
-          customColumns: const [
-            CustomColumn(id: 'col-1', name: 'الشفهي', maxScore: 10),
-            CustomColumn(id: 'col-2', name: 'اليومي والنشاط', maxScore: 10),
-          ],
-          students: const [
-            StudentRow(id: 'st-1', name: 'أحمد محمود عباس', gradeLevel: 'الثالث متوسط', section: 'أ', writtenRawScore: 75, scores: {'col-1': 9, 'col-2': 8}),
-            StudentRow(id: 'st-2', name: 'حسين علي كاظم', gradeLevel: 'الثالث متوسط', section: 'أ', writtenRawScore: 68, scores: {'col-1': 8, 'col-2': 9}),
-            StudentRow(id: 'st-3', name: 'مصطفى رائد سعد', gradeLevel: 'الثالث متوسط', section: 'ب', writtenRawScore: 82, scores: {'col-1': 10, 'col-2': 10}),
-          ],
-          createdAt: DateTime.now().toIso8601String(),
-        ),
-      ];
-
-  List<TermModel> _getDefaultTerms() => const [
-        TermModel(
-          id: 'term-1',
-          name: 'الفصل الأول',
-          subject: 'الرياضيات',
-          gradeLevel: 'الثالث متوسط',
-          selectedModelIds: ['model-1'],
-          calculationMode: 'average',
-          roundingMode: 'half_up',
-        ),
-      ];
 }

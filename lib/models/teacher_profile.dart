@@ -8,22 +8,22 @@ class TeacherProfile {
   final String governorate;
 
   const TeacherProfile({
-    this.teacherName = 'الأستاذ: علي حسن',
-    this.schoolName = 'ثانوية المتميزين للبنين',
-    this.subject = 'الرياضيات',
-    this.gradeLevel = 'الثالث متوسط',
-    this.academicYear = '2024 - 2025',
-    this.governorate = 'بغداد',
+    this.teacherName = '',
+    this.schoolName = '',
+    this.subject = '',
+    this.gradeLevel = '',
+    this.academicYear = '',
+    this.governorate = '',
   });
 
   factory TeacherProfile.fromJson(Map<String, dynamic> json) {
     return TeacherProfile(
-      teacherName: json['teacherName'] as String? ?? 'الأستاذ: علي حسن',
-      schoolName: json['schoolName'] as String? ?? 'ثانوية المتميزين للبنين',
-      subject: json['subject'] as String? ?? 'الرياضيات',
-      gradeLevel: json['gradeLevel'] as String? ?? 'الثالث متوسط',
-      academicYear: json['academicYear'] as String? ?? '2024 - 2025',
-      governorate: json['governorate'] as String? ?? 'بغداد',
+      teacherName: json['teacherName'] as String? ?? '',
+      schoolName: json['schoolName'] as String? ?? '',
+      subject: json['subject'] as String? ?? '',
+      gradeLevel: json['gradeLevel'] as String? ?? '',
+      academicYear: json['academicYear'] as String? ?? '',
+      governorate: json['governorate'] as String? ?? '',
     );
   }
 
@@ -54,4 +54,3 @@ class TeacherProfile {
     );
   }
 }
-

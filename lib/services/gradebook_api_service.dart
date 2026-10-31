@@ -61,6 +61,31 @@ class GradebookApiService {
     }
   }
 
+  /// Exchange Google OAuth ID token for a Firebase Auth token via signInWithIdp
+  Future<Map<String, dynamic>> signInWithGoogleIdp({
+    required String googleIdToken,
+    String? googleAccessToken,
+  }) async {
+    try {
+      final postBody =
+          'id_token=$googleIdToken&providerId=google.com${googleAccessToken != null ? '&access_token=$googleAccessToken' : ''}';
+      final res = await _client.post(
+        Uri.parse(ApiEndpoints.firebaseSignInWithIdpUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'postBody': postBody,
+          'requestUri': 'http://localhost',
+          'returnSecureToken': true,
+        }),
+      ).timeout(ApiEndpoints.requestTimeout);
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      if (res.statusCode == 200) return {'success': true, 'data': data};
+      return {'success': false, 'error': data['error']?['message'] ?? 'GOOGLE_AUTH_FAILED'};
+    } catch (_) {
+      return {'success': false, 'error': 'NETWORK_ERROR'};
+    }
+  }
+
   /// Send password reset link to user email
   Future<bool> sendPasswordReset(String email) async {
     try {
@@ -120,18 +145,13 @@ class GradebookApiService {
   }
 
   /// Fetches saved models, students, terms, and teacher profile from Cloudflare D1 (/api/data)
-  Future<Map<String, dynamic>?> fetchCloudData({
-    required String userUid,
-    String? token,
-  }) async {
+  Future<Map<String, dynamic>?> fetchCloudData({required String userUid, String? token}) async {
     try {
       final uri = Uri.parse('$baseUrl${ApiEndpoints.dataEndpoint}?uid=${Uri.encodeComponent(userUid)}');
       final res = await _client.get(uri, headers: ApiEndpoints.getHeaders(token: token)).timeout(ApiEndpoints.requestTimeout);
       if (res.statusCode == 200) {
         final decoded = jsonDecode(res.body) as Map<String, dynamic>;
-        if (decoded['success'] == true && decoded['data'] != null) {
-          return decoded['data'] as Map<String, dynamic>;
-        }
+        if (decoded['success'] == true && decoded['data'] != null) return decoded['data'] as Map<String, dynamic>;
       }
     } catch (_) {}
     return null;
@@ -161,20 +181,14 @@ class GradebookApiService {
   }
 
   /// AI OCR endpoint for extracting students and scores from photo
-  Future<Map<String, dynamic>?> extractStudents({
-    required String base64Image,
-    required String mimeType,
-    String? token,
-  }) async {
+  Future<Map<String, dynamic>?> extractStudents({required String base64Image, required String mimeType, String? token}) async {
     try {
       final res = await _client.post(
         Uri.parse('$baseUrl${ApiEndpoints.extractStudentsEndpoint}'),
         headers: ApiEndpoints.getHeaders(token: token),
         body: jsonEncode({'image': base64Image, 'mimeType': mimeType}),
       ).timeout(ApiEndpoints.uploadTimeout);
-      if (res.statusCode == 200) {
-        return jsonDecode(res.body) as Map<String, dynamic>;
-      }
+      if (res.statusCode == 200) return jsonDecode(res.body) as Map<String, dynamic>;
     } catch (_) {}
     return null;
   }

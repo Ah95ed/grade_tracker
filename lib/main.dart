@@ -4,7 +4,8 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
 
 import 'package:firebase_core/firebase_core.dart';
-import 'core/constants/api_endpoints.dart';
+
+import 'firebase_options.dart';
 import 'core/constants/app_constants.dart';
 import 'core/localization/app_localizations.dart';
 import 'core/theme/app_theme.dart';
@@ -24,12 +25,7 @@ void main() async {
 
   try {
     await Firebase.initializeApp(
-      options: const FirebaseOptions(
-        apiKey: ApiEndpoints.firebaseApiKey,
-        appId: '1:1059409489946:web:d251a04020251d32b8a1a3',
-        messagingSenderId: '1059409489946',
-        projectId: 'gen-lang-client-0369327125',
-      ),
+      options: DefaultFirebaseOptions.currentPlatform,
     );
   } catch (_) {}
 
@@ -37,8 +33,12 @@ void main() async {
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => LocaleController(storageService)),
-        ChangeNotifierProvider(create: (_) => TeacherProfileController(storageService)),
-        ChangeNotifierProvider(create: (_) => MonthlySheetController(storageService)),
+        ChangeNotifierProvider(
+          create: (_) => TeacherProfileController(storageService),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => MonthlySheetController(storageService),
+        ),
         ChangeNotifierProvider(create: (_) => TermController(storageService)),
         ChangeNotifierProvider(create: (_) => ReportCardsController()),
         ChangeNotifierProvider(create: (_) => AuthController(storageService)),
@@ -58,6 +58,7 @@ class GradeTrackerApp extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final double width = constraints.maxWidth;
+        // التوافق بين الشاششات والانظمة
         // Adaptive design baseline:
         // Mobile (< 600px): 390 x 844
         // Tablet (600px - 1024px): 768 x 1024
@@ -91,7 +92,9 @@ class GradeTrackerApp extends StatelessWidget {
               ],
               home: Consumer<AuthController>(
                 builder: (context, auth, _) {
-                  return auth.isAuthenticated ? const HomeScreen() : const AuthScreen();
+                  return auth.isAuthenticated
+                      ? const HomeScreen()
+                      : const AuthScreen();
                 },
               ),
             );

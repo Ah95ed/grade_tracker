@@ -1,10 +1,14 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../models/app_user.dart';
 import '../models/monthly_model.dart';
 import '../models/term_model.dart';
 import '../models/teacher_profile.dart';
 import '../services/storage_service.dart';
 import '../services/gradebook_api_service.dart';
+import '../services/desktop_auth_service.dart';
+import '../core/constants/api_endpoints.dart';
 
 /// MVC Controller for Authentication, Cloudflare D1 Backend, and Google Auth
 class AuthController extends ChangeNotifier {
@@ -29,11 +33,7 @@ class AuthController extends ChangeNotifier {
   bool get isOnline => _isOnline;
   GradebookApiService get apiService => _apiService;
   StorageService get storageService => _storageService;
-
-  void clearError() {
-    _errorMessage = null;
-    notifyListeners();
-  }
+  void clearError() { _errorMessage = null; notifyListeners(); }
 
   Future<bool> loginWithEmail(String email, String password) async {
     final cleanEmail = email.trim().toLowerCase();
@@ -43,91 +43,151 @@ class AuthController extends ChangeNotifier {
       return false;
     }
     _setLoading(true);
-    final result = await _apiService.signInWithFirebase(cleanEmail, password);
-    if (result['success'] == true) {
-      final data = result['data'] as Map<String, dynamic>;
-      final idToken = data['idToken'] as String?;
-      final localId = data['localId'] as String? ?? 'usr_${DateTime.now().millisecondsSinceEpoch}';
-      final dispName = data['displayName'] as String? ?? 'الأستاذ: ${cleanEmail.split('@')[0]}';
-      final serverInfo = await _apiService.fetchUserData(uid: localId, email: cleanEmail, token: idToken);
-      final status = serverInfo?['user']?['subscriptionStatus'] as String? ?? 'active';
-      if (status == 'cancelled' || status == 'suspended') {
-        _errorMessage = 'تم إلغاء حسابك أو تعليقه من قِبل إدارة النظام.';
+    try {
+      final result = await _apiService.signInWithFirebase(cleanEmail, password);
+      if (result['success'] == true) {
+        final data = result['data'] as Map<String, dynamic>;
+        final idToken = data['idToken'] as String?;
+        final localId = data['localId'] as String? ?? 'usr_${DateTime.now().millisecondsSinceEpoch}';
+        final dispName = (data['displayName'] as String?)?.isNotEmpty == true ? data['displayName'] as String : cleanEmail.split('@')[0];
+        Map<String, dynamic>? serverInfo;
+        try { serverInfo = await _apiService.fetchUserData(uid: localId, email: cleanEmail, token: idToken); } catch (_) {}
+        final status = serverInfo?['user']?['subscriptionStatus'] as String? ?? 'active';
+        if (status == 'cancelled' || status == 'suspended') {
+          _errorMessage = 'تم إلغاء حسابك أو تعليقه من قِبل إدارة النظام.';
+          _setLoading(false);
+          return false;
+        }
+        final now = DateTime.now().toIso8601String();
+        final user = AppUser(
+          uid: localId, email: cleanEmail, displayName: serverInfo?['user']?['displayName'] as String? ?? dispName,
+          subscriptionType: serverInfo?['user']?['subscriptionType'] as String? ?? 'monthly',
+          subscriptionStatus: status, createdAt: serverInfo?['user']?['createdAt'] as String? ?? now,
+          expiresAt: serverInfo?['user']?['expiresAt'] as String?, lastActiveAt: now, token: idToken,
+          authProvider: 'email', isAdmin: cleanEmail == 'asmaomar5566@gmail.com' || cleanEmail == 'm11287137@gmail.com',
+        );
+        _currentUser = user;
+        await _storageService.saveCurrentUser(user);
+        final profile = _storageService.loadProfile(userUid: user.uid);
+        if (profile.teacherName.isEmpty) {
+          await _storageService.saveProfile(profile.copyWith(teacherName: user.displayName), userUid: user.uid);
+        }
         _setLoading(false);
-        return false;
+        return true;
       }
-      final now = DateTime.now().toIso8601String();
-      final user = AppUser(
-        uid: localId, email: cleanEmail,
-        displayName: serverInfo?['user']?['displayName'] as String? ?? dispName,
-        subscriptionType: serverInfo?['user']?['subscriptionType'] as String? ?? 'monthly',
-        subscriptionStatus: status, createdAt: serverInfo?['user']?['createdAt'] as String? ?? now,
-        expiresAt: serverInfo?['user']?['expiresAt'] as String?, lastActiveAt: now, token: idToken,
-        authProvider: 'email', isAdmin: cleanEmail == 'asmaomar5566@gmail.com' || cleanEmail == 'm11287137@gmail.com',
-      );
-      _currentUser = user;
-      await _storageService.saveCurrentUser(user);
+      final err = result['error'] as String?;
+      _errorMessage = (err == 'INVALID_LOGIN_CREDENTIALS' || err == 'EMAIL_NOT_FOUND' || err == 'INVALID_PASSWORD')
+          ? 'البريد الإلكتروني أو كلمة المرور غير صحيحة.'
+          : (err == 'USER_DISABLED' ? 'تم تعطيل الحساب.' : 'فشل تسجيل الدخول. تحقق من الاتصال.');
       _setLoading(false);
-      return true;
+      return false;
+    } catch (_) {
+      _errorMessage = 'حدث خطأ في الاتصال. يرجى التحقق من الإنترنت وإعادة المحاولة.';
+      _setLoading(false);
+      return false;
     }
-    final err = result['error'] as String?;
-    _errorMessage = (err == 'INVALID_LOGIN_CREDENTIALS' || err == 'EMAIL_NOT_FOUND' || err == 'INVALID_PASSWORD')
-        ? 'البريد الإلكتروني أو كلمة المرور غير صحيحة.'
-        : (err == 'USER_DISABLED' ? 'تم تعطيل هذا الحساب من قِبل إدارة النظام.' : 'فشل تسجيل الدخول. يرجى التحقق من الاتصال.');
-    _setLoading(false);
-    return false;
   }
 
   Future<bool> registerWithEmail(String email, String password, String displayName) async {
     final cleanEmail = email.trim().toLowerCase();
-    final name = displayName.trim().isEmpty ? 'الأستاذ' : displayName.trim();
+    final name = displayName.trim();
+    if (name.isEmpty) { _errorMessage = 'يرجى إدخال اسم المدرس الكامل.'; notifyListeners(); return false; }
     if (cleanEmail.isEmpty || !cleanEmail.contains('@') || password.length < 6) {
       _errorMessage = password.length < 6 ? 'كلمة المرور يجب أن لا تقل عن 6 أحرف.' : 'يرجى إدخال بريد إلكتروني صالح.';
       notifyListeners();
       return false;
     }
     _setLoading(true);
-    final result = await _apiService.signUpWithFirebase(cleanEmail, password, name);
-    if (result['success'] == true) {
-      final data = result['data'] as Map<String, dynamic>;
-      final idToken = data['idToken'] as String?;
-      final localId = data['localId'] as String? ?? 'usr_${DateTime.now().millisecondsSinceEpoch}';
-      await _apiService.registerUserWithCloudflare(uid: localId, email: cleanEmail, displayName: name, authProvider: 'email', token: idToken);
-      final now = DateTime.now().toIso8601String();
-      final user = AppUser(
-        uid: localId, email: cleanEmail, displayName: name, subscriptionType: 'monthly',
-        subscriptionStatus: 'active', createdAt: now, lastActiveAt: now, token: idToken,
-        authProvider: 'email', isAdmin: cleanEmail == 'asmaomar5566@gmail.com',
-      );
-      _currentUser = user;
-      await _storageService.saveCurrentUser(user);
+    try {
+      final result = await _apiService.signUpWithFirebase(cleanEmail, password, name);
+      if (result['success'] == true) {
+        final data = result['data'] as Map<String, dynamic>;
+        final idToken = data['idToken'] as String?;
+        final localId = data['localId'] as String? ?? 'usr_${DateTime.now().millisecondsSinceEpoch}';
+        try { await _apiService.registerUserWithCloudflare(uid: localId, email: cleanEmail, displayName: name, authProvider: 'email', token: idToken); } catch (_) {}
+        final now = DateTime.now().toIso8601String();
+        final user = AppUser(
+          uid: localId, email: cleanEmail, displayName: name, subscriptionType: 'monthly',
+          subscriptionStatus: 'active', createdAt: now, lastActiveAt: now, token: idToken,
+          authProvider: 'email', isAdmin: cleanEmail == 'asmaomar5566@gmail.com',
+        );
+        _currentUser = user;
+        await _storageService.saveCurrentUser(user);
+        final profile = _storageService.loadProfile(userUid: user.uid);
+        await _storageService.saveProfile(profile.copyWith(teacherName: name), userUid: user.uid);
+        _setLoading(false);
+        return true;
+      }
+      final err = result['error'] as String?;
+      _errorMessage = err == 'EMAIL_EXISTS' ? 'هذا البريد مسجل بالفعل.' : 'تعذر إنشاء الحساب. تحقق من الاتصال.';
       _setLoading(false);
-      return true;
+      return false;
+    } catch (_) {
+      _errorMessage = 'حدث خطأ أثناء إنشاء الحساب. يرجى إعادة المحاولة.';
+      _setLoading(false);
+      return false;
     }
-    final err = result['error'] as String?;
-    _errorMessage = err == 'EMAIL_EXISTS' ? 'هذا البريد مسجل بالفعل.' : 'تعذر إنشاء الحساب. تحقق من الاتصال.';
-    _setLoading(false);
-    return false;
   }
 
-  Future<bool> loginWithGoogle({String? email, String? name}) async {
+  Future<bool> loginWithGoogle() async {
     _setLoading(true);
     try {
-      final gEmail = (email?.trim().isNotEmpty == true) ? email!.trim().toLowerCase() : 'teacher.google@gmail.com';
-      final gName = (name?.trim().isNotEmpty == true) ? name!.trim() : 'الأستاذ: ${gEmail.split('@')[0]}';
-      final cleanUid = 'g_${gEmail.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}';
+      String? gEmail;
+      String? gName;
+      String? idToken;
+      String? accessToken;
+      String? uid;
+
+      if (Platform.isAndroid || Platform.isIOS) {
+        await GoogleSignIn.instance.initialize(
+          serverClientId: ApiEndpoints.googleOAuthClientId,
+          clientId: Platform.isAndroid ? ApiEndpoints.googleOAuthAndroidClientId : null,
+        );
+        final account = await GoogleSignIn.instance.authenticate();
+        gEmail = account.email;
+        gName = account.displayName ?? gEmail.split('@')[0];
+        idToken = account.authentication.idToken;
+        uid = 'g_${account.id}';
+      } else {
+        final result = await DesktopAuthService.authenticateWithGoogle();
+        if (!result.success) {
+          final isCancel = result.error == 'USER_CANCELLED' || result.error == 'TIMEOUT';
+          _errorMessage = isCancel ? 'تم إلغاء عملية تسجيل الدخول.' : 'تعذر تسجيل الدخول بـ Google (${result.error}).';
+          _setLoading(false);
+          return false;
+        }
+        gEmail = result.email!;
+        gName = (result.displayName != null && result.displayName!.isNotEmpty) ? result.displayName! : gEmail.split('@')[0];
+        idToken = result.idToken;
+        accessToken = result.accessToken;
+        uid = result.uid;
+      }
+
+      String? fbToken = idToken;
+      String cleanUid = uid ?? 'g_${gEmail.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}';
+      if (idToken != null) {
+        final idpRes = await _apiService.signInWithGoogleIdp(googleIdToken: idToken, googleAccessToken: accessToken);
+        if (idpRes['success'] == true) {
+          final idpData = idpRes['data'] as Map<String, dynamic>;
+          fbToken = idpData['idToken'] as String? ?? fbToken;
+          cleanUid = idpData['localId'] as String? ?? cleanUid;
+        }
+      }
       final now = DateTime.now().toIso8601String();
-      await _apiService.registerUserWithCloudflare(uid: cleanUid, email: gEmail, displayName: gName, authProvider: 'google');
-      final serverInfo = await _apiService.fetchUserData(uid: cleanUid, email: gEmail);
+      try { await _apiService.registerUserWithCloudflare(uid: cleanUid, email: gEmail, displayName: gName, authProvider: 'google', token: fbToken); } catch (_) {}
+      Map<String, dynamic>? serverInfo;
+      try { serverInfo = await _apiService.fetchUserData(uid: cleanUid, email: gEmail, token: fbToken); } catch (_) {}
       final status = serverInfo?['user']?['subscriptionStatus'] as String? ?? 'active';
       final user = AppUser(
         uid: cleanUid, email: gEmail, displayName: serverInfo?['user']?['displayName'] as String? ?? gName,
         subscriptionType: serverInfo?['user']?['subscriptionType'] as String? ?? 'monthly', subscriptionStatus: status,
         createdAt: serverInfo?['user']?['createdAt'] as String? ?? now, expiresAt: serverInfo?['user']?['expiresAt'] as String?,
-        lastActiveAt: now, authProvider: 'google', isAdmin: gEmail == 'asmaomar5566@gmail.com' || gEmail == 'm11287137@gmail.com',
+        lastActiveAt: now, authProvider: 'google', token: fbToken, isAdmin: gEmail == 'asmaomar5566@gmail.com' || gEmail == 'm11287137@gmail.com',
       );
       _currentUser = user;
       await _storageService.saveCurrentUser(user);
+      final profile = _storageService.loadProfile(userUid: user.uid);
+      await _storageService.saveProfile(profile.copyWith(teacherName: gName), userUid: user.uid);
       _setLoading(false);
       return true;
     } catch (_) {
@@ -162,10 +222,8 @@ class AuthController extends ChangeNotifier {
     return success;
   }
 
-  Future<Map<String, dynamic>?> fetchCloudData() async {
-    if (_currentUser == null) return null;
-    return await _apiService.fetchCloudData(userUid: _currentUser!.uid, token: _currentUser!.token);
-  }
+  Future<Map<String, dynamic>?> fetchCloudData() async =>
+      _currentUser == null ? null : await _apiService.fetchCloudData(userUid: _currentUser!.uid, token: _currentUser!.token);
 
   Future<void> deleteAccount() async {
     await _storageService.deleteUserData(userUid: _currentUser?.uid);
@@ -179,9 +237,5 @@ class AuthController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _setLoading(bool val) {
-    _isLoading = val;
-    if (val) _errorMessage = null;
-    notifyListeners();
-  }
+  void _setLoading(bool val) { _isLoading = val; if (val) _errorMessage = null; notifyListeners(); }
 }

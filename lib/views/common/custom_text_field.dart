@@ -2,16 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../core/theme/app_colors.dart';
 
-/// Reusable responsive styled text field
+/// Reusable responsive styled text field with obscure text and submit support
 class CustomTextField extends StatelessWidget {
   final String label;
   final String? hint;
   final TextEditingController? controller;
   final TextInputType keyboardType;
   final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onSubmitted;
   final Widget? prefixIcon;
   final Widget? suffixIcon;
   final bool readOnly;
+  final bool obscureText;
 
   const CustomTextField({
     super.key,
@@ -20,9 +22,11 @@ class CustomTextField extends StatelessWidget {
     this.controller,
     this.keyboardType = TextInputType.text,
     this.onChanged,
+    this.onSubmitted,
     this.prefixIcon,
     this.suffixIcon,
     this.readOnly = false,
+    this.obscureText = false,
   });
 
   @override
@@ -44,7 +48,9 @@ class CustomTextField extends StatelessWidget {
           controller: controller,
           keyboardType: keyboardType,
           onChanged: onChanged,
+          onSubmitted: onSubmitted,
           readOnly: readOnly,
+          obscureText: obscureText,
           style: TextStyle(
             fontSize: 13.sp,
             color: AppColors.textPrimary,
@@ -79,4 +85,3 @@ class CustomTextField extends StatelessWidget {
     );
   }
 }
-

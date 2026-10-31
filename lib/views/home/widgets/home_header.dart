@@ -73,11 +73,11 @@ class HomeHeader extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      profile.teacherName.isNotEmpty
-                          ? profile.teacherName
-                          : ((auth.currentUser?.displayName.isNotEmpty ?? false)
-                              ? auth.currentUser!.displayName
-                              : profile.schoolName),
+                      (auth.currentUser?.displayName.isNotEmpty == true)
+                          ? auth.currentUser!.displayName
+                          : (profile.teacherName.isNotEmpty
+                              ? profile.teacherName
+                              : (profile.schoolName.isNotEmpty ? profile.schoolName : 'المدرس')),
                       style: TextStyle(
                         fontSize: 12.sp,
                         fontWeight: FontWeight.bold,
@@ -86,15 +86,19 @@ class HomeHeader extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    if (profile.subject.isNotEmpty) ...[
+                    if (profile.subject.isNotEmpty || (auth.currentUser?.email.isNotEmpty == true)) ...[
                       SizedBox(height: 2.h),
                       Text(
-                        profile.subject,
+                        profile.subject.isNotEmpty
+                            ? profile.subject
+                            : (profile.schoolName.isNotEmpty ? profile.schoolName : auth.currentUser!.email),
                         style: TextStyle(
                           fontSize: 10.sp,
                           fontWeight: FontWeight.w500,
                           color: Colors.white.withValues(alpha: 0.9),
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ],

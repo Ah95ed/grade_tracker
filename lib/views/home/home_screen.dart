@@ -55,6 +55,9 @@ class _HomeScreenState extends State<HomeScreen> {
           profileCtrl.updateProfile(TeacherProfile.fromJson(cloudData['profile'] as Map<String, dynamic>));
         }
       }
+      if (mounted && profileCtrl.profile.teacherName.isEmpty && (auth.currentUser?.displayName.isNotEmpty ?? false)) {
+        profileCtrl.updateProfile(profileCtrl.profile.copyWith(teacherName: auth.currentUser!.displayName));
+      }
     }
   }
 

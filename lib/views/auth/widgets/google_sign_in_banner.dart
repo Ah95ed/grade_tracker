@@ -5,17 +5,24 @@ import '../../../controllers/auth_controller.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../../../core/localization/translation_keys.dart';
 import '../../../core/theme/app_colors.dart';
-import 'google_sign_in_dialog.dart';
 
 /// Prominent Google Sign-In action button and info card
 class GoogleSignInBanner extends StatelessWidget {
   const GoogleSignInBanner({super.key});
 
-  void _handleGoogleClick(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (_) => const GoogleSignInDialog(),
-    );
+  Future<void> _handleGoogleClick(BuildContext context) async {
+    final auth = context.read<AuthController>();
+    final scaffold = ScaffoldMessenger.of(context);
+    final success = await auth.loginWithGoogle();
+    if (!success && auth.errorMessage != null && context.mounted) {
+      scaffold.showSnackBar(
+        SnackBar(
+          content: Text(auth.errorMessage!),
+          backgroundColor: AppColors.termRustDark,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
   }
 
   @override

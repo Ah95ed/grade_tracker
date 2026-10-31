@@ -53,7 +53,9 @@ class ReportCardItem extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        profile.schoolName,
+                        profile.schoolName.isNotEmpty
+                            ? profile.schoolName
+                            : (profile.teacherName.isNotEmpty ? profile.teacherName : context.tr(AppKeys.schoolName)),
                         style: TextStyle(
                           fontSize: 12.sp,
                           fontWeight: FontWeight.bold,
@@ -62,13 +64,17 @@ class ReportCardItem extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      Text(
-                        '${profile.subject} • ${profile.academicYear}',
-                        style: TextStyle(
-                          fontSize: 10.sp,
-                          color: AppColors.textSecondary,
+                      if (profile.subject.isNotEmpty || profile.academicYear.isNotEmpty)
+                        Text(
+                          [
+                            if (profile.subject.isNotEmpty) profile.subject,
+                            if (profile.academicYear.isNotEmpty) profile.academicYear,
+                          ].join(' • '),
+                          style: TextStyle(
+                            fontSize: 10.sp,
+                            color: AppColors.textSecondary,
+                          ),
                         ),
-                      ),
                     ],
                   ),
                 ),

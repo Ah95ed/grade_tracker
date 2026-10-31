@@ -23,6 +23,7 @@ class AuthScreen extends StatefulWidget {
 
 class _AuthScreenState extends State<AuthScreen> {
   bool _isRegister = false;
+  bool _obscurePassword = true;
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _nameController = TextEditingController();
@@ -35,16 +36,54 @@ class _AuthScreenState extends State<AuthScreen> {
     super.dispose();
   }
 
-  void _handleSubmit() {
+  void _showErrorSnackBar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message, style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.bold)),
+        backgroundColor: AppColors.termRustDark,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Future<void> _handleSubmit() async {
     final auth = context.read<AuthController>();
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
     if (_isRegister) {
       final name = _nameController.text.trim();
-      auth.registerWithEmail(email, password, name);
+      if (name.isEmpty) {
+        _showErrorSnackBar(context.tr(AppKeys.fillAllFields));
+        return;
+      }
+      if (email.isEmpty || !email.contains('@')) {
+        _showErrorSnackBar(context.tr(AppKeys.invalidEmail));
+        return;
+      }
+      if (password.length < 6) {
+        _showErrorSnackBar(context.tr(AppKeys.passwordTooShort));
+        return;
+      }
+      final success = await auth.registerWithEmail(email, password, name);
+      if (!success && auth.errorMessage != null) {
+        _showErrorSnackBar(auth.errorMessage!);
+      }
     } else {
-      auth.loginWithEmail(email, password);
+      if (email.isEmpty || !email.contains('@')) {
+        _showErrorSnackBar(context.tr(AppKeys.invalidEmail));
+        return;
+      }
+      if (password.isEmpty) {
+        _showErrorSnackBar(context.tr(AppKeys.fillAllFields));
+        return;
+      }
+      final success = await auth.loginWithEmail(email, password);
+      if (!success && auth.errorMessage != null) {
+        _showErrorSnackBar(auth.errorMessage!);
+      }
     }
   }
 
@@ -75,7 +114,6 @@ class _AuthScreenState extends State<AuthScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // Language Switcher
                     Align(
                       alignment: Alignment.centerLeft,
                       child: TextButton.icon(
@@ -101,32 +139,22 @@ class _AuthScreenState extends State<AuthScreen> {
                       textAlign: TextAlign.center,
                     ),
                     SizedBox(height: 16.h),
-                    // Google Sign-In prominent banner
                     const GoogleSignInBanner(),
                     SizedBox(height: 12.h),
-                    AuthToggleBar(isRegister: _isRegister, onToggle: (val) => setState(() => _isRegister = val)),
-                    SizedBox(height: 12.h),
-                    if (auth.errorMessage != null) ...[
-                      Container(
-                        padding: EdgeInsets.all(10.r),
-                        decoration: BoxDecoration(
-                          color: AppColors.error.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(8.r),
-                          border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
-                        ),
-                        child: Text(
-                          auth.errorMessage!,
-                          style: TextStyle(fontSize: 11.sp, color: AppColors.error, fontWeight: FontWeight.bold),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                      SizedBox(height: 10.h),
-                    ],
+                    AuthToggleBar(
+                      isRegister: _isRegister,
+                      onToggle: (val) {
+                        auth.clearError();
+                        setState(() => _isRegister = val);
+                      },
+                    ),
+                    SizedBox(height: 14.h),
                     if (_isRegister) ...[
                       CustomTextField(
                         label: context.tr(AppKeys.displayName),
                         controller: _nameController,
                         prefixIcon: Icon(Icons.person_outline, size: 18.r),
+                        onSubmitted: (_) => _handleSubmit(),
                       ),
                       SizedBox(height: 10.h),
                     ],
@@ -135,13 +163,24 @@ class _AuthScreenState extends State<AuthScreen> {
                       controller: _emailController,
                       keyboardType: TextInputType.emailAddress,
                       prefixIcon: Icon(Icons.mail_outline, size: 18.r),
+                      onSubmitted: (_) => _handleSubmit(),
                     ),
                     SizedBox(height: 10.h),
                     CustomTextField(
                       label: context.tr(AppKeys.password),
                       controller: _passwordController,
                       keyboardType: TextInputType.visiblePassword,
+                      obscureText: _obscurePassword,
                       prefixIcon: Icon(Icons.lock_outline, size: 18.r),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                          size: 18.r,
+                          color: AppColors.textSecondary,
+                        ),
+                        onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                      ),
+                      onSubmitted: (_) => _handleSubmit(),
                     ),
                     if (!_isRegister) ...[
                       Align(
@@ -159,10 +198,27 @@ class _AuthScreenState extends State<AuthScreen> {
                       ),
                     ] else
                       SizedBox(height: 12.h),
+                    if (auth.errorMessage != null) ...[
+                      Container(
+                        padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.h),
+                        decoration: BoxDecoration(
+                          color: AppColors.error.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8.r),
+                          border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+                        ),
+                        child: Text(
+                          auth.errorMessage!,
+                          style: TextStyle(fontSize: 11.sp, color: AppColors.error, fontWeight: FontWeight.bold),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                      SizedBox(height: 10.h),
+                    ],
                     CustomButton(
                       label: _isRegister ? context.tr(AppKeys.register) : context.tr(AppKeys.login),
                       backgroundColor: AppColors.monthlyBlue,
                       height: 44.h,
+                      isLoading: auth.isLoading,
                       onPressed: auth.isLoading ? null : _handleSubmit,
                     ),
                     SizedBox(height: 8.h),
