@@ -48,6 +48,15 @@ class AppUser {
     );
   }
 
+  bool get isExpired {
+    if (subscriptionStatus == 'expired') return true;
+    if (expiresAt != null) {
+      final exp = DateTime.tryParse(expiresAt!);
+      if (exp != null && exp.isBefore(DateTime.now())) return true;
+    }
+    return false;
+  }
+
   Map<String, dynamic> toJson() => {
         'uid': uid,
         'email': email,

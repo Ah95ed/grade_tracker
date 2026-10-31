@@ -73,7 +73,11 @@ class HomeHeader extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      profile.teacherName.isNotEmpty ? profile.teacherName : profile.schoolName,
+                      profile.teacherName.isNotEmpty
+                          ? profile.teacherName
+                          : ((auth.currentUser?.displayName.isNotEmpty ?? false)
+                              ? auth.currentUser!.displayName
+                              : profile.schoolName),
                       style: TextStyle(
                         fontSize: 12.sp,
                         fontWeight: FontWeight.bold,

@@ -34,6 +34,11 @@ class AppKeys {
   static const String syncNow = 'syncNow';
   static const String syncSuccess = 'syncSuccess';
   static const String syncError = 'syncError';
+  static const String orWithEmailAndPassword = 'orWithEmailAndPassword';
+  static const String googleInstantLogin = 'googleInstantLogin';
+  static const String googleLoginSubtitle = 'googleLoginSubtitle';
+  static const String enterGoogleEmail = 'enterGoogleEmail';
+  static const String continueWithGoogle = 'continueWithGoogle';
 
   // Common Actions
   static const String save = 'save';
@@ -52,6 +57,36 @@ class AppKeys {
   static const String deleteAccount = 'deleteAccount';
   static const String settings = 'settings';
   static const String toolsAndMore = 'toolsAndMore';
+
+  // Bottom Sheet & Options
+  static const String registeredAccount = 'registeredAccount';
+  static const String googleVerifiedBadge = 'googleVerifiedBadge';
+  static const String adminBadge = 'adminBadge';
+  static const String subscriptionDetails = 'subscriptionDetails';
+  static const String subscriptionType = 'subscriptionType';
+  static const String subscriptionStatus = 'subscriptionStatus';
+  static const String subscriptionActive = 'subscriptionActive';
+  static const String subscriptionExpired = 'subscriptionExpired';
+  static const String subscriptionTrial = 'subscriptionTrial';
+  static const String subscriptionLifetime = 'subscriptionLifetime';
+  static const String subscriptionMonthly = 'subscriptionMonthly';
+  static const String subscriptionYearly = 'subscriptionYearly';
+  static const String expiresOn = 'expiresOn';
+  static const String decimalControl = 'decimalControl';
+  static const String backupAndDatabase = 'backupAndDatabase';
+  static const String exportBackupDesc = 'exportBackupDesc';
+  static const String importBackupDesc = 'importBackupDesc';
+  static const String contactUsAllChannels = 'contactUsAllChannels';
+  static const String privacyPolicy = 'privacyPolicy';
+  static const String deleteAccountPermanent = 'deleteAccountPermanent';
+  static const String deleteAccountConfirm = 'deleteAccountConfirm';
+  static const String callDirect = 'callDirect';
+  static const String chatWhatsapp = 'chatWhatsapp';
+  static const String sendEmailDirect = 'sendEmailDirect';
+  static const String copiedToClipboard = 'copiedToClipboard';
+  static const String backupCopied = 'backupCopied';
+  static const String backupRestored = 'backupRestored';
+  static const String invalidBackupData = 'invalidBackupData';
 
   // Teacher Profile
   static const String teacherProfile = 'teacherProfile';

@@ -1,16 +1,24 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
 import '../../../controllers/locale_controller.dart';
 import '../../../controllers/auth_controller.dart';
-import '../../../core/constants/app_constants.dart';
+import '../../../controllers/monthly_sheet_controller.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../../../core/localization/translation_keys.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../teacher_profile/teacher_profile_dialog.dart';
+import '../../monthly_sheet/widgets/rounding_settings_dialog.dart';
 import '../../common/confirm_dialog.dart';
+import 'contact_support_dialog.dart';
+import 'subscription_details_dialog.dart';
+import 'privacy_policy_dialog.dart';
+import 'delete_account_dialog.dart';
+import 'import_backup_dialog.dart';
+import 'drawer_user_header.dart';
 
-/// Modal bottom sheet for Tools, Settings, and Account options
+/// Modal bottom sheet providing all system tools, database options, and settings
 class HomeDrawerMenu extends StatelessWidget {
   const HomeDrawerMenu({super.key});
 
@@ -18,117 +26,163 @@ class HomeDrawerMenu extends StatelessWidget {
   Widget build(BuildContext context) {
     final localeCtrl = context.watch<LocaleController>();
     final authCtrl = context.watch<AuthController>();
+    final user = authCtrl.currentUser;
 
     return Material(
       color: Colors.white,
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20.r)),
+      borderRadius: BorderRadius.vertical(top: Radius.circular(22.r)),
       clipBehavior: Clip.antiAlias,
       child: SafeArea(
         top: false,
-        child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 18.h),
+        child: SingleChildScrollView(
+          padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Title Header
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    context.tr(AppKeys.toolsAndMore),
-                    style: TextStyle(
-                      fontSize: 16.sp,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.close_rounded, size: 20.r, color: AppColors.textSecondary),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                ],
-              ),
+              DrawerUserHeader(auth: authCtrl),
               Divider(height: 16.h, color: AppColors.borderLight),
-              // Language Switch
-              ListTile(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.r)),
-                leading: Icon(Icons.language_rounded, size: 20.r, color: AppColors.monthlyBlue),
-                title: Text(context.tr(AppKeys.switchLanguage), style: TextStyle(fontSize: 13.sp)),
-                trailing: Text(
-                  localeCtrl.isArabic ? 'English' : 'العربية',
-                  style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.bold, color: AppColors.monthlyBlue),
-                ),
+              _buildTile(
+                icon: Icons.person_outline_rounded,
+                color: AppColors.monthlyBlue,
+                title: context.tr(AppKeys.teacherProfile),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  showDialog(context: context, builder: (_) => const TeacherProfileDialog());
+                },
+              ),
+              _buildTile(
+                icon: Icons.workspace_premium_rounded,
+                color: const Color(0xFFD97706),
+                title: context.tr(AppKeys.subscriptionDetails),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  showDialog(context: context, builder: (_) => const SubscriptionDetailsDialog());
+                },
+              ),
+              _buildTile(
+                icon: Icons.language_rounded,
+                color: AppColors.slateDark,
+                title: context.tr(AppKeys.switchLanguage),
+                trailing: Text(localeCtrl.isArabic ? 'English' : 'العربية', style: TextStyle(fontSize: 11.sp, fontWeight: FontWeight.bold, color: AppColors.monthlyBlue)),
                 onTap: () {
                   Navigator.of(context).pop();
                   localeCtrl.toggleLanguage();
                 },
               ),
-              // Edit Profile
-              ListTile(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.r)),
-                leading: Icon(Icons.person_outline_rounded, size: 20.r, color: AppColors.academicGold),
-                title: Text(context.tr(AppKeys.teacherProfile), style: TextStyle(fontSize: 13.sp)),
+              _buildSectionHeader(context.tr(AppKeys.backupAndDatabase)),
+              _buildTile(
+                icon: Icons.calculate_outlined,
+                color: const Color(0xFFB45309),
+                title: context.tr(AppKeys.decimalControl),
                 onTap: () {
                   Navigator.of(context).pop();
-                  showDialog(
-                    context: context,
-                    builder: (_) => const TeacherProfileDialog(),
-                  );
+                  showDialog(context: context, builder: (_) => const RoundingSettingsDialog());
                 },
               ),
-              // Contact Support
-              ListTile(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.r)),
-                leading: Icon(Icons.support_agent_rounded, size: 20.r, color: AppColors.cardsGreen),
-                title: Text(context.tr(AppKeys.contactSupport), style: TextStyle(fontSize: 13.sp)),
-                subtitle: Text(
-                  AppConstants.supportPhone,
-                  style: TextStyle(fontSize: 11.sp, color: AppColors.textMuted),
+              _buildTile(
+                icon: Icons.download_rounded,
+                color: AppColors.monthlyBlue,
+                title: context.tr(AppKeys.exportBackupDesc),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  final json = authCtrl.storageService.exportBackupJson(userUid: user?.uid);
+                  Clipboard.setData(ClipboardData(text: json));
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.tr(AppKeys.backupCopied))));
+                },
+              ),
+              _buildTile(
+                icon: Icons.upload_rounded,
+                color: AppColors.cardsGreen,
+                title: context.tr(AppKeys.importBackupDesc),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  showDialog(context: context, builder: (_) => const ImportBackupDialog());
+                },
+              ),
+              _buildSectionHeader('الدعم والحساب'),
+              _buildTile(
+                icon: Icons.headset_mic_rounded,
+                color: const Color(0xFF059669),
+                title: context.tr(AppKeys.contactUsAllChannels),
+                trailing: Container(
+                  padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
+                  decoration: BoxDecoration(color: const Color(0xFFDCFCE7), borderRadius: BorderRadius.circular(6.r)),
+                  child: Text('دعم فني', style: TextStyle(fontSize: 9.sp, fontWeight: FontWeight.bold, color: const Color(0xFF15803D))),
                 ),
                 onTap: () {
                   Navigator.of(context).pop();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('${context.tr(AppKeys.contactSupport)}: ${AppConstants.supportPhone}')),
-                  );
+                  showDialog(context: context, builder: (_) => const ContactSupportDialog());
                 },
               ),
-              // Reset to Defaults
-              ListTile(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.r)),
-                leading: Icon(Icons.refresh_rounded, size: 20.r, color: AppColors.warning),
-                title: Text(context.tr(AppKeys.resetDefaults), style: TextStyle(fontSize: 13.sp)),
+              _buildTile(
+                icon: Icons.shield_outlined,
+                color: AppColors.slateDark,
+                title: context.tr(AppKeys.privacyPolicy),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  showDialog(context: context, builder: (_) => const PrivacyPolicyDialog());
+                },
+              ),
+              _buildTile(
+                icon: Icons.refresh_rounded,
+                color: AppColors.warning,
+                title: context.tr(AppKeys.resetDefaults),
                 onTap: () {
                   Navigator.of(context).pop();
                   showDialog(
                     context: context,
                     builder: (_) => ConfirmDialog(
                       title: context.tr(AppKeys.resetDefaults),
-                      message: context.tr(AppKeys.resetDefaults),
+                      message: 'هل أنت متأكد من إعادة ضبط وتفريغ جدول الدرجات للبداية؟',
                       isDestructive: true,
-                      onConfirm: () {},
+                      onConfirm: () => context.read<MonthlySheetController>().setModels([]),
                     ),
                   );
                 },
               ),
-              // Logout
-              ListTile(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.r)),
-                leading: Icon(Icons.logout_rounded, size: 20.r, color: AppColors.error),
-                title: Text(
-                  context.tr(AppKeys.logout),
-                  style: TextStyle(fontSize: 13.sp, color: AppColors.error),
-                ),
+              _buildTile(
+                icon: Icons.logout_rounded,
+                color: AppColors.error,
+                title: context.tr(AppKeys.logout),
                 onTap: () {
                   Navigator.of(context).pop();
                   authCtrl.logout();
                 },
               ),
-              SizedBox(height: 10.h),
+              _buildTile(
+                icon: Icons.delete_forever_rounded,
+                color: AppColors.error,
+                title: context.tr(AppKeys.deleteAccountPermanent),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  showDialog(context: context, builder: (_) => const DeleteAccountDialog());
+                },
+              ),
+              SizedBox(height: 8.h),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+      padding: EdgeInsets.only(top: 8.h, bottom: 4.h, right: 6.w, left: 6.w),
+      child: Text(title, style: TextStyle(fontSize: 10.sp, fontWeight: FontWeight.bold, color: AppColors.textSecondary)),
+    );
+  }
+
+  Widget _buildTile({required IconData icon, required Color color, required String title, Widget? trailing, required VoidCallback onTap}) {
+    return ListTile(
+      dense: true,
+      contentPadding: EdgeInsets.symmetric(horizontal: 6.w),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.r)),
+      leading: Icon(icon, size: 20.r, color: color),
+      title: Text(title, style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+      trailing: trailing,
+      onTap: onTap,
     );
   }
 }

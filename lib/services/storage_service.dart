@@ -20,9 +20,7 @@ class StorageService {
   }
 
   // App User & Session
-  Future<void> saveCurrentUser(AppUser user) async {
-    await _prefs.setString(AppConstants.keyCurrentUser, jsonEncode(user.toJson()));
-  }
+  Future<void> saveCurrentUser(AppUser user) async => await _prefs.setString(AppConstants.keyCurrentUser, jsonEncode(user.toJson()));
 
   AppUser? loadCurrentUser() {
     final raw = _prefs.getString(AppConstants.keyCurrentUser);
@@ -34,9 +32,7 @@ class StorageService {
     return null;
   }
 
-  Future<void> clearCurrentUser() async {
-    await _prefs.remove(AppConstants.keyCurrentUser);
-  }
+  Future<void> clearCurrentUser() async => await _prefs.remove(AppConstants.keyCurrentUser);
 
   // Teacher Profile
   Future<void> saveProfile(TeacherProfile profile, {String? userUid}) async {
@@ -58,8 +54,7 @@ class StorageService {
   // Monthly Models
   Future<void> saveModels(List<MonthlyModel> models, {String? userUid}) async {
     final key = userUid != null ? '${AppConstants.keyModels}_$userUid' : AppConstants.keyModels;
-    final list = models.map((m) => m.toJson()).toList();
-    await _prefs.setString(key, jsonEncode(list));
+    await _prefs.setString(key, jsonEncode(models.map((m) => m.toJson()).toList()));
   }
 
   List<MonthlyModel> loadModels({String? userUid}) {
@@ -77,8 +72,7 @@ class StorageService {
   // Terms
   Future<void> saveTerms(List<TermModel> terms, {String? userUid}) async {
     final key = userUid != null ? '${AppConstants.keyTerms}_$userUid' : AppConstants.keyTerms;
-    final list = terms.map((t) => t.toJson()).toList();
-    await _prefs.setString(key, jsonEncode(list));
+    await _prefs.setString(key, jsonEncode(terms.map((t) => t.toJson()).toList()));
   }
 
   List<TermModel> loadTerms({String? userUid}) {
@@ -97,67 +91,84 @@ class StorageService {
   Future<void> saveLocale(String code) async => await _prefs.setString(AppConstants.keyLocale, code);
   String loadLocale() => _prefs.getString(AppConstants.keyLocale) ?? 'ar';
 
-  // Reset all to defaults
+  // Backup Export and Import
+  String exportBackupJson({String? userUid}) {
+    final data = {
+      'app': 'GradeTracker',
+      'version': '1.0.0',
+      'exportDate': DateTime.now().toIso8601String(),
+      'profile': loadProfile(userUid: userUid).toJson(),
+      'models': loadModels(userUid: userUid).map((m) => m.toJson()).toList(),
+      'terms': loadTerms(userUid: userUid).map((t) => t.toJson()).toList(),
+    };
+    return const JsonEncoder.withIndent('  ').convert(data);
+  }
+
+  bool importBackupJson(String rawJson, {String? userUid}) {
+    try {
+      final decoded = jsonDecode(rawJson) as Map<String, dynamic>;
+      if (decoded['models'] is List) {
+        final list = (decoded['models'] as List).map((e) => MonthlyModel.fromJson(e as Map<String, dynamic>)).toList();
+        saveModels(list, userUid: userUid);
+      }
+      if (decoded['terms'] is List) {
+        final list = (decoded['terms'] as List).map((e) => TermModel.fromJson(e as Map<String, dynamic>)).toList();
+        saveTerms(list, userUid: userUid);
+      }
+      if (decoded['profile'] is Map) {
+        saveProfile(TeacherProfile.fromJson(decoded['profile'] as Map<String, dynamic>), userUid: userUid);
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> deleteUserData({String? userUid}) async {
+    final pKey = userUid != null ? '${AppConstants.keyProfile}_$userUid' : AppConstants.keyProfile;
+    final mKey = userUid != null ? '${AppConstants.keyModels}_$userUid' : AppConstants.keyModels;
+    final tKey = userUid != null ? '${AppConstants.keyTerms}_$userUid' : AppConstants.keyTerms;
+    await _prefs.remove(pKey);
+    await _prefs.remove(mKey);
+    await _prefs.remove(tKey);
+    await clearCurrentUser();
+  }
+
   Future<void> clearAll() async => await _prefs.clear();
 
-  List<MonthlyModel> _getDefaultModels() {
-    return [
-      MonthlyModel(
-        id: 'model-1',
-        name: 'الشهر الأول',
-        subject: 'الرياضيات',
-        gradeLevel: 'الثالث متوسط',
-        academicYear: '2024 - 2025',
-        totalMaxScore: 100,
-        writtenMaxScore: 100,
-        writtenScoreMode: 'raw',
-        roundingMode: 'half_up',
-        customColumns: const [
-          CustomColumn(id: 'col-1', name: 'الشفهي', maxScore: 10),
-          CustomColumn(id: 'col-2', name: 'اليومي والنشاط', maxScore: 10),
-        ],
-        students: const [
-          StudentRow(
-            id: 'st-1',
-            name: 'أحمد محمود عباس',
-            gradeLevel: 'الثالث متوسط',
-            section: 'أ',
-            writtenRawScore: 75,
-            scores: {'col-1': 9, 'col-2': 8},
-          ),
-          StudentRow(
-            id: 'st-2',
-            name: 'حسين علي كاظم',
-            gradeLevel: 'الثالث متوسط',
-            section: 'أ',
-            writtenRawScore: 68,
-            scores: {'col-1': 8, 'col-2': 9},
-          ),
-          StudentRow(
-            id: 'st-3',
-            name: 'مصطفى رائد سعد',
-            gradeLevel: 'الثالث متوسط',
-            section: 'ب',
-            writtenRawScore: 82,
-            scores: {'col-1': 10, 'col-2': 10},
-          ),
-        ],
-        createdAt: DateTime.now().toIso8601String(),
-      ),
-    ];
-  }
+  List<MonthlyModel> _getDefaultModels() => [
+        MonthlyModel(
+          id: 'model-1',
+          name: 'الشهر الأول',
+          subject: 'الرياضيات',
+          gradeLevel: 'الثالث متوسط',
+          academicYear: '2024 - 2025',
+          totalMaxScore: 100,
+          writtenMaxScore: 100,
+          writtenScoreMode: 'raw',
+          roundingMode: 'half_up',
+          customColumns: const [
+            CustomColumn(id: 'col-1', name: 'الشفهي', maxScore: 10),
+            CustomColumn(id: 'col-2', name: 'اليومي والنشاط', maxScore: 10),
+          ],
+          students: const [
+            StudentRow(id: 'st-1', name: 'أحمد محمود عباس', gradeLevel: 'الثالث متوسط', section: 'أ', writtenRawScore: 75, scores: {'col-1': 9, 'col-2': 8}),
+            StudentRow(id: 'st-2', name: 'حسين علي كاظم', gradeLevel: 'الثالث متوسط', section: 'أ', writtenRawScore: 68, scores: {'col-1': 8, 'col-2': 9}),
+            StudentRow(id: 'st-3', name: 'مصطفى رائد سعد', gradeLevel: 'الثالث متوسط', section: 'ب', writtenRawScore: 82, scores: {'col-1': 10, 'col-2': 10}),
+          ],
+          createdAt: DateTime.now().toIso8601String(),
+        ),
+      ];
 
-  List<TermModel> _getDefaultTerms() {
-    return [
-      const TermModel(
-        id: 'term-1',
-        name: 'الفصل الأول',
-        subject: 'الرياضيات',
-        gradeLevel: 'الثالث متوسط',
-        selectedModelIds: ['model-1'],
-        calculationMode: 'average',
-        roundingMode: 'half_up',
-      ),
-    ];
-  }
+  List<TermModel> _getDefaultTerms() => const [
+        TermModel(
+          id: 'term-1',
+          name: 'الفصل الأول',
+          subject: 'الرياضيات',
+          gradeLevel: 'الثالث متوسط',
+          selectedModelIds: ['model-1'],
+          calculationMode: 'average',
+          roundingMode: 'half_up',
+        ),
+      ];
 }

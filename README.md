@@ -205,20 +205,28 @@ lib/
 │   │   ├── auth_screen.dart                    # شاشة تسجيل الدخول وإنشاء الحساب والتجربة المجانية
 │   │   └── widgets/
 │   │       ├── auth_toggle_bar.dart            # شريط التبديل بين الدخول والتسجيل
-│   │       └── forgot_password_dialog.dart     # نافذة استعادة كلمة المرور عبر Firebase
+│   │       ├── forgot_password_dialog.dart     # نافذة استعادة كلمة المرور عبر Firebase
+│   │       ├── google_sign_in_banner.dart      # شريط الدخول المباشر بحساب Google
+│   │       └── google_sign_in_dialog.dart      # نافذة مصادقة حساب Google
 │   ├── common/
-    │   ├── academic_emblem.dart                # شعار المدرسة الأكاديمي المخصص
-    │   ├── confirm_dialog.dart                 # نافذة تأكيد الإجراءات
-    │   ├── custom_button.dart                  # زر متجاوب بتصميم الهوية
-    │   ├── custom_text_field.dart              # حقل إدخال متجاوب
-    │   ├── rating_badge.dart                   # شارة التقدير اللفظي الملونة
-    │   └── sync_badge.dart                     # شارة المزامنة السحابية والمحلية
-    ├── home/
-    │   ├── home_screen.dart                    # الشاشة الرئيسية الجامعة
-    │   └── widgets/
-    │       ├── home_drawer_menu.dart           # قائمة الأدوات والمزيد
-    │       ├── home_header.dart                # الترويسة العلوية بمعلومات المعلم
-    │       └── home_tab_bar.dart               # شريط التبويبات الثلاثة
+│   │   ├── academic_emblem.dart                # شعار المدرسة الأكاديمي المخصص
+│   │   ├── confirm_dialog.dart                 # نافذة تأكيد الإجراءات
+│   │   ├── custom_button.dart                  # زر متجاوب بتصميم الهوية
+│   │   ├── custom_text_field.dart              # حقل إدخال متجاوب
+│   │   ├── rating_badge.dart                   # شارة التقدير اللفظي الملونة
+│   │   └── sync_badge.dart                     # شارة المزامنة السحابية والمحلية
+│   ├── home/
+│   │   ├── home_screen.dart                    # الشاشة الرئيسية الجامعة
+│   │   └── widgets/
+│   │       ├── home_drawer_menu.dart           # قائمة الأدوات والمزيد (Bottom Sheet)
+│   │       ├── drawer_user_header.dart         # بطاقة معلومات الحساب المسجل وشارة Google
+│   │       ├── contact_support_dialog.dart     # نافذة الاتصال والدعم (هاتف / واتس / إيميل)
+│   │       ├── subscription_details_dialog.dart # نافذة تفاصيل ونوع وصلاحية الاشتراك
+│   │       ├── privacy_policy_dialog.dart      # نافذة سياسة الخصوصية وسرية البيانات
+│   │       ├── delete_account_dialog.dart      # نافذة تأكيد الحذف النهائي للحساب
+│   │       ├── import_backup_dialog.dart       # نافذة استرجاع واستيراد النسخة الاحتياطية
+│   │       ├── home_header.dart                # الترويسة العلوية بمعلومات المعلم
+│   │       └── home_tab_bar.dart               # شريط التبويبات الثلاثة
     ├── monthly_sheet/
     │   ├── monthly_sheet_view.dart             # الواجهة الكاملة لجدول الشهر
     │   └── widgets/

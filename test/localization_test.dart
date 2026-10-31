@@ -15,6 +15,11 @@ void main() {
       expect(arTranslations[AppKeys.freeTrial], isNotEmpty);
       expect(arTranslations[AppKeys.syncSuccess], isNotEmpty);
       expect(arTranslations[AppKeys.syncError], isNotEmpty);
+      expect(arTranslations[AppKeys.subscriptionDetails], isNotEmpty);
+      expect(arTranslations[AppKeys.googleInstantLogin], isNotEmpty);
+      expect(arTranslations[AppKeys.contactUsAllChannels], isNotEmpty);
+      expect(arTranslations[AppKeys.deleteAccountPermanent], isNotEmpty);
+      expect(arTranslations[AppKeys.privacyPolicy], isNotEmpty);
     });
 
     test('English dictionary contains essential keys without hardcoding', () {
@@ -27,6 +32,11 @@ void main() {
       expect(enTranslations[AppKeys.freeTrial], isNotEmpty);
       expect(enTranslations[AppKeys.syncSuccess], isNotEmpty);
       expect(enTranslations[AppKeys.syncError], isNotEmpty);
+      expect(enTranslations[AppKeys.subscriptionDetails], isNotEmpty);
+      expect(enTranslations[AppKeys.googleInstantLogin], isNotEmpty);
+      expect(enTranslations[AppKeys.contactUsAllChannels], isNotEmpty);
+      expect(enTranslations[AppKeys.deleteAccountPermanent], isNotEmpty);
+      expect(enTranslations[AppKeys.privacyPolicy], isNotEmpty);
     });
 
     test('All keys in Arabic also exist in English', () {
@@ -34,6 +44,11 @@ void main() {
         expect(enTranslations.containsKey(key), isTrue, reason: 'Key $key missing in enTranslations');
       }
     });
+
+    test('All keys in English also exist in Arabic', () {
+      for (final key in enTranslations.keys) {
+        expect(arTranslations.containsKey(key), isTrue, reason: 'Key $key missing in arTranslations');
+      }
+    });
   });
 }
-

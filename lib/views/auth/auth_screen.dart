@@ -11,8 +11,9 @@ import '../common/custom_button.dart';
 import '../common/custom_text_field.dart';
 import 'widgets/auth_toggle_bar.dart';
 import 'widgets/forgot_password_dialog.dart';
+import 'widgets/google_sign_in_banner.dart';
 
-/// Real Authentication Screen providing Login, Registration, Password Reset, and Free Trial
+/// Real Authentication Screen providing Google Auth, Email Login, Registration, and Free Trial
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
 
@@ -57,7 +58,7 @@ class _AuthScreenState extends State<AuthScreen> {
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 24.h),
+            padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 20.h),
             child: ConstrainedBox(
               constraints: BoxConstraints(maxWidth: 440.w),
               child: Container(
@@ -74,7 +75,7 @@ class _AuthScreenState extends State<AuthScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // Language Switcher Top
+                    // Language Switcher
                     Align(
                       alignment: Alignment.centerLeft,
                       child: TextButton.icon(
@@ -86,8 +87,8 @@ class _AuthScreenState extends State<AuthScreen> {
                         ),
                       ),
                     ),
-                    Center(child: AcademicEmblem(size: 54.r)),
-                    SizedBox(height: 10.h),
+                    Center(child: AcademicEmblem(size: 52.r)),
+                    SizedBox(height: 8.h),
                     Text(
                       context.tr(AppKeys.appTitle),
                       style: TextStyle(fontSize: 22.sp, fontWeight: FontWeight.w900, color: AppColors.textPrimary),
@@ -100,9 +101,11 @@ class _AuthScreenState extends State<AuthScreen> {
                       textAlign: TextAlign.center,
                     ),
                     SizedBox(height: 16.h),
+                    // Google Sign-In prominent banner
+                    const GoogleSignInBanner(),
+                    SizedBox(height: 12.h),
                     AuthToggleBar(isRegister: _isRegister, onToggle: (val) => setState(() => _isRegister = val)),
-                    SizedBox(height: 16.h),
-                    // Server Error Notification Banner
+                    SizedBox(height: 12.h),
                     if (auth.errorMessage != null) ...[
                       Container(
                         padding: EdgeInsets.all(10.r),
@@ -117,9 +120,8 @@ class _AuthScreenState extends State<AuthScreen> {
                           textAlign: TextAlign.center,
                         ),
                       ),
-                      SizedBox(height: 12.h),
+                      SizedBox(height: 10.h),
                     ],
-                    // Form fields
                     if (_isRegister) ...[
                       CustomTextField(
                         label: context.tr(AppKeys.displayName),
@@ -156,15 +158,14 @@ class _AuthScreenState extends State<AuthScreen> {
                         ),
                       ),
                     ] else
-                      SizedBox(height: 14.h),
+                      SizedBox(height: 12.h),
                     CustomButton(
                       label: _isRegister ? context.tr(AppKeys.register) : context.tr(AppKeys.login),
                       backgroundColor: AppColors.monthlyBlue,
                       height: 44.h,
                       onPressed: auth.isLoading ? null : _handleSubmit,
                     ),
-                    SizedBox(height: 10.h),
-                    // 5-minute Free Trial
+                    SizedBox(height: 8.h),
                     TextButton.icon(
                       onPressed: auth.isLoading ? null : auth.startFreeTrial,
                       icon: Icon(Icons.auto_awesome, size: 16.r, color: AppColors.cardsGreen),

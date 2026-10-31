@@ -1,0 +1,35 @@
+{
+  "project_info": {
+    "project_number": "1059409489946",
+    "project_id": "gen-lang-client-0369327125",
+    "storage_bucket": "gen-lang-client-0369327125.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1059409489946:android:d251a04020251d32b8a1a3",
+        "android_client_info": {
+          "package_name": "com.gradeTracker.iq"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1059409489946-kpduqfvb1r9b8kka3cici5q4452ajp5n.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCt83OG0NioLFOMK2qHwoJHcu40cJnB5gw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
+
