@@ -7,7 +7,7 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:1059409489946:android:d251a04020251d32b8a1a3",
+        "mobilesdk_app_id": "1:1059409489946:android:79164175e9bf32aeb8a1a3",
         "android_client_info": {
           "package_name": "com.gradeTracker.iq"
         }
@@ -20,16 +20,20 @@
       ],
       "api_key": [
         {
-          "current_key": "AIzaSyCt83OG0NioLFOMK2qHwoJHcu40cJnB5gw"
+          "current_key": "AIzaSyCtNoTzsE28yXxAxXfZiLGjvj13HTVEO1I"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1059409489946-575d5cd6l9c71m8g3mh31m0de1d6ouk5.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
   ],
   "configuration_version": "1"
 }
-

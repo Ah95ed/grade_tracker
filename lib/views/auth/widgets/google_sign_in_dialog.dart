@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../../controllers/auth_controller.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../../../core/localization/translation_keys.dart';
@@ -27,15 +26,6 @@ class _GoogleSignInDialogState extends State<GoogleSignInDialog> {
     _emailController.dispose();
     _nameController.dispose();
     super.dispose();
-  }
-
-  Future<void> _openGoogleBrowserAuth() async {
-    const googleAuthUrl =
-        'https://accounts.google.com/o/oauth2/v2/auth?client_id=1059409489946-kpduqfvb1r9b8kka3cici5q4452ajp5n.apps.googleusercontent.com&response_type=token&scope=email%20profile&redirect_uri=https://daragat.pages.dev';
-    final uri = Uri.parse(googleAuthUrl);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
   }
 
   Future<void> _handleGoogleLogin() async {
@@ -96,23 +86,12 @@ class _GoogleSignInDialogState extends State<GoogleSignInDialog> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  OutlinedButton.icon(
-                    onPressed: _openGoogleBrowserAuth,
-                    icon: Icon(Icons.open_in_browser_rounded, size: 16.r, color: const Color(0xFF1D4ED8)),
-                    label: Text('فتح صفحة Google في المتصفح', style: TextStyle(fontSize: 11.sp, fontWeight: FontWeight.bold, color: const Color(0xFF1D4ED8))),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Color(0xFFBFDBFE)),
-                      padding: EdgeInsets.symmetric(vertical: 8.h),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.r)),
-                    ),
-                  ),
-                  SizedBox(height: 12.h),
                   CustomTextField(
                     label: context.tr(AppKeys.displayName),
                     controller: _nameController,
                     prefixIcon: Icon(Icons.person_outline, size: 18.r),
                   ),
-                  SizedBox(height: 10.h),
+                  SizedBox(height: 12.h),
                   CustomTextField(
                     label: context.tr(AppKeys.enterGoogleEmail),
                     controller: _emailController,

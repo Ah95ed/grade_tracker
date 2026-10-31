@@ -3,6 +3,8 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
 
+import 'package:firebase_core/firebase_core.dart';
+import 'core/constants/api_endpoints.dart';
 import 'core/constants/app_constants.dart';
 import 'core/localization/app_localizations.dart';
 import 'core/theme/app_theme.dart';
@@ -19,6 +21,17 @@ import 'views/auth/auth_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final storageService = await StorageService.init();
+
+  try {
+    await Firebase.initializeApp(
+      options: const FirebaseOptions(
+        apiKey: ApiEndpoints.firebaseApiKey,
+        appId: '1:1059409489946:web:d251a04020251d32b8a1a3',
+        messagingSenderId: '1059409489946',
+        projectId: 'gen-lang-client-0369327125',
+      ),
+    );
+  } catch (_) {}
 
   runApp(
     MultiProvider(

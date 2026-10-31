@@ -26,27 +26,31 @@ class ReportCardsView extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final double width = constraints.maxWidth;
-        final bool isMobile = width < 600;
-        final int crossAxisCount = width >= 1100 ? 3 : (width >= 650 ? 2 : 1);
+        final bool isCompact = width < 720;
+        final int crossAxisCount = width >= 1150 ? 3 : 2;
 
         return SingleChildScrollView(
           padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Responsive Top Action Bar (Zero overflow on mobile & desktop)
-              if (isMobile)
+              // Responsive Top Action Bar (Zero overflow on mobile, tablet & desktop)
+              if (isCompact)
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Text(
                       '${context.tr(AppKeys.tabCards)} (${summaries.length})',
-                      style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                      style: TextStyle(
+                        fontSize: 14.sp,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textPrimary,
+                      ),
                     ),
                     SizedBox(height: 8.h),
                     Row(
                       children: [
-                        Expanded(child: _buildSettingsBtn(context, isMobile: true)),
+                        Expanded(child: _buildSettingsBtn(context, isCompact: true)),
                         SizedBox(width: 8.w),
                         Expanded(child: _buildPrintBtn(context)),
                       ],
@@ -54,17 +58,25 @@ class ReportCardsView extends StatelessWidget {
                   ],
                 )
               else
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 12.w,
+                  runSpacing: 8.h,
                   children: [
                     Text(
                       '${context.tr(AppKeys.tabCards)} (${summaries.length})',
-                      style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                      style: TextStyle(
+                        fontSize: 15.sp,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textPrimary,
+                      ),
                     ),
-                    Row(
+                    Wrap(
+                      spacing: 8.w,
+                      runSpacing: 8.h,
                       children: [
-                        _buildSettingsBtn(context, isMobile: false),
-                        SizedBox(width: 8.w),
+                        _buildSettingsBtn(context, isCompact: false),
                         _buildPrintBtn(context),
                       ],
                     ),
@@ -81,7 +93,7 @@ class ReportCardsView extends StatelessWidget {
                     ),
                   ),
                 )
-              else if (isMobile)
+              else if (isCompact)
                 ListView.separated(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
@@ -107,7 +119,7 @@ class ReportCardsView extends StatelessWidget {
                     crossAxisCount: crossAxisCount,
                     crossAxisSpacing: 12.w,
                     mainAxisSpacing: 12.h,
-                    childAspectRatio: 1.45,
+                    childAspectRatio: 1.5,
                   ),
                   itemCount: summaries.length,
                   itemBuilder: (context, index) {
@@ -129,18 +141,27 @@ class ReportCardsView extends StatelessWidget {
     );
   }
 
-  Widget _buildSettingsBtn(BuildContext context, {required bool isMobile}) {
-    return OutlinedButton.icon(
-      onPressed: () => showDialog(context: context, builder: (_) => const PrintSettingsDialog()),
-      style: OutlinedButton.styleFrom(
-        side: const BorderSide(color: AppColors.borderWarm),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.r)),
-        padding: EdgeInsets.symmetric(horizontal: isMobile ? 8.w : 12.w, vertical: 8.h),
-      ),
-      icon: Icon(Icons.settings_outlined, size: 16.r, color: AppColors.textSecondary),
-      label: Text(
-        context.tr(AppKeys.printSettings),
-        style: TextStyle(fontSize: isMobile ? 11.sp : 12.sp, color: AppColors.textPrimary),
+  Widget _buildSettingsBtn(BuildContext context, {required bool isCompact}) {
+    return SizedBox(
+      height: 38.h,
+      child: OutlinedButton.icon(
+        onPressed: () => showDialog(context: context, builder: (_) => const PrintSettingsDialog()),
+        style: OutlinedButton.styleFrom(
+          side: const BorderSide(color: AppColors.borderWarm),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.r)),
+          padding: EdgeInsets.symmetric(horizontal: isCompact ? 8.w : 14.w),
+        ),
+        icon: Icon(Icons.settings_outlined, size: 16.r, color: AppColors.textSecondary),
+        label: Text(
+          context.tr(AppKeys.printSettings),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: isCompact ? 11.sp : 12.sp,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textPrimary,
+          ),
+        ),
       ),
     );
   }

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../../controllers/auth_controller.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../../../core/localization/translation_keys.dart';
@@ -12,23 +11,11 @@ import 'google_sign_in_dialog.dart';
 class GoogleSignInBanner extends StatelessWidget {
   const GoogleSignInBanner({super.key});
 
-  Future<void> _handleGoogleClick(BuildContext context) async {
-    const googleAuthUrl =
-        'https://accounts.google.com/o/oauth2/v2/auth?client_id=1059409489946-kpduqfvb1r9b8kka3cici5q4452ajp5n.apps.googleusercontent.com&response_type=token&scope=email%20profile&redirect_uri=https://daragat.pages.dev';
-
-    try {
-      final uri = Uri.parse(googleAuthUrl);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      }
-    } catch (_) {}
-
-    if (context.mounted) {
-      showDialog(
-        context: context,
-        builder: (_) => const GoogleSignInDialog(),
-      );
-    }
+  void _handleGoogleClick(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (_) => const GoogleSignInDialog(),
+    );
   }
 
   @override
