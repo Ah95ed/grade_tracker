@@ -83,7 +83,7 @@ jobs:
 
       - name: Build Windows app
         run: >-
-          flutter build windows --release --dart-define-from-file=dart_defines.json
+          flutter build windows --release
           --dart-define=FIREBASE_API_KEY=${{ secrets.FIREBASE_API_KEY }}
           --dart-define=GOOGLE_WEB_CLIENT_ID=${{ secrets.GOOGLE_WEB_CLIENT_ID }}
           --dart-define=GOOGLE_DESKTOP_CLIENT_ID=${{ secrets.GOOGLE_DESKTOP_CLIENT_ID }}
