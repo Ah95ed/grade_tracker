@@ -73,6 +73,14 @@ class DesktopAuthService {
   }) async {
     final activeClientId = clientId ?? ApiEndpoints.googleOAuthDesktopClientId;
     final activeClientSecret = clientSecret ?? ApiEndpoints.googleOAuthDesktopClientSecret;
+
+    if (activeClientId.isEmpty || activeClientSecret.isEmpty) {
+      return const DesktopAuthResult(
+        success: false,
+        error: 'GOOGLE_KEYS_MISSING (يرجى تمرير مفاتيح الدخول عبر dart-define)',
+      );
+    }
+
     final verifier = _generateRandomString(64);
     final challenge = _generateCodeChallenge(verifier);
 

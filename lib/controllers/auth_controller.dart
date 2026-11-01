@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../models/app_user.dart';
 import '../models/monthly_model.dart';
@@ -19,6 +19,7 @@ class AuthController extends ChangeNotifier {
   String? _errorMessage;
   bool _isSyncing = false;
   bool _isOnline = true;
+  static bool _googleSignInInitialized = false;
 
   AuthController(this._storageService, {GradebookApiService? apiService})
       : _apiService = apiService ?? GradebookApiService() {
@@ -34,6 +35,19 @@ class AuthController extends ChangeNotifier {
   GradebookApiService get apiService => _apiService;
   StorageService get storageService => _storageService;
   void clearError() { _errorMessage = null; notifyListeners(); }
+
+  Future<void> _ensureGoogleSignInInitialized() async {
+    if (_googleSignInInitialized) return;
+    try {
+      final sId = ApiEndpoints.googleOAuthClientId.trim().isNotEmpty
+          ? ApiEndpoints.googleOAuthClientId.trim()
+          : null;
+      await GoogleSignIn.instance.initialize(serverClientId: sId);
+      _googleSignInInitialized = true;
+    } catch (e) {
+      debugPrint('GoogleSignIn initialize warning: $e');
+    }
+  }
 
   Future<bool> loginWithEmail(String email, String password) async {
     final cleanEmail = email.trim().toLowerCase();
@@ -139,33 +153,66 @@ class AuthController extends ChangeNotifier {
       String? uid;
 
       if (Platform.isAndroid || Platform.isIOS) {
-        await GoogleSignIn.instance.initialize(
-          serverClientId: ApiEndpoints.googleOAuthClientId,
-          clientId: Platform.isAndroid ? ApiEndpoints.googleOAuthAndroidClientId : null,
-        );
-        final account = await GoogleSignIn.instance.authenticate();
-        gEmail = account.email;
-        gName = account.displayName ?? gEmail.split('@')[0];
-        idToken = account.authentication.idToken;
-        uid = 'g_${account.id}';
+        bool nativeSuccess = false;
+        try {
+          await _ensureGoogleSignInInitialized();
+          final account = await GoogleSignIn.instance.authenticate();
+          gEmail = account.email;
+          gName = account.displayName ?? gEmail.split('@')[0];
+          idToken = account.authentication.idToken;
+          uid = 'g_${account.id}';
+          nativeSuccess = true;
+        } on GoogleSignInException catch (e) {
+          debugPrint('GoogleSignIn native exception: ${e.code} - ${e.description}');
+          if (e.code == GoogleSignInExceptionCode.canceled) {
+            _errorMessage = 'تم إلغاء عملية تسجيل الدخول.';
+            _setLoading(false);
+            return false;
+          }
+          // Native sign-in failed (e.g. SHA-1 not yet added in Firebase). Fall back to browser OAuth!
+          debugPrint('Falling back to browser OAuth flow...');
+        } catch (e) {
+          debugPrint('GoogleSignIn native error: $e. Falling back to browser OAuth...');
+        }
+
+        if (!nativeSuccess) {
+          final res = await DesktopAuthService.authenticateWithGoogle();
+          if (!res.success) {
+            final isCancel = res.error == 'USER_CANCELLED' || res.error == 'TIMEOUT';
+            _errorMessage = isCancel ? 'تم إلغاء عملية تسجيل الدخول.' : 'تعذر تسجيل الدخول بـ Google (${res.error}).';
+            _setLoading(false);
+            return false;
+          }
+          gEmail = res.email;
+          gName = (res.displayName?.isNotEmpty == true) ? res.displayName : gEmail?.split('@')[0];
+          idToken = res.idToken;
+          accessToken = res.accessToken;
+          uid = res.uid;
+        }
       } else {
-        final result = await DesktopAuthService.authenticateWithGoogle();
-        if (!result.success) {
-          final isCancel = result.error == 'USER_CANCELLED' || result.error == 'TIMEOUT';
-          _errorMessage = isCancel ? 'تم إلغاء عملية تسجيل الدخول.' : 'تعذر تسجيل الدخول بـ Google (${result.error}).';
+        final res = await DesktopAuthService.authenticateWithGoogle();
+        if (!res.success) {
+          final isCancel = res.error == 'USER_CANCELLED' || res.error == 'TIMEOUT';
+          _errorMessage = isCancel ? 'تم إلغاء عملية تسجيل الدخول.' : 'تعذر تسجيل الدخول بـ Google (${res.error}).';
           _setLoading(false);
           return false;
         }
-        gEmail = result.email!;
-        gName = (result.displayName != null && result.displayName!.isNotEmpty) ? result.displayName! : gEmail.split('@')[0];
-        idToken = result.idToken;
-        accessToken = result.accessToken;
-        uid = result.uid;
+        gEmail = res.email;
+        gName = (res.displayName?.isNotEmpty == true) ? res.displayName : gEmail?.split('@')[0];
+        idToken = res.idToken;
+        accessToken = res.accessToken;
+        uid = res.uid;
+      }
+
+      if (gEmail == null || gEmail.isEmpty) {
+        _errorMessage = 'تعذر الحصول على معلومات الحساب.';
+        _setLoading(false);
+        return false;
       }
 
       String? fbToken = idToken;
       String cleanUid = uid ?? 'g_${gEmail.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}';
-      if (idToken != null) {
+      if (idToken != null && idToken.isNotEmpty) {
         final idpRes = await _apiService.signInWithGoogleIdp(googleIdToken: idToken, googleAccessToken: accessToken);
         if (idpRes['success'] == true) {
           final idpData = idpRes['data'] as Map<String, dynamic>;
@@ -174,12 +221,12 @@ class AuthController extends ChangeNotifier {
         }
       }
       final now = DateTime.now().toIso8601String();
-      try { await _apiService.registerUserWithCloudflare(uid: cleanUid, email: gEmail, displayName: gName, authProvider: 'google', token: fbToken); } catch (_) {}
+      try { await _apiService.registerUserWithCloudflare(uid: cleanUid, email: gEmail, displayName: gName ?? '', authProvider: 'google', token: fbToken); } catch (_) {}
       Map<String, dynamic>? serverInfo;
       try { serverInfo = await _apiService.fetchUserData(uid: cleanUid, email: gEmail, token: fbToken); } catch (_) {}
       final status = serverInfo?['user']?['subscriptionStatus'] as String? ?? 'active';
       final user = AppUser(
-        uid: cleanUid, email: gEmail, displayName: serverInfo?['user']?['displayName'] as String? ?? gName,
+        uid: cleanUid, email: gEmail, displayName: serverInfo?['user']?['displayName'] as String? ?? gName ?? '',
         subscriptionType: serverInfo?['user']?['subscriptionType'] as String? ?? 'monthly', subscriptionStatus: status,
         createdAt: serverInfo?['user']?['createdAt'] as String? ?? now, expiresAt: serverInfo?['user']?['expiresAt'] as String?,
         lastActiveAt: now, authProvider: 'google', token: fbToken, isAdmin: gEmail == 'asmaomar5566@gmail.com' || gEmail == 'm11287137@gmail.com',
@@ -187,11 +234,12 @@ class AuthController extends ChangeNotifier {
       _currentUser = user;
       await _storageService.saveCurrentUser(user);
       final profile = _storageService.loadProfile(userUid: user.uid);
-      await _storageService.saveProfile(profile.copyWith(teacherName: gName), userUid: user.uid);
+      await _storageService.saveProfile(profile.copyWith(teacherName: gName ?? ''), userUid: user.uid);
       _setLoading(false);
       return true;
-    } catch (_) {
-      _errorMessage = 'تعذر إتمام الدخول بحساب Google.';
+    } catch (e, st) {
+      debugPrint('loginWithGoogle top-level error: $e\n$st');
+      _errorMessage = 'تعذر إتمام الدخول بحساب Google ($e).';
       _setLoading(false);
       return false;
     }

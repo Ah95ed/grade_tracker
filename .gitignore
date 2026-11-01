@@ -49,3 +49,7 @@ app.*.map.json
 
 # Environment defines & secrets
 dart_defines.json
+
+# Kotlin compiler session files
+.kotlin/
+**/android/.kotlin/

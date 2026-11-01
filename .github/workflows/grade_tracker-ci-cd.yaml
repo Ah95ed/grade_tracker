@@ -100,4 +100,43 @@ jobs:
           name: release-windows
           path: masar-windows.zip
 
-  
+  create_release:
+    name: Create GitHub Release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [build_android, build_windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download Android APKs
+        uses: actions/download-artifact@v4
+        with:
+          name: release-apk
+          path: release-assets
+
+      - name: Download Windows ZIP
+        uses: actions/download-artifact@v4
+        with:
+          name: release-windows
+          path: release-assets
+
+      # - name: Download macOS DMG
+      #   uses: actions/download-artifact@v4
+      #   with:
+      #     name: release-macos
+      #     path: release-assets
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release-assets/app-*-release.apk
+            release-assets/masar-windows.zip
+            # release-assets/masar-macos.dmg
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,32 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "grade_tracker (with defines)",
+      "request": "launch",
+      "type": "dart",
+      "args": [
+        "--dart-define-from-file=dart_defines.json"
+      ]
+    },
+    {
+      "name": "grade_tracker (Android)",
+      "request": "launch",
+      "type": "dart",
+      "deviceId": "android",
+      "args": [
+        "--dart-define-from-file=dart_defines.json"
+      ]
+    },
+    {
+      "name": "grade_tracker (Windows)",
+      "request": "launch",
+      "type": "dart",
+      "deviceId": "windows",
+      "args": [
+        "--dart-define-from-file=dart_defines.json"
+      ]
+    }
+  ]
+}
+
