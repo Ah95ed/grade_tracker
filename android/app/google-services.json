@@ -22,14 +22,6 @@
           }
         },
         {
-          "client_id": "1059409489946-85c6shj0utvkr07ejqpf0d5ak7vooats.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.gradeTracker.iq",
-            "certificate_hash": "8621fa324d5cc41efa879ecf8434bf9bf6e82247"
-          }
-        },
-        {
           "client_id": "1059409489946-kpduqfvb1r9b8kka3cici5q4452ajp5n.apps.googleusercontent.com",
           "client_type": 3
         }
