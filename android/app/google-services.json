@@ -29,6 +29,13 @@
             {
               "client_id": "1059409489946-575d5cd6l9c71m8g3mh31m0de1d6ouk5.apps.googleusercontent.com",
               "client_type": 3
+            },
+            {
+              "client_id": "1059409489946-eurij1fecddvm5p66d5e7h4jn933ij4s.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.gradeTracker"
+              }
             }
           ]
         }
