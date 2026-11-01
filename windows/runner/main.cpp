@@ -27,7 +27,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);
   Win32Window::Size size(1280, 720);
-  if (!window.Create(L"راصد الدرجات", origin, size)) {
+  // Unicode escape sequence for "راصد الدرجات" ensures 100% correct UTF-16
+  // encoding on Windows regardless of compiler source code page or BOM settings.
+  if (!window.Create(L"\u0631\u0627\u0635\u062F \u0627\u0644\u062F\u0631\u062C\u0627\u062A", origin, size)) {
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);
