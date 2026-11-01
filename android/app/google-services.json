@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "1059409489946-2gbltb441qu1ji41j5huaid4t5o1sdnh.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.gradeTracker.iq",
+            "certificate_hash": "eb1038e49c6cf49cce1f3b0044ca51907ee5aeb8"
+          }
+        },
+        {
           "client_id": "1059409489946-85c6shj0utvkr07ejqpf0d5ak7vooats.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
