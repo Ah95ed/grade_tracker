@@ -104,7 +104,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: release-windows
-          path: windows/Output/grade_tracker.exe
+          path: windows/Output/masar-windows-setup.exe
 
   create_release:
     name: Create GitHub Release
@@ -135,7 +135,7 @@ jobs:
         with:
           files: |
             release-assets/app-*-release.apk
-            release-assets/grade_tracker.exe
+            release-assets/masar-windows-setup.exe
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
