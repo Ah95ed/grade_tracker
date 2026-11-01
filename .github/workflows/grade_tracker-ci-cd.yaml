@@ -76,14 +76,14 @@ jobs:
           flutter-version: "3.47.9"
 
       - name: Enable Windows desktop
-        run: flutter config --enable-windows-desktop
+        run: flutter build windows --release --dart-define-from-file=dart_defines.json
 
       - name: Install dependencies
         run: flutter pub get
 
       - name: Build Windows app
         run: >-
-          flutter build windows --release
+          flutter build windows --release --dart-define-from-file=dart_defines.json
           --dart-define=FIREBASE_API_KEY=${{ secrets.FIREBASE_API_KEY }}
           --dart-define=GOOGLE_WEB_CLIENT_ID=${{ secrets.GOOGLE_WEB_CLIENT_ID }}
           --dart-define=GOOGLE_DESKTOP_CLIENT_ID=${{ secrets.GOOGLE_DESKTOP_CLIENT_ID }}
@@ -104,7 +104,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: release-windows
-          path: windows/Output/masar-windows-setup.exe
+          path: windows/Output/grade_tracker.exe
 
   create_release:
     name: Create GitHub Release
@@ -135,7 +135,7 @@ jobs:
         with:
           files: |
             release-assets/app-*-release.apk
-            release-assets/masar-windows-setup.exe
+            release-assets/grade_tracker.exe
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
