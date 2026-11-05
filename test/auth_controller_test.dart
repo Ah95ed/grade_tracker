@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:grade_tracker/services/storage_service.dart';
 import 'package:grade_tracker/models/teacher_profile.dart';
+import 'package:grade_tracker/models/app_user.dart';
 
 void main() {
   late StorageService storage;
@@ -37,5 +38,37 @@ void main() {
     final cleanedStorage = await StorageService.init();
     expect(cleanedStorage.loadModels(), isEmpty);
     expect(cleanedStorage.loadProfile().teacherName, '');
+  });
+
+  test('AppUser correctly reports isTokenExpired and serializes refreshToken', () {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final userValid = AppUser(
+      uid: 'u1',
+      email: 'test@example.com',
+      createdAt: DateTime.now().toIso8601String(),
+      lastActiveAt: DateTime.now().toIso8601String(),
+      token: 'jwt_token',
+      refreshToken: 'refresh_123',
+      tokenExpiresAt: now + 3600000,
+    );
+    expect(userValid.isTokenExpired, isFalse);
+    expect(userValid.refreshToken, 'refresh_123');
+
+    final json = userValid.toJson();
+    final restored = AppUser.fromJson(json);
+    expect(restored.refreshToken, 'refresh_123');
+    expect(restored.tokenExpiresAt, now + 3600000);
+    expect(restored.isTokenExpired, isFalse);
+
+    final userExpired = userValid.copyWith(tokenExpiresAt: now - 1000);
+    expect(userExpired.isTokenExpired, isTrue);
+
+    const userNoToken = AppUser(
+      uid: 'u2',
+      email: 'guest@example.com',
+      createdAt: '',
+      lastActiveAt: '',
+    );
+    expect(userNoToken.isTokenExpired, isTrue);
   });
 }

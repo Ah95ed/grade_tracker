@@ -13,6 +13,8 @@ class AppUser {
   final String authProvider; // 'email', 'google', 'trial'
   final bool isAdmin;
   final String? token;
+  final String? refreshToken;
+  final int? tokenExpiresAt;
 
   const AppUser({
     required this.uid,
@@ -28,6 +30,8 @@ class AppUser {
     this.authProvider = 'email',
     this.isAdmin = false,
     this.token,
+    this.refreshToken,
+    this.tokenExpiresAt,
   });
 
   factory AppUser.fromJson(Map<String, dynamic> json) {
@@ -45,6 +49,8 @@ class AppUser {
       authProvider: json['authProvider'] as String? ?? 'email',
       isAdmin: json['isAdmin'] == true || json['isAdmin'] == 1,
       token: json['token'] as String?,
+      refreshToken: json['refreshToken'] as String?,
+      tokenExpiresAt: json['tokenExpiresAt'] as int?,
     );
   }
 
@@ -53,6 +59,14 @@ class AppUser {
     if (expiresAt != null) {
       final exp = DateTime.tryParse(expiresAt!);
       if (exp != null && exp.isBefore(DateTime.now())) return true;
+    }
+    return false;
+  }
+
+  bool get isTokenExpired {
+    if (token == null || token!.isEmpty) return true;
+    if (tokenExpiresAt != null) {
+      return DateTime.now().millisecondsSinceEpoch >= (tokenExpiresAt! - 60000);
     }
     return false;
   }
@@ -71,6 +85,8 @@ class AppUser {
         'authProvider': authProvider,
         'isAdmin': isAdmin,
         'token': token,
+        'refreshToken': refreshToken,
+        'tokenExpiresAt': tokenExpiresAt,
       };
 
   AppUser copyWith({
@@ -87,6 +103,8 @@ class AppUser {
     String? authProvider,
     bool? isAdmin,
     String? token,
+    String? refreshToken,
+    int? tokenExpiresAt,
   }) {
     return AppUser(
       uid: uid ?? this.uid,
@@ -102,6 +120,8 @@ class AppUser {
       authProvider: authProvider ?? this.authProvider,
       isAdmin: isAdmin ?? this.isAdmin,
       token: token ?? this.token,
+      refreshToken: refreshToken ?? this.refreshToken,
+      tokenExpiresAt: tokenExpiresAt ?? this.tokenExpiresAt,
     );
   }
 }

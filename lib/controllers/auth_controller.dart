@@ -10,6 +10,21 @@ import '../services/gradebook_api_service.dart';
 import '../services/desktop_auth_service.dart';
 import '../core/constants/api_endpoints.dart';
 
+/// Result object for cloud sync operations
+class SyncResult {
+  final bool success;
+  final String message;
+  final bool isOffline;
+  final bool isAuthError;
+
+  const SyncResult({
+    required this.success,
+    required this.message,
+    this.isOffline = false,
+    this.isAuthError = false,
+  });
+}
+
 /// MVC Controller for Authentication, Cloudflare D1 Backend, and Google Auth
 class AuthController extends ChangeNotifier {
   final StorageService _storageService;
@@ -62,6 +77,9 @@ class AuthController extends ChangeNotifier {
       if (result['success'] == true) {
         final data = result['data'] as Map<String, dynamic>;
         final idToken = data['idToken'] as String?;
+        final refreshToken = data['refreshToken'] as String?;
+        final expSec = int.tryParse(data['expiresIn']?.toString() ?? '3600') ?? 3600;
+        final tokenExpiresAt = DateTime.now().millisecondsSinceEpoch + (expSec * 1000);
         final localId = data['localId'] as String? ?? 'usr_${DateTime.now().millisecondsSinceEpoch}';
         final dispName = (data['displayName'] as String?)?.isNotEmpty == true ? data['displayName'] as String : cleanEmail.split('@')[0];
         Map<String, dynamic>? serverInfo;
@@ -77,7 +95,8 @@ class AuthController extends ChangeNotifier {
           uid: localId, email: cleanEmail, displayName: serverInfo?['user']?['displayName'] as String? ?? dispName,
           subscriptionType: serverInfo?['user']?['subscriptionType'] as String? ?? 'monthly',
           subscriptionStatus: status, createdAt: serverInfo?['user']?['createdAt'] as String? ?? now,
-          expiresAt: serverInfo?['user']?['expiresAt'] as String?, lastActiveAt: now, token: idToken,
+          expiresAt: serverInfo?['user']?['expiresAt'] as String?, lastActiveAt: now,
+          token: idToken, refreshToken: refreshToken, tokenExpiresAt: tokenExpiresAt,
           authProvider: 'email', isAdmin: cleanEmail == 'asmaomar5566@gmail.com' || cleanEmail == 'm11287137@gmail.com',
         );
         _currentUser = user;
@@ -117,12 +136,16 @@ class AuthController extends ChangeNotifier {
       if (result['success'] == true) {
         final data = result['data'] as Map<String, dynamic>;
         final idToken = data['idToken'] as String?;
+        final refreshToken = data['refreshToken'] as String?;
+        final expSec = int.tryParse(data['expiresIn']?.toString() ?? '3600') ?? 3600;
+        final tokenExpiresAt = DateTime.now().millisecondsSinceEpoch + (expSec * 1000);
         final localId = data['localId'] as String? ?? 'usr_${DateTime.now().millisecondsSinceEpoch}';
         try { await _apiService.registerUserWithCloudflare(uid: localId, email: cleanEmail, displayName: name, authProvider: 'email', token: idToken); } catch (_) {}
         final now = DateTime.now().toIso8601String();
         final user = AppUser(
           uid: localId, email: cleanEmail, displayName: name, subscriptionType: 'monthly',
-          subscriptionStatus: 'active', createdAt: now, lastActiveAt: now, token: idToken,
+          subscriptionStatus: 'active', createdAt: now, lastActiveAt: now,
+          token: idToken, refreshToken: refreshToken, tokenExpiresAt: tokenExpiresAt,
           authProvider: 'email', isAdmin: cleanEmail == 'asmaomar5566@gmail.com',
         );
         _currentUser = user;
@@ -235,13 +258,18 @@ class AuthController extends ChangeNotifier {
       }
 
       String? fbToken = idToken;
+      String? refreshToken;
+      int? tokenExpiresAt;
       String cleanUid = uid ?? 'g_${gEmail.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}';
       if (idToken != null && idToken.isNotEmpty) {
         final idpRes = await _apiService.signInWithGoogleIdp(googleIdToken: idToken, googleAccessToken: accessToken);
         if (idpRes['success'] == true) {
           final idpData = idpRes['data'] as Map<String, dynamic>;
           fbToken = idpData['idToken'] as String? ?? fbToken;
+          refreshToken = idpData['refreshToken'] as String?;
           cleanUid = idpData['localId'] as String? ?? cleanUid;
+          final expSec = int.tryParse(idpData['expiresIn']?.toString() ?? '3600') ?? 3600;
+          tokenExpiresAt = DateTime.now().millisecondsSinceEpoch + (expSec * 1000);
         }
       }
       final now = DateTime.now().toIso8601String();
@@ -253,7 +281,9 @@ class AuthController extends ChangeNotifier {
         uid: cleanUid, email: gEmail, displayName: serverInfo?['user']?['displayName'] as String? ?? gName ?? '',
         subscriptionType: serverInfo?['user']?['subscriptionType'] as String? ?? 'monthly', subscriptionStatus: status,
         createdAt: serverInfo?['user']?['createdAt'] as String? ?? now, expiresAt: serverInfo?['user']?['expiresAt'] as String?,
-        lastActiveAt: now, authProvider: 'google', token: fbToken, isAdmin: gEmail == 'asmaomar5566@gmail.com' || gEmail == 'm11287137@gmail.com',
+        lastActiveAt: now, authProvider: 'google',
+        token: fbToken, refreshToken: refreshToken, tokenExpiresAt: tokenExpiresAt,
+        isAdmin: gEmail == 'asmaomar5566@gmail.com' || gEmail == 'm11287137@gmail.com',
       );
       _currentUser = user;
       await _storageService.saveCurrentUser(user);
@@ -283,19 +313,188 @@ class AuthController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<bool> syncCloudData({required List<MonthlyModel> models, required List<TermModel> terms, required TeacherProfile profile}) async {
-    if (_currentUser == null) return false;
-    _isSyncing = true;
-    notifyListeners();
-    final success = await _apiService.syncDataToServer(models: models, terms: terms, profile: profile, token: _currentUser!.token);
-    _isSyncing = false;
-    _isOnline = success;
-    notifyListeners();
-    return success;
+  /// Ensures the current user has a fresh, unexpired ID token, automatically refreshing if necessary
+  Future<String?> ensureValidToken() async {
+    if (_currentUser == null) return null;
+    if (!_currentUser!.isTokenExpired && _currentUser!.token != null && _currentUser!.token!.isNotEmpty) {
+      return _currentUser!.token;
+    }
+    if (_currentUser!.refreshToken != null && _currentUser!.refreshToken!.isNotEmpty) {
+      try {
+        final refreshRes = await _apiService.refreshIdToken(_currentUser!.refreshToken!);
+        if (refreshRes['success'] == true) {
+          final data = refreshRes['data'] as Map<String, dynamic>;
+          final newToken = data['id_token'] as String?;
+          final newRefresh = data['refresh_token'] as String? ?? _currentUser!.refreshToken;
+          final expSec = int.tryParse(data['expires_in']?.toString() ?? '3600') ?? 3600;
+          if (newToken != null && newToken.isNotEmpty) {
+            final updatedUser = _currentUser!.copyWith(
+              token: newToken,
+              refreshToken: newRefresh,
+              tokenExpiresAt: DateTime.now().millisecondsSinceEpoch + (expSec * 1000),
+            );
+            _currentUser = updatedUser;
+            await _storageService.saveCurrentUser(updatedUser);
+            notifyListeners();
+            return newToken;
+          }
+        }
+      } catch (e) {
+        debugPrint('Token refresh exception: $e');
+      }
+    }
+    return _currentUser!.token;
   }
 
-  Future<Map<String, dynamic>?> fetchCloudData() async =>
-      _currentUser == null ? null : await _apiService.fetchCloudData(userUid: _currentUser!.uid, token: _currentUser!.token);
+  /// Synchronizes all models, terms, and teacher profile to Cloudflare D1 with automatic token refresh
+  Future<SyncResult> syncCloudData({
+    required List<MonthlyModel> models,
+    required List<TermModel> terms,
+    required TeacherProfile profile,
+  }) async {
+    if (_currentUser == null) {
+      return const SyncResult(
+        success: false,
+        message: 'يرجى تسجيل الدخول بحسابك أولاً لتفعيل المزامنة السحابية.',
+      );
+    }
+    _isSyncing = true;
+    notifyListeners();
+
+    try {
+      String? token = await ensureValidToken();
+      var res = await _apiService.syncDataToServer(
+        models: models,
+        terms: terms,
+        profile: profile,
+        userUid: _currentUser!.uid,
+        email: _currentUser!.email,
+        token: token,
+        isAdmin: _currentUser!.isAdmin,
+        isTrial: _currentUser!.isTrial,
+      );
+
+      // If token expired (401), force refresh and retry once
+      if (res['success'] != true && res['statusCode'] == 401 && _currentUser!.refreshToken != null) {
+        final refreshRes = await _apiService.refreshIdToken(_currentUser!.refreshToken!);
+        if (refreshRes['success'] == true) {
+          final data = refreshRes['data'] as Map<String, dynamic>;
+          final newToken = data['id_token'] as String?;
+          final newRefresh = data['refresh_token'] as String? ?? _currentUser!.refreshToken;
+          final expSec = int.tryParse(data['expires_in']?.toString() ?? '3600') ?? 3600;
+          if (newToken != null) {
+            final updatedUser = _currentUser!.copyWith(
+              token: newToken,
+              refreshToken: newRefresh,
+              tokenExpiresAt: DateTime.now().millisecondsSinceEpoch + (expSec * 1000),
+            );
+            _currentUser = updatedUser;
+            await _storageService.saveCurrentUser(updatedUser);
+
+            res = await _apiService.syncDataToServer(
+              models: models,
+              terms: terms,
+              profile: profile,
+              userUid: _currentUser!.uid,
+              email: _currentUser!.email,
+              token: newToken,
+              isAdmin: _currentUser!.isAdmin,
+              isTrial: _currentUser!.isTrial,
+            );
+          }
+        }
+      }
+
+      final success = res['success'] == true;
+      _isOnline = success;
+      _isSyncing = false;
+      notifyListeners();
+
+      if (success) {
+        return const SyncResult(
+          success: true,
+          message: 'تمت مزامنة جميع البيانات بنجاح مع السحابة (Cloudflare D1).',
+        );
+      } else {
+        final statusCode = res['statusCode'] as int? ?? 0;
+        final err = res['error']?.toString();
+        if (statusCode == 401) {
+          return const SyncResult(
+            success: false,
+            isAuthError: true,
+            message: 'انتهت صلاحية جلسة الدخول. يرجى إعادة تسجيل الدخول لمتابعة المزامنة.',
+          );
+        }
+        return SyncResult(
+          success: false,
+          isOffline: statusCode == 0 || err == 'NETWORK_ERROR',
+          message: (err != null && err.isNotEmpty && err != 'NETWORK_ERROR')
+              ? err
+              : 'أنت غير متصل بالإنترنت حالياً. بياناتك محفوظة بأمان على جهازك.',
+        );
+      }
+    } catch (e) {
+      _isSyncing = false;
+      notifyListeners();
+      return const SyncResult(
+        success: false,
+        isOffline: true,
+        message: 'تعذر الاتصال بالسحابة حالياً، بياناتك محفوظة 100% محلياً على جهازك.',
+      );
+    }
+  }
+
+  /// Fetches saved models, terms, and teacher profile from Cloudflare D1
+  Future<Map<String, dynamic>?> fetchCloudData() async {
+    if (_currentUser == null) return null;
+    final token = await ensureValidToken();
+    return await _apiService.fetchCloudData(
+      userUid: _currentUser!.uid,
+      email: _currentUser!.email,
+      token: token,
+      isAdmin: _currentUser!.isAdmin,
+      isTrial: _currentUser!.isTrial,
+    );
+  }
+
+  /// Restores cloud backup into local controllers if local is empty and cloud has data
+  Future<bool> restoreCloudDataIfEmpty({
+    required Function(List<MonthlyModel>) onModelsRestored,
+    required Function(List<TermModel>) onTermsRestored,
+    required Function(TeacherProfile) onProfileRestored,
+  }) async {
+    if (_currentUser == null) return false;
+    try {
+      final cloudData = await fetchCloudData();
+      if (cloudData == null) return false;
+
+      bool restoredAny = false;
+      if (cloudData['models'] is List && (cloudData['models'] as List).isNotEmpty) {
+        final modelsList = (cloudData['models'] as List)
+            .map((m) => MonthlyModel.fromJson(m as Map<String, dynamic>))
+            .toList();
+        await onModelsRestored(modelsList);
+        restoredAny = true;
+      }
+      if (cloudData['terms'] is List && (cloudData['terms'] as List).isNotEmpty) {
+        final termsList = (cloudData['terms'] as List)
+            .map((t) => TermModel.fromJson(t as Map<String, dynamic>))
+            .toList();
+        await onTermsRestored(termsList);
+        restoredAny = true;
+      }
+      if (cloudData['profile'] is Map && (cloudData['profile'] as Map).isNotEmpty) {
+        final profile = TeacherProfile.fromJson(cloudData['profile'] as Map<String, dynamic>);
+        if (profile.teacherName.isNotEmpty) {
+          await onProfileRestored(profile);
+          restoredAny = true;
+        }
+      }
+      return restoredAny;
+    } catch (_) {
+      return false;
+    }
+  }
 
   Future<void> deleteAccount() async {
     await _storageService.deleteUserData(userUid: _currentUser?.uid);

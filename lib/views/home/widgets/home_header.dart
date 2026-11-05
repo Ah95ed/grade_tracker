@@ -5,8 +5,6 @@ import '../../../controllers/auth_controller.dart';
 import '../../../controllers/teacher_profile_controller.dart';
 import '../../../controllers/monthly_sheet_controller.dart';
 import '../../../controllers/term_controller.dart';
-import '../../../core/localization/app_localizations.dart';
-import '../../../core/localization/translation_keys.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../common/academic_emblem.dart';
 import '../../common/sync_badge.dart';
@@ -117,16 +115,42 @@ class HomeHeader extends StatelessWidget {
             isOnline: auth.isOnline,
             isSyncing: auth.isSyncing,
             onTap: () async {
-              final models = context.read<MonthlySheetController>().models;
-              final terms = context.read<TermController>().terms;
-              final profile = context.read<TeacherProfileController>().profile;
-              final success = await auth.syncCloudData(models: models, terms: terms, profile: profile);
+              final sheetCtrl = context.read<MonthlySheetController>();
+              final termCtrl = context.read<TermController>();
+              final profCtrl = context.read<TeacherProfileController>();
+
+              // If user has no local models but is logged in, try restoring from cloud first
+              if (sheetCtrl.models.isEmpty && auth.currentUser != null && !auth.currentUser!.isTrial) {
+                final restored = await auth.restoreCloudDataIfEmpty(
+                  onModelsRestored: (m) => sheetCtrl.setModels(m),
+                  onTermsRestored: (t) => termCtrl.setTerms(t),
+                  onProfileRestored: (p) => profCtrl.updateProfile(p),
+                );
+                if (restored && context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      duration: Duration(seconds: 3),
+                      backgroundColor: AppColors.cardsGreen,
+                      content: Text('تمت استعادة درجاتك وجداولك بنجاح من السحابة.'),
+                    ),
+                  );
+                  return;
+                }
+              }
+
+              final syncResult = await auth.syncCloudData(
+                models: sheetCtrl.models,
+                terms: termCtrl.terms,
+                profile: profCtrl.profile,
+              );
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    duration: const Duration(seconds: 2),
+                    duration: const Duration(seconds: 3),
+                    backgroundColor: syncResult.success ? AppColors.cardsGreen : AppColors.termRust,
                     content: Text(
-                      success ? context.tr(AppKeys.syncSuccess) : context.tr(AppKeys.syncError),
+                      syncResult.message,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                   ),
                 );

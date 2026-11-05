@@ -41,18 +41,20 @@ class _HomeScreenState extends State<HomeScreen> {
     final profileCtrl = context.read<TeacherProfileController>();
 
     if (auth.isAuthenticated && !auth.currentUser!.isTrial) {
-      final cloudData = await auth.fetchCloudData();
-      if (cloudData != null && mounted) {
-        if (cloudData['models'] != null && (cloudData['models'] as List).isNotEmpty) {
-          final raw = cloudData['models'] as List<dynamic>;
-          sheetCtrl.setModels(raw.map((e) => MonthlyModel.fromJson(e as Map<String, dynamic>)).toList());
-        }
-        if (cloudData['terms'] != null && (cloudData['terms'] as List).isNotEmpty) {
-          final raw = cloudData['terms'] as List<dynamic>;
-          termCtrl.setTerms(raw.map((e) => TermModel.fromJson(e as Map<String, dynamic>)).toList());
-        }
-        if (cloudData['profile'] != null) {
-          profileCtrl.updateProfile(TeacherProfile.fromJson(cloudData['profile'] as Map<String, dynamic>));
+      if (sheetCtrl.models.isEmpty) {
+        final cloudData = await auth.fetchCloudData();
+        if (cloudData != null && mounted) {
+          if (cloudData['models'] != null && (cloudData['models'] as List).isNotEmpty) {
+            final raw = cloudData['models'] as List<dynamic>;
+            sheetCtrl.setModels(raw.map((e) => MonthlyModel.fromJson(e as Map<String, dynamic>)).toList());
+          }
+          if (cloudData['terms'] != null && (cloudData['terms'] as List).isNotEmpty) {
+            final raw = cloudData['terms'] as List<dynamic>;
+            termCtrl.setTerms(raw.map((e) => TermModel.fromJson(e as Map<String, dynamic>)).toList());
+          }
+          if (cloudData['profile'] != null) {
+            profileCtrl.updateProfile(TeacherProfile.fromJson(cloudData['profile'] as Map<String, dynamic>));
+          }
         }
       }
       if (mounted && profileCtrl.profile.teacherName.isEmpty && (auth.currentUser?.displayName.isNotEmpty ?? false)) {
