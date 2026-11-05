@@ -1,0 +1,230 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    /* الورق المشبك وخلفية الكراس */
+    --page-bg: #F6F3E2;
+    --page-line: #D8D4C8;
+
+    /* ألوان الجلد الكرافتي (مطابقة للصورة المرجعية تماماً) */
+    --craft-brown: #BA916C;
+    --craft-brown-hover: #A67E56;
+    --craft-brown-dark: #8C6544;
+    --craft-border: #AA8362;
+    --craft-badge-bg: #E8D7C2;
+    --craft-badge-border: #C2A88F;
+
+    /* الألوان المميزة لكل صفحة (مع الحفاظ على التناسق مع الورق والكرافت) */
+    /* 1. صفحة الجدول: أزرق السماء الهادئ */
+    --page-monthly-accent: #5692BE;
+    --page-monthly-dark: #4A82A8;
+    --page-monthly-btn: #BA916C;
+
+    /* 2. صفحة المعدل: تراكوتا وبرونز كرافتي */
+    --page-term-accent: #B86848;
+    --page-term-dark: #A05537;
+    --page-term-btn: #B56846;
+
+    /* 3. صفحة الكروت: ميرمية وزيتوني هادئ */
+    --page-cards-accent: #4E7A68;
+    --page-cards-dark: #3B6554;
+    --page-cards-btn: #4E7A68;
+
+    /* 4. لوحة الإدارة: كحلي فولاذي */
+    --page-admin-accent: #3E5771;
+    --page-admin-dark: #2F445B;
+    --page-admin-btn: #3E5771;
+
+    /* نصوص ونغمات الورق القديم */
+    --ink-dark: #2F2822;
+    --ink-muted: #6B5E51;
+  }
+
+  body {
+    font-family: 'Cairo', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: #F6F3E2;
+    /* خلفية الورق المشبك (Graph Paper Grid) مطابقة تماماً لصورة المستخدم */
+    background-image: 
+      linear-gradient(to right, rgba(195, 187, 170, 0.45) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(195, 187, 170, 0.45) 1px, transparent 1px);
+    background-size: 22px 22px;
+    background-attachment: fixed;
+    color: #2F2822;
+  }
+}
+
+/* بطاقة كرتونية ورقية بحواف كرافت دافئة مطابقة للصورة المرجعية */
+.craft-card {
+  background-color: #FAF6EC;
+  border: 1.5px solid #AA8362;
+  box-shadow: 0 2px 4px rgba(90, 65, 40, 0.08);
+}
+
+/* زر الجلد الكرافتي الأساسي مثل زر (+ جدول درجات جديد) */
+.craft-btn-primary {
+  background-color: #BA916C;
+  border: 1px solid #9E7752;
+  color: #FFFFFF;
+  box-shadow: 0 2px 5px rgba(100, 70, 45, 0.2);
+  transition: all 0.15s ease-in-out;
+}
+.craft-btn-primary:hover {
+  background-color: #A67E56;
+  border-color: #8C6544;
+}
+.craft-btn-primary:active {
+  background-color: #946E47;
+  transform: scale(0.99);
+}
+
+/* عناوين أعمدة الجدول كشفرات/أزرار كرافتية مطابقة لصورة المستخدم */
+.craft-table-header {
+  background-color: #E8D7C2;
+  border: 1px solid #C2A88F;
+  color: #2F2822;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 1px 2px rgba(80, 55, 30, 0.08);
+}
+
+/* Touch-friendly keypad keys for grade entry */
+.craft-keypad-key {
+  height: 48px;
+  background-color: #FFFFFF;
+  border: 1px solid #D5C8B2;
+  border-radius: 12px;
+  font-size: 1.25rem;
+  font-weight: 900;
+  color: #2F2822;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.1s ease;
+  user-select: none;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+@media (min-width: 640px) {
+  .craft-keypad-key {
+    height: 54px;
+    font-size: 1.5rem;
+  }
+}
+
+.craft-keypad-key:hover {
+  background-color: #F8F4EA;
+  border-color: #BA916C;
+}
+
+.craft-keypad-key:active {
+  transform: scale(0.95);
+  background-color: #EFE8D8;
+}
+
+.craft-keypad-action-key {
+  height: 48px;
+  border-radius: 12px;
+  border-width: 1px;
+  border-style: solid;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.1s ease;
+  user-select: none;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+@media (min-width: 640px) {
+  .craft-keypad-action-key {
+    height: 54px;
+  }
+}
+
+.craft-keypad-action-key:active {
+  transform: scale(0.95);
+}
+
+@media print {
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+  
+  body {
+    background: white !important;
+    background-image: none !important;
+    color: black !important;
+  }
+
+  table input {
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    color: #1E293B !important;
+  }
+
+  main {
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .print\:break-inside-avoid {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .report-cards-print-grid {
+    width: 100% !important;
+  }
+
+  .report-cards-print-grid > div {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .single-card-modal-backdrop {
+    position: static !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    inset: auto !important;
+    display: block !important;
+  }
+
+  .single-card-modal-content {
+    box-shadow: none !important;
+    border: none !important;
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+  }
+}
+
+/* Custom smooth scrollbar */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #C2A88F rgba(216, 206, 189, 0.25);
+}
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(216, 206, 189, 0.25);
+  border-radius: 9999px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #C2A88F;
+  border-radius: 9999px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #BA916C;
+}

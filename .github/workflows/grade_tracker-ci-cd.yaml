@@ -31,11 +31,11 @@ jobs:
 
       - name: Decode Keystore
         run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/key.jks
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > D:/Android_Keys/key.jks
 
       - name: Create key.properties
         run: |
-          cat <<EOF > android/key.properties
+          cat <<EOF > D:/Android_Keys/key.properties
           storePassword=${{ secrets.KEYSTORE_PASSWORD }}
           keyPassword=${{ secrets.KEY_PASSWORD }}
           keyAlias=${{ secrets.KEY_ALIAS }}

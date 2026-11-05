@@ -1,0 +1,9 @@
+name = "daragat"
+compatibility_date = "2024-01-01"
+pages_build_output_dir = "./dist"
+
+# ربط قاعدة بيانات Cloudflare D1 (SQLite)
+[[d1_databases]]
+binding = "DB"
+database_name = "daragat"
+database_id = "6383cedf-faa1-4cff-b8fc-1dec9a3c79f5"

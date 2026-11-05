@@ -56,21 +56,21 @@ class _StudentDataTableState extends State<StudentDataTable> {
         final double minTableWidth = constraints.maxWidth > 700 ? constraints.maxWidth : 680.0;
 
         return Container(
-          margin: EdgeInsets.symmetric(horizontal: 12.w),
+          margin: EdgeInsets.symmetric(horizontal: 14.w),
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12.r),
-            border: Border.all(color: AppColors.borderWarm),
+            color: AppColors.craftCardBg, // #FAF6EC
+            borderRadius: BorderRadius.circular(16.r),
+            border: Border.all(color: AppColors.craftBorder, width: 1.5), // #AA8362
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.03),
+                color: const Color(0xFF5A4128).withValues(alpha: 0.08),
                 blurRadius: 6,
                 offset: const Offset(0, 2),
               ),
             ],
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(12.r),
+            borderRadius: BorderRadius.circular(16.r),
             child: Scrollbar(
               controller: _scrollController,
               thumbVisibility: true,
@@ -80,12 +80,12 @@ class _StudentDataTableState extends State<StudentDataTable> {
                 child: ConstrainedBox(
                   constraints: BoxConstraints(minWidth: minTableWidth),
                   child: DataTable(
-                    headingRowHeight: 48,
+                    headingRowHeight: 50,
                     dataRowMinHeight: 48,
                     dataRowMaxHeight: 56,
-                    horizontalMargin: 14.w,
-                    columnSpacing: 18.w,
-                    headingRowColor: WidgetStateProperty.all(AppColors.creamBackground),
+                    horizontalMargin: 16.w,
+                    columnSpacing: 20.w,
+                    headingRowColor: WidgetStateProperty.all(AppColors.craftBadgeBg), // #E8D7C2 craft-table-header
                     columns: _buildColumns(context, model),
                     rows: students.map((s) => buildStudentDataRow(context, s, model, controller)).toList(),
                   ),
@@ -103,19 +103,19 @@ class _StudentDataTableState extends State<StudentDataTable> {
       DataColumn(
         label: Text(
           context.tr(AppKeys.studentName),
-          style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+          style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w900, color: AppColors.inkDark),
         ),
       ),
       DataColumn(
         label: Text(
           context.tr(AppKeys.section),
-          style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+          style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w900, color: AppColors.inkDark),
         ),
       ),
       DataColumn(
         label: Text(
           '${context.tr(AppKeys.writtenScore)} (${model.writtenMaxScore.toInt()})',
-          style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+          style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w900, color: AppColors.inkDark),
         ),
       ),
     ];
@@ -125,7 +125,7 @@ class _StudentDataTableState extends State<StudentDataTable> {
         DataColumn(
           label: Text(
             '${col.name} (${col.maxScore.toInt()})',
-            style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+            style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w900, color: AppColors.inkDark),
           ),
         ),
       );
@@ -135,13 +135,13 @@ class _StudentDataTableState extends State<StudentDataTable> {
       DataColumn(
         label: Text(
           '${context.tr(AppKeys.finalScore)} (${model.totalMaxScore.toInt()})',
-          style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.bold, color: AppColors.monthlyBlue),
+          style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w900, color: AppColors.monthlyBlueDark),
         ),
       ),
       DataColumn(
         label: Text(
           context.tr(AppKeys.rating),
-          style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+          style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w900, color: AppColors.inkDark),
         ),
       ),
       const DataColumn(label: SizedBox(width: 24)),

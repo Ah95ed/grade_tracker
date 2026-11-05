@@ -64,6 +64,18 @@ class TermController extends ChangeNotifier {
     await _persist();
   }
 
+  Future<void> toggleModelSelection(String modelId) async {
+    final term = currentTerm;
+    if (term == null) return;
+    final currentIds = List<String>.from(term.selectedModelIds);
+    if (currentIds.contains(modelId)) {
+      currentIds.remove(modelId);
+    } else {
+      currentIds.add(modelId);
+    }
+    await updateTerm(term.copyWith(selectedModelIds: currentIds));
+  }
+
   /// Calculates term grade summaries for all students matching the selected models
   List<StudentTermSummary> calculateSummaries(
     MonthlySheetController sheetController,

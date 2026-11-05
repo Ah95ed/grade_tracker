@@ -1,0 +1,4 @@
+# Cloudflare Pages Redirects
+# Only redirect privacy page - do NOT wildcard catch /* so that Pages Functions in /functions/api/* execute properly
+/privacy    /index.html    200
+/privacy/   /index.html    200

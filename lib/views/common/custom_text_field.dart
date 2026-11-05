@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../core/theme/app_colors.dart';
 
-/// Reusable responsive styled text field with obscure text and submit support
+/// Reusable responsive styled text field matching Daragat Web inputs
 class CustomTextField extends StatelessWidget {
   final String label;
   final String? hint;
@@ -14,6 +14,7 @@ class CustomTextField extends StatelessWidget {
   final Widget? suffixIcon;
   final bool readOnly;
   final bool obscureText;
+  final Widget? trailingLabel;
 
   const CustomTextField({
     super.key,
@@ -27,6 +28,7 @@ class CustomTextField extends StatelessWidget {
     this.suffixIcon,
     this.readOnly = false,
     this.obscureText = false,
+    this.trailingLabel,
   });
 
   @override
@@ -35,13 +37,23 @@ class CustomTextField extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12.sp,
-            fontWeight: FontWeight.bold,
-            color: AppColors.textPrimary,
-          ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Flexible(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11.5.sp,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textLabel,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            ?trailingLabel,
+          ],
         ),
         SizedBox(height: 5.h),
         TextField(
@@ -53,8 +65,8 @@ class CustomTextField extends StatelessWidget {
           obscureText: obscureText,
           style: TextStyle(
             fontSize: 13.sp,
-            color: AppColors.textPrimary,
-            fontWeight: FontWeight.w500,
+            color: AppColors.inkDark,
+            fontWeight: FontWeight.w600,
           ),
           decoration: InputDecoration(
             hintText: hint,
@@ -65,19 +77,19 @@ class CustomTextField extends StatelessWidget {
             prefixIcon: prefixIcon,
             suffixIcon: suffixIcon,
             filled: true,
-            fillColor: AppColors.creamBackground,
-            contentPadding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
+            fillColor: AppColors.inputBg, // #FAF8F5
+            contentPadding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 11.h),
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10.r),
-              borderSide: const BorderSide(color: AppColors.borderWarm),
+              borderRadius: BorderRadius.circular(12.r),
+              borderSide: const BorderSide(color: AppColors.inputBorder), // #D5CFC4
             ),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10.r),
-              borderSide: const BorderSide(color: AppColors.borderWarm),
+              borderRadius: BorderRadius.circular(12.r),
+              borderSide: const BorderSide(color: AppColors.inputBorder),
             ),
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10.r),
-              borderSide: const BorderSide(color: AppColors.monthlyBlue, width: 1.5),
+              borderRadius: BorderRadius.circular(12.r),
+              borderSide: const BorderSide(color: AppColors.slateLight, width: 1.8), // #557A95
             ),
           ),
         ),

@@ -1,0 +1,6 @@
+{
+  "name": "Teacher Gradebook - نظام درجات الطلاب للمعلمين",
+  "description": "منظومة مرنة للمعلمين لإدارة الدرجات الشهرية وتخصيص نسب التحريري والشفهي واحتساب درجات الفصول وإصدار كروت النتائج.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

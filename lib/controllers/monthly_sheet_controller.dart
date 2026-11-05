@@ -32,12 +32,36 @@ class MonthlySheetController extends ChangeNotifier {
     );
   }
 
+  String _selectedSection = 'ALL';
+  String get selectedSection => _selectedSection;
+
+  List<String> get availableSections {
+    final model = currentModel;
+    if (model == null) return [];
+    final secs = model.students
+        .map((s) => s.section.trim())
+        .where((s) => s.isNotEmpty)
+        .toSet()
+        .toList();
+    secs.sort();
+    return secs;
+  }
+
+  void setSelectedSection(String section) {
+    _selectedSection = section;
+    notifyListeners();
+  }
+
   List<StudentRow> get filteredStudents {
     final model = currentModel;
     if (model == null) return [];
-    if (_searchQuery.trim().isEmpty) return model.students;
-    final query = _searchQuery.trim().toLowerCase();
-    return model.students.where((s) => s.name.toLowerCase().contains(query)).toList();
+    return model.students.where((s) {
+      final matchesSection = _selectedSection == 'ALL' || s.section.trim() == _selectedSection;
+      if (!matchesSection) return false;
+      if (_searchQuery.trim().isEmpty) return true;
+      final query = _searchQuery.trim().toLowerCase();
+      return s.name.toLowerCase().contains(query) || s.section.toLowerCase().contains(query);
+    }).toList();
   }
 
   void setActiveModel(String id) {

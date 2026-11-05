@@ -143,6 +143,30 @@ class AuthController extends ChangeNotifier {
     }
   }
 
+  /// Sends a password reset email to the specified address
+  Future<bool> sendPasswordReset(String email) async {
+    final cleanEmail = email.trim().toLowerCase();
+    if (cleanEmail.isEmpty || !cleanEmail.contains('@')) {
+      _errorMessage = 'يرجى إدخال بريد إلكتروني صالح.';
+      notifyListeners();
+      return false;
+    }
+    _setLoading(true);
+    _errorMessage = null;
+    try {
+      final success = await _apiService.sendPasswordReset(cleanEmail);
+      if (!success) {
+        _errorMessage = 'تعذر إرسال رابط إعادة التعيين. تأكد من صحة البريد.';
+      }
+      _setLoading(false);
+      return success;
+    } catch (_) {
+      _errorMessage = 'تعذر إرسال رابط إعادة التعيين. تحقق من اتصال الإنترنت.';
+      _setLoading(false);
+      return false;
+    }
+  }
+
   Future<bool> loginWithGoogle() async {
     _setLoading(true);
     try {

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../core/theme/app_colors.dart';
 import '../../controllers/auth_controller.dart';
 import '../../controllers/monthly_sheet_controller.dart';
 import '../../controllers/term_controller.dart';
@@ -8,6 +7,7 @@ import '../../controllers/teacher_profile_controller.dart';
 import '../../models/monthly_model.dart';
 import '../../models/term_model.dart';
 import '../../models/teacher_profile.dart';
+import '../common/graph_paper_background.dart';
 import 'widgets/home_header.dart';
 import 'widgets/home_tab_bar.dart';
 import 'widgets/home_drawer_menu.dart';
@@ -15,7 +15,7 @@ import '../monthly_sheet/monthly_sheet_view.dart';
 import '../term_calculation/term_calculation_view.dart';
 import '../report_cards/report_cards_view.dart';
 
-/// Main application root view managing active tabs and top level components
+/// Main application root view managing active tabs and top level components with Graph Paper Background
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -67,7 +67,7 @@ class _HomeScreenState extends State<HomeScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (_) => const HomeDrawerMenu(),
     );
@@ -88,24 +88,28 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.warmCanvas,
-      body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1350),
-            child: Column(
-              children: [
-                HomeHeader(
-                  activeIndex: _activeTabIndex,
-                  onOpenMenu: _openDrawerMenu,
-                ),
-                HomeTabBar(
-                  activeIndex: _activeTabIndex,
-                  onTabSelected: (index) => setState(() => _activeTabIndex = index),
-                ),
-                Expanded(child: _buildBody()),
-              ],
+    return GraphPaperBackground(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1350),
+              child: Column(
+                children: [
+                  HomeHeader(
+                    activeIndex: _activeTabIndex,
+                    onOpenMenu: _openDrawerMenu,
+                  ),
+                  HomeTabBar(
+                    activeIndex: _activeTabIndex,
+                    onTabSelected: (index) {
+                      setState(() => _activeTabIndex = index);
+                    },
+                  ),
+                  Expanded(child: _buildBody()),
+                ],
+              ),
             ),
           ),
         ),

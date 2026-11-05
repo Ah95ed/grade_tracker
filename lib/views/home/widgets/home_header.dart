@@ -11,8 +11,9 @@ import '../../../core/theme/app_colors.dart';
 import '../../common/academic_emblem.dart';
 import '../../common/sync_badge.dart';
 import '../../teacher_profile/teacher_profile_dialog.dart';
+import 'subscription_details_dialog.dart';
 
-/// Top Application Header matching the original Grade Tracker visual identity
+/// Top Application Header matching Daragat Web App (Header.tsx)
 class HomeHeader extends StatelessWidget {
   final int activeIndex;
   final VoidCallback onOpenMenu;
@@ -26,11 +27,11 @@ class HomeHeader extends StatelessWidget {
   Color _getBannerColor() {
     switch (activeIndex) {
       case 0:
-        return AppColors.monthlyBlue;
+        return AppColors.monthlyBlue; // #5692BE
       case 1:
-        return AppColors.termRust;
+        return AppColors.termRust; // #B86848
       case 2:
-        return AppColors.cardsGreen;
+        return AppColors.cardsGreen; // #4E7A68
       default:
         return AppColors.slateDark;
     }
@@ -41,29 +42,30 @@ class HomeHeader extends StatelessWidget {
     final profile = context.watch<TeacherProfileController>().profile;
     final auth = context.watch<AuthController>();
     final bannerColor = _getBannerColor();
+    final user = auth.currentUser;
 
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
+      padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
       child: Row(
         children: [
-          // Teacher & School Banner
+          // 1. Teacher & School Banner
           Expanded(
             child: InkWell(
               onTap: () => showDialog(
                 context: context,
                 builder: (_) => const TeacherProfileDialog(),
               ),
-              borderRadius: BorderRadius.circular(12.r),
+              borderRadius: BorderRadius.circular(14.r),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
-                padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+                padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 9.h),
                 decoration: BoxDecoration(
                   color: bannerColor,
-                  borderRadius: BorderRadius.circular(12.r),
+                  borderRadius: BorderRadius.circular(14.r),
                   boxShadow: [
                     BoxShadow(
-                      color: bannerColor.withValues(alpha: 0.3),
-                      blurRadius: 4,
+                      color: bannerColor.withValues(alpha: 0.35),
+                      blurRadius: 6,
                       offset: const Offset(0, 2),
                     ),
                   ],
@@ -73,44 +75,44 @@ class HomeHeader extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      (auth.currentUser?.displayName.isNotEmpty == true)
-                          ? auth.currentUser!.displayName
+                      (user?.displayName.isNotEmpty == true)
+                          ? user!.displayName
                           : (profile.teacherName.isNotEmpty
                               ? profile.teacherName
                               : (profile.schoolName.isNotEmpty ? profile.schoolName : 'المدرس')),
                       style: TextStyle(
-                        fontSize: 12.sp,
-                        fontWeight: FontWeight.bold,
+                        fontSize: 12.5.sp,
+                        fontWeight: FontWeight.w900,
                         color: Colors.white,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    if (profile.subject.isNotEmpty || (auth.currentUser?.email.isNotEmpty == true)) ...[
-                      SizedBox(height: 2.h),
-                      Text(
-                        profile.subject.isNotEmpty
-                            ? profile.subject
-                            : (profile.schoolName.isNotEmpty ? profile.schoolName : auth.currentUser!.email),
-                        style: TextStyle(
-                          fontSize: 10.sp,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.white.withValues(alpha: 0.9),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                    SizedBox(height: 2.h),
+                    Text(
+                      profile.subject.isNotEmpty
+                          ? profile.subject
+                          : (profile.schoolName.isNotEmpty ? profile.schoolName : (user?.email ?? '')),
+                      style: TextStyle(
+                        fontSize: 10.sp,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white.withValues(alpha: 0.92),
                       ),
-                    ],
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ],
                 ),
               ),
             ),
           ),
           SizedBox(width: 8.w),
-          // Academic Laurel Logo
+
+          // 2. Academic Laurel Logo
           const AcademicEmblem(),
           SizedBox(width: 8.w),
-          // Cloud Sync Badge
+
+          // 3. Live Sync Status Badge
           SyncBadge(
             isOnline: auth.isOnline,
             isSyncing: auth.isSyncing,
@@ -132,20 +134,92 @@ class HomeHeader extends StatelessWidget {
             },
           ),
           SizedBox(width: 8.w),
-          // Tools & Menu Button
-          IconButton(
-            onPressed: onOpenMenu,
-            icon: Icon(
-              Icons.tune_rounded,
-              size: 20.r,
-              color: AppColors.slateDark,
+
+          // 4. Subscription Quick Badge (Desktop / Tablet)
+          if (user != null)
+            Padding(
+              padding: EdgeInsets.only(left: 8.w),
+              child: InkWell(
+                onTap: () => showDialog(
+                  context: context,
+                  builder: (_) => const SubscriptionDetailsDialog(),
+                ),
+                borderRadius: BorderRadius.circular(12.r),
+                child: Container(
+                  padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 7.h),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFAF6EC),
+                    borderRadius: BorderRadius.circular(12.r),
+                    border: Border.all(color: const Color(0xFFD8CEBD)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.02),
+                        blurRadius: 2,
+                        offset: const Offset(0, 1),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.auto_awesome, size: 14.r, color: const Color(0xFFB45309)),
+                      SizedBox(width: 4.w),
+                      Text(
+                        user.isTrial ? 'تجريبي' : 'اشتراك دائم',
+                        style: TextStyle(
+                          fontSize: 11.sp,
+                          fontWeight: FontWeight.bold,
+                          color: const Color(0xFF7A5B36),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
-            tooltip: context.tr(AppKeys.toolsAndMore),
-            style: IconButton.styleFrom(
-              backgroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10.r),
-                side: const BorderSide(color: AppColors.borderWarm),
+
+          // 5. Tools & Options Menu Trigger ("الأدوات والمزيد")
+          InkWell(
+            onTap: onOpenMenu,
+            borderRadius: BorderRadius.circular(12.r),
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12.r),
+                border: Border.all(color: const Color(0xFFD5DFE8)), // border-[#D5DFE8]
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.03),
+                    blurRadius: 3,
+                    offset: const Offset(0, 1),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.tune_rounded,
+                    size: 16.r,
+                    color: AppColors.slateLight, // text-[#557A95]
+                  ),
+                  SizedBox(width: 6.w),
+                  Text(
+                    'الأدوات والمزيد',
+                    style: TextStyle(
+                      fontSize: 11.5.sp,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.slateDark, // text-[#2E485C]
+                    ),
+                  ),
+                  SizedBox(width: 4.w),
+                  Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    size: 14.r,
+                    color: AppColors.slateDark,
+                  ),
+                ],
               ),
             ),
           ),

@@ -110,17 +110,24 @@ DataRow buildStudentDataRow(
 Widget _buildScoreCell(BuildContext context, double? score, {required VoidCallback onTap}) {
   return InkWell(
     onTap: onTap,
-    borderRadius: BorderRadius.circular(6.r),
+    borderRadius: BorderRadius.circular(8.r),
     child: Container(
-      padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 5.h),
       decoration: BoxDecoration(
-        color: AppColors.creamBackground,
-        borderRadius: BorderRadius.circular(6.r),
-        border: Border.all(color: AppColors.borderWarm),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8.r),
+        border: Border.all(color: const Color(0xFFD5C8B2)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 2,
+            offset: const Offset(0, 1),
+          ),
+        ],
       ),
       child: Text(
         score != null ? score.toString() : '-',
-        style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+        style: TextStyle(fontSize: 12.5.sp, fontWeight: FontWeight.w900, color: AppColors.inkDark),
       ),
     ),
   );

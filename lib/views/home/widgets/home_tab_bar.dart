@@ -4,7 +4,7 @@ import '../../../core/localization/app_localizations.dart';
 import '../../../core/localization/translation_keys.dart';
 import '../../../core/theme/app_colors.dart';
 
-/// Navigation Tabs matching the original 3 distinct tab signatures
+/// Navigation Tabs matching Daragat Web App (Header.tsx) 1:1
 class HomeTabBar extends StatelessWidget {
   final int activeIndex;
   final ValueChanged<int> onTabSelected;
@@ -18,7 +18,7 @@ class HomeTabBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
+      padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
       child: Row(
         children: [
           // 1. Monthly Sheet (الجدول)
@@ -27,33 +27,33 @@ class HomeTabBar extends StatelessWidget {
               context,
               index: 0,
               icon: Icons.table_chart_rounded,
-              labelKey: AppKeys.tabMonthly,
-              activeColor: AppColors.monthlyBlue,
-              darkColor: AppColors.monthlyBlueDark,
+              label: context.tr(AppKeys.tabMonthly),
+              activeColor: AppColors.monthlyBlue, // #5692BE
+              borderColor: AppColors.monthlyBlueDark, // #3D7299
             ),
           ),
-          SizedBox(width: 8.w),
+          SizedBox(width: 10.w),
           // 2. Term Average (المعدل)
           Expanded(
             child: _buildTabButton(
               context,
               index: 1,
               icon: Icons.calculate_rounded,
-              labelKey: AppKeys.tabTerm,
-              activeColor: AppColors.termRust,
-              darkColor: AppColors.termRustDark,
+              label: context.tr(AppKeys.tabTerm),
+              activeColor: AppColors.termRust, // #B86848
+              borderColor: AppColors.termRustDark, // #9C5133
             ),
           ),
-          SizedBox(width: 8.w),
+          SizedBox(width: 10.w),
           // 3. Report Cards (الكروت)
           Expanded(
             child: _buildTabButton(
               context,
               index: 2,
               icon: Icons.workspace_premium_rounded,
-              labelKey: AppKeys.tabCards,
-              activeColor: AppColors.cardsGreen,
-              darkColor: AppColors.cardsGreenDark,
+              label: context.tr(AppKeys.tabCards),
+              activeColor: AppColors.cardsGreen, // #4E7A68
+              borderColor: AppColors.cardsGreenDark, // #385F4F
             ),
           ),
         ],
@@ -65,50 +65,66 @@ class HomeTabBar extends StatelessWidget {
     BuildContext context, {
     required int index,
     required IconData icon,
-    required String labelKey,
+    required String label,
     required Color activeColor,
-    required Color darkColor,
+    required Color borderColor,
   }) {
     final isActive = activeIndex == index;
 
     return InkWell(
       onTap: () => onTabSelected(index),
-      borderRadius: BorderRadius.circular(12.r),
+      borderRadius: BorderRadius.circular(16.r),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        padding: EdgeInsets.symmetric(vertical: 10.h),
+        padding: EdgeInsets.symmetric(vertical: 10.h, horizontal: 4.w),
         decoration: BoxDecoration(
-          color: isActive ? activeColor : AppColors.creamBackground,
-          borderRadius: BorderRadius.circular(12.r),
+          color: isActive ? activeColor : const Color(0xFFFAF6EC), // craft card bg
+          borderRadius: BorderRadius.circular(16.r),
           border: Border.all(
-            color: isActive ? darkColor : AppColors.borderWarm,
-            width: isActive ? 1.8 : 1.2,
+            color: isActive ? borderColor : const Color(0xFFC7B5A0),
+            width: isActive ? 2.0 : 1.5,
           ),
           boxShadow: isActive
               ? [
                   BoxShadow(
                     color: activeColor.withValues(alpha: 0.35),
-                    blurRadius: 6,
-                    offset: const Offset(0, 3),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
                   ),
                 ]
-              : null,
+              : [
+                  BoxShadow(
+                    color: const Color(0xFF5A4128).withValues(alpha: 0.05),
+                    blurRadius: 3,
+                    offset: const Offset(0, 1),
+                  ),
+                ],
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
               icon,
-              size: 20.r,
-              color: isActive ? Colors.white : AppColors.textSecondary,
+              size: 22.r,
+              color: isActive ? Colors.white : const Color(0xFF78695A),
             ),
             SizedBox(height: 3.h),
             Text(
-              context.tr(labelKey),
+              label,
               style: TextStyle(
-                fontSize: 12.sp,
-                fontWeight: FontWeight.bold,
-                color: isActive ? Colors.white : AppColors.textPrimary,
+                fontSize: 13.sp,
+                fontWeight: FontWeight.w900,
+                color: isActive ? Colors.white : const Color(0xFF3D342A),
+              ),
+            ),
+            SizedBox(height: 3.h),
+            // White indicator pill when active (matching web w-8 h-1 bg-white/90 rounded-full)
+            Container(
+              width: 28.w,
+              height: 3.h,
+              decoration: BoxDecoration(
+                color: isActive ? Colors.white.withValues(alpha: 0.9) : Colors.transparent,
+                borderRadius: BorderRadius.circular(999),
               ),
             ),
           ],

@@ -1,0 +1,62 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+bun.lock
+bun.lockb
+*.lockb
+
+# Production build outputs
+dist/
+build/
+out/
+
+# Environment variables & secrets (CRITICAL: Never commit real keys or secrets)
+.env
+.env.*
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+!.env.example
+
+# Firebase & Cloud service account keys & credentials
+*serviceAccount*.json
+*service-account*.json
+*credentials*.json
+*secret*.json
+*.key
+*.pem
+*.keystore
+*.cert
+*.p12
+*.pfx
+firebase-debug.log*
+firestore-debug.log*
+secrets/
+.secrets/
+
+# Database dumps and local database files (to prevent leaking any teacher/student data)
+*.sqlite
+*.sqlite3
+*.db
+*.dump
+*.sql.gz
+*.backup
+
+# IDE & OS files
+.DS_Store
+Thumbs.db
+*.log
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+
+# Testing
+coverage/
+
+# Security
+.dev_*.json
+.dev.vars
+.wrangler/
