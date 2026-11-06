@@ -1,5 +1,6 @@
 import 'dart:developer';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -85,6 +86,7 @@ class GradeTrackerApp extends StatelessWidget {
             return MaterialApp(
               title: AppConstants.appName,
               debugShowCheckedModeBanner: false,
+              scrollBehavior: const AppScrollBehavior(),
               theme: AppTheme.lightTheme,
               locale: localeCtrl.locale,
               supportedLocales: AppLocalizations.supportedLocales,
@@ -107,4 +109,18 @@ class GradeTrackerApp extends StatelessWidget {
       },
     );
   }
+}
+
+/// Enables smooth mouse-drag scrolling and trackpad gestures across Windows, Web & Mobile
+class AppScrollBehavior extends MaterialScrollBehavior {
+  const AppScrollBehavior();
+
+  @override
+  Set<PointerDeviceKind> get dragDevices => {
+    PointerDeviceKind.touch,
+    PointerDeviceKind.mouse,
+    PointerDeviceKind.stylus,
+    PointerDeviceKind.invertedStylus,
+    PointerDeviceKind.trackpad,
+  };
 }

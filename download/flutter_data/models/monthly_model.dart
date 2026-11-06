@@ -1,70 +1,150 @@
-import 'package:flutter/foundation.dart';
 import 'custom_column.dart';
 import 'student_row.dart';
+import 'final_score_operation.dart';
 
-@immutable
+/// Monthly grade model sheet representing a full class assessment table
 class MonthlyModel {
   final String id;
   final String name;
+  final String subject;
   final String gradeLevel;
-  final String section;
-  final List<CustomColumn> columns;
+  final String academicYear;
+  final double totalMaxScore;
+  final double? writtenWeight;
+  final double writtenMaxScore;
+  final String writtenScoreMode; // 'raw' or 'relative'
+  final List<CustomColumn> customColumns;
   final List<StudentRow> students;
-  final DateTime? createdAt;
+  final String roundingMode; // 'none', 'half_up', 'any_fraction', 'custom_threshold'
+  final double roundingThreshold;
+  final FinalScoreOperation finalScoreOperation;
+  final String teacherName;
+  final String section;
+  final List<String> assignedSections;
+  final String createdAt;
+  final String updatedAt;
 
   const MonthlyModel({
     required this.id,
     required this.name,
+    this.subject = '',
     this.gradeLevel = '',
-    this.section = 'أ',
-    this.columns = const [],
+    this.section = '',
+    this.academicYear = '',
+    this.totalMaxScore = 100.0,
+    this.writtenWeight,
+    this.writtenMaxScore = 100.0,
+    this.writtenScoreMode = 'raw',
+    this.customColumns = const [],
     this.students = const [],
-    this.createdAt,
+    this.roundingMode = 'none',
+    this.roundingThreshold = 0.5,
+    this.finalScoreOperation = const FinalScoreOperation(),
+    this.teacherName = '',
+    this.assignedSections = const [],
+    this.createdAt = '',
+    this.updatedAt = '',
   });
 
-  MonthlyModel copyWith({
-    String? id,
-    String? name,
-    String? gradeLevel,
-    String? section,
-    List<CustomColumn>? columns,
-    List<StudentRow>? students,
-    DateTime? createdAt,
-  }) {
+  /// Compatibility getter for columns
+  List<CustomColumn> get columns => customColumns;
+
+  /// Effective list of sections
+  List<String> get effectiveSections => assignedSections.isNotEmpty
+      ? assignedSections
+      : (section.isNotEmpty ? [section] : const []);
+
+  factory MonthlyModel.fromJson(Map<String, dynamic> json) {
     return MonthlyModel(
-      id: id ?? this.id,
-      name: name ?? this.name,
-      gradeLevel: gradeLevel ?? this.gradeLevel,
-      section: section ?? this.section,
-      columns: columns ?? this.columns,
-      students: students ?? this.students,
-      createdAt: createdAt ?? this.createdAt,
+      id: json['id'] as String? ?? '',
+      name: json['name'] as String? ?? '',
+      subject: json['subject'] as String? ?? '',
+      gradeLevel: json['gradeLevel'] as String? ?? '',
+      academicYear: json['academicYear'] as String? ?? '',
+      totalMaxScore: (json['totalMaxScore'] as num?)?.toDouble() ?? 100.0,
+      writtenWeight: (json['writtenWeight'] as num?)?.toDouble(),
+      writtenMaxScore: (json['writtenMaxScore'] as num?)?.toDouble() ?? 100.0,
+      writtenScoreMode: json['writtenScoreMode'] as String? ?? 'raw',
+      customColumns: (json['customColumns'] as List<dynamic>? ?? [])
+          .map((c) => CustomColumn.fromJson(c as Map<String, dynamic>))
+          .toList(),
+      students: (json['students'] as List<dynamic>? ?? [])
+          .map((s) => StudentRow.fromJson(s as Map<String, dynamic>))
+          .toList(),
+      roundingMode: json['roundingMode'] as String? ?? 'none',
+      roundingThreshold: (json['roundingThreshold'] as num?)?.toDouble() ?? 0.5,
+      finalScoreOperation: json['finalScoreOperation'] != null
+          ? FinalScoreOperation.fromJson(json['finalScoreOperation'] as Map<String, dynamic>)
+          : const FinalScoreOperation(),
+      teacherName: json['teacherName'] as String? ?? '',
+      assignedSections: (json['assignedSections'] as List<dynamic>? ?? [])
+          .map((sec) => sec.toString())
+          .toList(),
+      createdAt: json['createdAt'] as String? ?? DateTime.now().toIso8601String(),
+      updatedAt: json['updatedAt'] as String? ?? '',
     );
   }
 
   Map<String, dynamic> toJson() => {
-    'id': id,
-    'name': name,
-    'gradeLevel': gradeLevel,
-    'section': section,
-    'columns': columns.map((c) => c.toJson()).toList(),
-    'students': students.map((s) => s.toJson()).toList(),
-    'createdAt': createdAt?.toIso8601String(),
-  };
+        'id': id,
+        'name': name,
+        'subject': subject,
+        'gradeLevel': gradeLevel,
+        'academicYear': academicYear,
+        'totalMaxScore': totalMaxScore,
+        'writtenWeight': writtenWeight,
+        'writtenMaxScore': writtenMaxScore,
+        'writtenScoreMode': writtenScoreMode,
+        'customColumns': customColumns.map((c) => c.toJson()).toList(),
+        'students': students.map((s) => s.toJson()).toList(),
+        'roundingMode': roundingMode,
+        'roundingThreshold': roundingThreshold,
+        'finalScoreOperation': finalScoreOperation.toJson(),
+        if (teacherName.isNotEmpty) 'teacherName': teacherName,
+        if (assignedSections.isNotEmpty) 'assignedSections': assignedSections,
+        'createdAt': createdAt,
+        if (updatedAt.isNotEmpty) 'updatedAt': updatedAt,
+      };
 
-  factory MonthlyModel.fromJson(Map<String, dynamic> json) => MonthlyModel(
-    id: json['id'] as String? ?? '',
-    name: json['name'] as String? ?? '',
-    gradeLevel: json['gradeLevel'] as String? ?? json['grade_level'] as String? ?? '',
-    section: json['section'] as String? ?? 'أ',
-    columns: (json['columns'] as List<dynamic>? ?? [])
-        .map((e) => CustomColumn.fromJson(e as Map<String, dynamic>))
-        .toList(),
-    students: (json['students'] as List<dynamic>? ?? [])
-        .map((e) => StudentRow.fromJson(e as Map<String, dynamic>))
-        .toList(),
-    createdAt: json['createdAt'] != null
-        ? DateTime.tryParse(json['createdAt'] as String)
-        : (json['created_at'] != null ? DateTime.tryParse(json['created_at'] as String) : null),
-  );
+  MonthlyModel copyWith({
+    String? id,
+    String? name,
+    String? subject,
+    String? gradeLevel,
+    String? academicYear,
+    double? totalMaxScore,
+    double? writtenWeight,
+    double? writtenMaxScore,
+    String? writtenScoreMode,
+    List<CustomColumn>? customColumns,
+    List<StudentRow>? students,
+    String? roundingMode,
+    double? roundingThreshold,
+    FinalScoreOperation? finalScoreOperation,
+    String? teacherName,
+    List<String>? assignedSections,
+    String? createdAt,
+    String? updatedAt,
+  }) {
+    return MonthlyModel(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      subject: subject ?? this.subject,
+      gradeLevel: gradeLevel ?? this.gradeLevel,
+      academicYear: academicYear ?? this.academicYear,
+      totalMaxScore: totalMaxScore ?? this.totalMaxScore,
+      writtenWeight: writtenWeight ?? this.writtenWeight,
+      writtenMaxScore: writtenMaxScore ?? this.writtenMaxScore,
+      writtenScoreMode: writtenScoreMode ?? this.writtenScoreMode,
+      customColumns: customColumns ?? this.customColumns,
+      students: students ?? this.students,
+      roundingMode: roundingMode ?? this.roundingMode,
+      roundingThreshold: roundingThreshold ?? this.roundingThreshold,
+      finalScoreOperation: finalScoreOperation ?? this.finalScoreOperation,
+      teacherName: teacherName ?? this.teacherName,
+      assignedSections: assignedSections ?? this.assignedSections,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
 }

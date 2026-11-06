@@ -81,12 +81,12 @@ class MonthlySheetController extends ChangeNotifier {
       name: name,
       gradeLevel: gradeLevel,
       section: section,
-      columns: const [
+      customColumns: const [
         CustomColumn(id: 'col_oral', name: 'الشفهي', maxScore: 10, orderIndex: 0),
         CustomColumn(id: 'col_daily', name: 'اليومي', maxScore: 10, orderIndex: 1),
       ],
       students: const [],
-      createdAt: DateTime.now(),
+      createdAt: DateTime.now().toIso8601String(),
     );
 
     _models = [..._models, newModel];

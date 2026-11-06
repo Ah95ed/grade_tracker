@@ -18,13 +18,18 @@ class MonthlyModel {
   final String roundingMode; // 'none', 'half_up', 'any_fraction', 'custom_threshold'
   final double roundingThreshold;
   final FinalScoreOperation finalScoreOperation;
+  final String teacherName;
+  final String section;
+  final List<String> assignedSections;
   final String createdAt;
+  final String updatedAt;
 
   const MonthlyModel({
     required this.id,
     required this.name,
     this.subject = '',
     this.gradeLevel = '',
+    this.section = '',
     this.academicYear = '',
     this.totalMaxScore = 100.0,
     this.writtenWeight,
@@ -35,8 +40,19 @@ class MonthlyModel {
     this.roundingMode = 'none',
     this.roundingThreshold = 0.5,
     this.finalScoreOperation = const FinalScoreOperation(),
-    required this.createdAt,
+    this.teacherName = '',
+    this.assignedSections = const [],
+    this.createdAt = '',
+    this.updatedAt = '',
   });
+
+  /// Compatibility getter for columns
+  List<CustomColumn> get columns => customColumns;
+
+  /// Effective list of sections
+  List<String> get effectiveSections => assignedSections.isNotEmpty
+      ? assignedSections
+      : (section.isNotEmpty ? [section] : const []);
 
   factory MonthlyModel.fromJson(Map<String, dynamic> json) {
     return MonthlyModel(
@@ -60,7 +76,12 @@ class MonthlyModel {
       finalScoreOperation: json['finalScoreOperation'] != null
           ? FinalScoreOperation.fromJson(json['finalScoreOperation'] as Map<String, dynamic>)
           : const FinalScoreOperation(),
+      teacherName: json['teacherName'] as String? ?? '',
+      assignedSections: (json['assignedSections'] as List<dynamic>? ?? [])
+          .map((sec) => sec.toString())
+          .toList(),
       createdAt: json['createdAt'] as String? ?? DateTime.now().toIso8601String(),
+      updatedAt: json['updatedAt'] as String? ?? '',
     );
   }
 
@@ -79,7 +100,10 @@ class MonthlyModel {
         'roundingMode': roundingMode,
         'roundingThreshold': roundingThreshold,
         'finalScoreOperation': finalScoreOperation.toJson(),
+        if (teacherName.isNotEmpty) 'teacherName': teacherName,
+        if (assignedSections.isNotEmpty) 'assignedSections': assignedSections,
         'createdAt': createdAt,
+        if (updatedAt.isNotEmpty) 'updatedAt': updatedAt,
       };
 
   MonthlyModel copyWith({
@@ -97,7 +121,10 @@ class MonthlyModel {
     String? roundingMode,
     double? roundingThreshold,
     FinalScoreOperation? finalScoreOperation,
+    String? teacherName,
+    List<String>? assignedSections,
     String? createdAt,
+    String? updatedAt,
   }) {
     return MonthlyModel(
       id: id ?? this.id,
@@ -114,8 +141,10 @@ class MonthlyModel {
       roundingMode: roundingMode ?? this.roundingMode,
       roundingThreshold: roundingThreshold ?? this.roundingThreshold,
       finalScoreOperation: finalScoreOperation ?? this.finalScoreOperation,
+      teacherName: teacherName ?? this.teacherName,
+      assignedSections: assignedSections ?? this.assignedSections,
       createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 }
-

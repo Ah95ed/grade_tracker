@@ -89,8 +89,8 @@ class HomeHeader extends StatelessWidget {
                     SizedBox(height: 2.h),
                     Text(
                       profile.subject.isNotEmpty
-                          ? profile.subject
-                          : (profile.schoolName.isNotEmpty ? profile.schoolName : (user?.email ?? '')),
+                          ? (profile.effectiveInstitutionName.isNotEmpty ? '${profile.subject} • ${profile.effectiveInstitutionName}' : profile.subject)
+                          : (profile.effectiveInstitutionName.isNotEmpty ? profile.effectiveInstitutionName : (user?.email ?? '')),
                       style: TextStyle(
                         fontSize: 10.sp,
                         fontWeight: FontWeight.w600,
@@ -110,7 +110,54 @@ class HomeHeader extends StatelessWidget {
           const AcademicEmblem(),
           SizedBox(width: 8.w),
 
-          // 3. Live Sync Status Badge
+          // 3. Settings Gear Button ("الإعدادات ⚙️")
+          Tooltip(
+            message: 'الإعدادات وبيانات المعلم والمدرسة',
+            child: InkWell(
+              onTap: () => showDialog(
+                context: context,
+                builder: (_) => const TeacherProfileDialog(),
+              ),
+              borderRadius: BorderRadius.circular(12.r),
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 7.h),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFAF6EC),
+                  borderRadius: BorderRadius.circular(12.r),
+                  border: Border.all(color: const Color(0xFFD8CEBD)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.02),
+                      blurRadius: 2,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.settings_suggest_rounded,
+                      size: 16.r,
+                      color: const Color(0xFF557A95),
+                    ),
+                    SizedBox(width: 4.w),
+                    Text(
+                      'الإعدادات',
+                      style: TextStyle(
+                        fontSize: 11.sp,
+                        fontWeight: FontWeight.w800,
+                        color: const Color(0xFF2F2822),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          SizedBox(width: 8.w),
+
+          // 4. Live Sync Status Badge
           SyncBadge(
             isOnline: auth.isOnline,
             isSyncing: auth.isSyncing,

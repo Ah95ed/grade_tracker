@@ -314,9 +314,9 @@ class AuthController extends ChangeNotifier {
   }
 
   /// Ensures the current user has a fresh, unexpired ID token, automatically refreshing if necessary
-  Future<String?> ensureValidToken() async {
+  Future<String?> ensureValidToken({bool forceRefresh = false}) async {
     if (_currentUser == null) return null;
-    if (!_currentUser!.isTokenExpired && _currentUser!.token != null && _currentUser!.token!.isNotEmpty) {
+    if (!forceRefresh && !_currentUser!.isTokenExpired && _currentUser!.token != null && _currentUser!.token!.isNotEmpty) {
       return _currentUser!.token;
     }
     if (_currentUser!.refreshToken != null && _currentUser!.refreshToken!.isNotEmpty) {
@@ -324,9 +324,9 @@ class AuthController extends ChangeNotifier {
         final refreshRes = await _apiService.refreshIdToken(_currentUser!.refreshToken!);
         if (refreshRes['success'] == true) {
           final data = refreshRes['data'] as Map<String, dynamic>;
-          final newToken = data['id_token'] as String?;
-          final newRefresh = data['refresh_token'] as String? ?? _currentUser!.refreshToken;
-          final expSec = int.tryParse(data['expires_in']?.toString() ?? '3600') ?? 3600;
+          final newToken = (data['id_token'] ?? data['idToken']) as String?;
+          final newRefresh = (data['refresh_token'] ?? data['refreshToken']) as String? ?? _currentUser!.refreshToken;
+          final expSec = int.tryParse((data['expires_in'] ?? data['expiresIn'])?.toString() ?? '3600') ?? 3600;
           if (newToken != null && newToken.isNotEmpty) {
             final updatedUser = _currentUser!.copyWith(
               token: newToken,
@@ -358,11 +358,24 @@ class AuthController extends ChangeNotifier {
         message: 'يرجى تسجيل الدخول بحسابك أولاً لتفعيل المزامنة السحابية.',
       );
     }
+
+    if (_currentUser!.isTrial || _currentUser!.uid.startsWith('trial-') || _currentUser!.authProvider == 'trial') {
+      return const SyncResult(
+        success: false,
+        isOffline: false,
+        message: 'أنت مسجل حالياً كـ (مستخدم تجريبي). للمزامنة السحابية مع الخادم وقاعدة البيانات، يرجى تسجيل الدخول بحسابك (بريد إلكتروني أو Google). بياناتك محفوظة بأمان محلياً على جهازك.',
+      );
+    }
+
     _isSyncing = true;
     notifyListeners();
 
     try {
       String? token = await ensureValidToken();
+      if (token == null || token.isEmpty) {
+        token = await ensureValidToken(forceRefresh: true);
+      }
+
       var res = await _apiService.syncDataToServer(
         models: models,
         terms: terms,
@@ -379,9 +392,9 @@ class AuthController extends ChangeNotifier {
         final refreshRes = await _apiService.refreshIdToken(_currentUser!.refreshToken!);
         if (refreshRes['success'] == true) {
           final data = refreshRes['data'] as Map<String, dynamic>;
-          final newToken = data['id_token'] as String?;
-          final newRefresh = data['refresh_token'] as String? ?? _currentUser!.refreshToken;
-          final expSec = int.tryParse(data['expires_in']?.toString() ?? '3600') ?? 3600;
+          final newToken = (data['id_token'] ?? data['idToken']) as String?;
+          final newRefresh = (data['refresh_token'] ?? data['refreshToken']) as String? ?? _currentUser!.refreshToken;
+          final expSec = int.tryParse((data['expires_in'] ?? data['expiresIn'])?.toString() ?? '3600') ?? 3600;
           if (newToken != null) {
             final updatedUser = _currentUser!.copyWith(
               token: newToken,

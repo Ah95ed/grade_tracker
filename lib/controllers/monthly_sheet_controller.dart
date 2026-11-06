@@ -35,6 +35,32 @@ class MonthlySheetController extends ChangeNotifier {
   String _selectedSection = 'ALL';
   String get selectedSection => _selectedSection;
 
+  bool _showRatingColumn = false;
+  bool get showRatingColumn => _showRatingColumn;
+
+  void toggleRatingColumn() {
+    _showRatingColumn = !_showRatingColumn;
+    notifyListeners();
+  }
+
+  Future<void> updateWrittenScoreMode(String mode) async {
+    final model = currentModel;
+    if (model == null) return;
+    await updateModel(model.copyWith(writtenScoreMode: mode));
+  }
+
+  Future<void> updateTotalMaxScore(double max) async {
+    final model = currentModel;
+    if (model == null) return;
+    await updateModel(model.copyWith(totalMaxScore: max));
+  }
+
+  Future<void> updateWrittenMaxScore(double max) async {
+    final model = currentModel;
+    if (model == null) return;
+    await updateModel(model.copyWith(writtenMaxScore: max));
+  }
+
   List<String> get availableSections {
     final model = currentModel;
     if (model == null) return [];

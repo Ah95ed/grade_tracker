@@ -1,7 +1,8 @@
 /// Centralized API Endpoints and Network Configuration
 class ApiEndpoints {
-  // Cloudflare Pages Live Base URL
+  // Cloudflare Pages Live Base URL & Custom Domain Fallback
   static const String defaultBaseUrl = 'https://daragat.pages.dev';
+  static const String fallbackBaseUrl = 'https://daragato.online';
 
   // Cloudflare Pages Functions API Endpoints
   static const String dataEndpoint = '/api/data';
@@ -68,8 +69,6 @@ class ApiEndpoints {
     };
     if (token != null && token.isNotEmpty) {
       headers['Authorization'] = 'Bearer $token';
-    } else if (userUid != null && userUid.isNotEmpty) {
-      headers['Authorization'] = 'Bearer $userUid';
     }
     if (userUid != null && userUid.isNotEmpty) {
       headers['x-user-uid'] = userUid;

@@ -1,178 +1,125 @@
 import 'dart:developer';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
 
-import 'app_theme.dart';
-import 'flutter_data/services/api_client.dart';
-import 'flutter_data/services/data_service.dart';
-import 'flutter_data/services/users_service.dart';
-import 'flutter_data/services/local_storage_service.dart';
-import 'flutter_data/repositories/gradebook_repository.dart';
-import 'flutter_state/auth_controller.dart';
-import 'flutter_state/monthly_sheet_controller.dart';
-import 'flutter_state/term_controller.dart';
-import 'flutter_state/sync_controller.dart';
-import 'flutter_state/ui_controller.dart';
+import 'firebase_options.dart';
+import 'core/constants/app_constants.dart';
+import 'core/localization/app_localizations.dart';
+import 'core/theme/app_theme.dart';
+import 'services/storage_service.dart';
+import 'controllers/locale_controller.dart';
+import 'controllers/teacher_profile_controller.dart';
+import 'controllers/monthly_sheet_controller.dart';
+import 'controllers/term_controller.dart';
+import 'controllers/report_cards_controller.dart';
+import 'controllers/auth_controller.dart';
+import 'views/home/home_screen.dart';
+import 'views/auth/auth_screen.dart';
 
-import 'flutter_widgets/header/app_header.dart';
-import 'flutter_widgets/views/monthly_sheet_view.dart';
-import 'flutter_widgets/views/term_calculation_view.dart';
-import 'flutter_widgets/views/report_cards_view.dart';
-import 'flutter_widgets/common/bottom_score_keypad.dart';
-
+//  الدالة الاساسية او ستارت ابب
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  final storageService = await StorageService.init();
 
-  // 1. Initialise Local Offline Storage
-  final localStorage = await LocalStorageService.init();
-
-  // 2. Initialise HTTP REST Client & Services
-  final apiClient = ApiClient();
-  final dataService = DataService(apiClient);
-  final usersService = UsersService(apiClient);
-  final repository = GradebookRepository(localStorage: localStorage, dataService: dataService);
-
-  // 3. Safe Firebase Initialization with Fallback Options
   try {
-    await Firebase.initializeApp();
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
   } catch (e) {
-    log('Firebase initialization notice: $e');
+    log('Firebase init error: $e');
   }
 
   runApp(
     MultiProvider(
       providers: [
+        ChangeNotifierProvider(create: (_) => LocaleController(storageService)),
         ChangeNotifierProvider(
-          create: (_) => AuthController(
-            storage: localStorage,
-            apiClient: apiClient,
-            usersService: usersService,
-          ),
+          create: (_) => TeacherProfileController(storageService),
         ),
-        ChangeNotifierProvider(create: (_) => MonthlySheetController(repository)),
-        ChangeNotifierProvider(create: (_) => TermController(repository)),
-        ChangeNotifierProvider(create: (_) => SyncController(repository)),
-        ChangeNotifierProvider(create: (_) => UiController()),
+        ChangeNotifierProvider(
+          create: (_) => MonthlySheetController(storageService),
+        ),
+        ChangeNotifierProvider(create: (_) => TermController(storageService)),
+        ChangeNotifierProvider(create: (_) => ReportCardsController()),
+        ChangeNotifierProvider(create: (_) => AuthController(storageService)),
       ],
-      child: const DaragatTeacherApp(),
+      child: const GradeTrackerApp(),
     ),
   );
 }
 
-class DaragatTeacherApp extends StatelessWidget {
-  const DaragatTeacherApp({super.key});
+class GradeTrackerApp extends StatelessWidget {
+  const GradeTrackerApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'دفتر درجات المعلم',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
-      themeMode: ThemeMode.light,
-      locale: const Locale('ar', 'IQ'),
-      supportedLocales: const [Locale('ar', 'IQ'), Locale('ar'), Locale('en')],
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      home: const Directionality(
-        textDirection: TextDirection.rtl,
-        child: GradebookShellScreen(),
-      ),
+    final localeCtrl = context.watch<LocaleController>();
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final double width = constraints.maxWidth;
+        // التوافق بين الشاششات والانظمة
+        // Adaptive design baseline:
+        // Mobile (< 600px): 390 x 844
+        // Tablet (600px - 1024px): 768 x 1024
+        // Desktop / Windows (>= 1024px): 1440 x 900
+        final Size designSize = width >= 1024
+            ? const Size(1440, 900)
+            : (width >= 600 ? const Size(768, 1024) : const Size(390, 844));
+
+        return ScreenUtilInit(
+          designSize: designSize,
+          minTextAdapt: true,
+          splitScreenMode: true,
+          fontSizeResolver: (fontSize, instance) {
+            // Strictly clamp text scaling between 0.85 and 1.25
+            // Prevents fonts from blowing up on Desktop/Windows monitors
+            final scale = instance.scaleText.clamp(0.85, 1.25);
+            return fontSize * scale;
+          },
+          builder: (context, child) {
+            return MaterialApp(
+              title: AppConstants.appName,
+              debugShowCheckedModeBanner: false,
+              scrollBehavior: const AppScrollBehavior(),
+              theme: AppTheme.lightTheme,
+              locale: localeCtrl.locale,
+              supportedLocales: AppLocalizations.supportedLocales,
+              localizationsDelegates: const [
+                AppLocalizations.delegate,
+                GlobalMaterialLocalizations.delegate,
+                GlobalWidgetsLocalizations.delegate,
+                GlobalCupertinoLocalizations.delegate,
+              ],
+              home: Consumer<AuthController>(
+                builder: (context, auth, _) {
+                  return auth.isAuthenticated
+                      ? const HomeScreen()
+                      : const AuthScreen();
+                },
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }
 
-class GradebookShellScreen extends StatelessWidget {
-  const GradebookShellScreen({super.key});
+/// Enables smooth mouse-drag scrolling and trackpad gestures across Windows, Web & Mobile
+class AppScrollBehavior extends MaterialScrollBehavior {
+  const AppScrollBehavior();
 
   @override
-  Widget build(BuildContext context) {
-    final ui = context.watch<UiController>();
-    final sync = context.watch<SyncController>();
-    final monthly = context.watch<MonthlySheetController>();
-    final term = context.watch<TermController>();
-
-    return Scaffold(
-      appBar: AppHeader(
-        activeTab: ui.activeTab,
-        teacherName: 'الأستاذ: علي محمد',
-        subject: 'الرياضيات',
-        schoolName: 'ثانوية المتميزين',
-        isOnline: sync.isOnline,
-        isSyncing: sync.isSyncing,
-        onOpenMenu: () {},
-        onTriggerSync: () => sync.triggerSync(),
-      ),
-      body: Stack(
-        children: [
-          IndexedStack(
-            index: ui.activeTab,
-            children: [
-              // 0: Monthly Sheet
-              MonthlySheetView(
-                models: monthly.models.map((m) => m.name).toList(),
-                activeModel: monthly.activeModel?.name ?? 'بدون نماذج',
-                onSelectModel: (name) {
-                  final target = monthly.models.firstWhere((m) => m.name == name);
-                  monthly.selectModel(target.id);
-                },
-                onAddNewModel: () => monthly.addModel('شهر جديد'),
-              ),
-              // 1: Term Calculation
-              TermCalculationView(
-                terms: term.terms.map((t) => t.name).toList(),
-                onAddTerm: () => term.addTerm('الفصل الدراسي', const []),
-              ),
-              // 2: Report Cards
-              ReportCardsView(
-                onPrint: () {},
-                onOpenPrintSettings: () {},
-              ),
-              // 3: Admin Dashboard
-              const Center(child: Text('لوحة تحكم المشرف')),
-            ],
-          ),
-          if (ui.isScoreKeypadVisible)
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: BottomScoreKeypad(
-                onKeyPress: (k) {},
-                onDelete: () {},
-                onNextStudent: () {},
-                onClose: () => ui.toggleScoreKeypad(false),
-              ),
-            ),
-        ],
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: ui.activeTab,
-        onDestinationSelected: (idx) => ui.setActiveTab(idx),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.table_chart_rounded),
-            label: 'الدرجات الشهرية',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.calculate_rounded),
-            label: 'حساب الفصول',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.badge_rounded),
-            label: 'كروت الشهادات',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.admin_panel_settings_rounded),
-            label: 'الإدارة',
-          ),
-        ],
-      ),
-    );
-  }
+  Set<PointerDeviceKind> get dragDevices => {
+        PointerDeviceKind.touch,
+        PointerDeviceKind.mouse,
+        PointerDeviceKind.stylus,
+        PointerDeviceKind.invertedStylus,
+        PointerDeviceKind.trackpad,
+      };
 }

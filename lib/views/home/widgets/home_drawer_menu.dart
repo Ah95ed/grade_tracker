@@ -43,9 +43,9 @@ class HomeDrawerMenu extends StatelessWidget {
               DrawerUserHeader(auth: authCtrl),
               Divider(height: 16.h, color: AppColors.borderLight),
               _buildTile(
-                icon: Icons.person_outline_rounded,
-                color: AppColors.monthlyBlue,
-                title: context.tr(AppKeys.teacherProfile),
+                icon: Icons.settings_rounded,
+                color: const Color(0xFF557A95),
+                title: 'الإعدادات (بيانات المعلم والمدرسة)',
                 onTap: () {
                   Navigator.of(context).pop();
                   showDialog(context: context, builder: (_) => const TeacherProfileDialog());

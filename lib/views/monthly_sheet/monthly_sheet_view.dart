@@ -18,7 +18,6 @@ class MonthlySheetView extends StatelessWidget {
           SizedBox(height: 8.h),
           const ModelSelectorBar(),
           const SheetToolbar(),
-          SizedBox(height: 6.h),
           const StudentDataTable(),
         ],
       ),

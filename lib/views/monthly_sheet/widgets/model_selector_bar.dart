@@ -5,6 +5,7 @@ import '../../../controllers/monthly_sheet_controller.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../common/confirm_dialog.dart';
 import 'add_model_dialog.dart';
+import 'edit_model_dialog.dart';
 
 /// Top section for monthly sheet matching Daragat Web App:
 /// 1. Large Craft Camel Brown "+ جدول درجات جديد" Button
@@ -95,7 +96,7 @@ class ModelSelectorBar extends StatelessWidget {
                             borderRadius: BorderRadius.circular(12.r),
                             child: AnimatedContainer(
                               duration: const Duration(milliseconds: 150),
-                              padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+                              padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
                               decoration: BoxDecoration(
                                 color: isActive ? AppColors.craftBrown : const Color(0xFFEBDDC8),
                                 borderRadius: BorderRadius.circular(12.r),
@@ -163,6 +164,46 @@ class ModelSelectorBar extends StatelessWidget {
                                           fontSize: 9.5.sp,
                                           fontWeight: FontWeight.bold,
                                           color: isActive ? const Color(0xFFFEF3C7) : const Color(0xFF544030),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                  if (model.assignedSections.isNotEmpty) ...[
+                                    SizedBox(width: 4.w),
+                                    Container(
+                                      padding: EdgeInsets.symmetric(horizontal: 5.w, vertical: 2.h),
+                                      decoration: BoxDecoration(
+                                        color: isActive ? const Color(0xFF1B5E20) : const Color(0xFF2E7D32),
+                                        borderRadius: BorderRadius.circular(6.r),
+                                      ),
+                                      child: Text(
+                                        model.assignedSections.join('،'),
+                                        style: TextStyle(
+                                          fontSize: 9.sp,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                  // Edit Button on active model
+                                  if (isActive) ...[
+                                    SizedBox(width: 6.w),
+                                    InkWell(
+                                      onTap: () => showDialog(
+                                        context: context,
+                                        builder: (_) => EditModelDialog(model: model),
+                                      ),
+                                      child: Container(
+                                        padding: EdgeInsets.all(3.r),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withValues(alpha: 0.28),
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: Icon(
+                                          Icons.edit_rounded,
+                                          size: 13.r,
+                                          color: Colors.white,
                                         ),
                                       ),
                                     ),

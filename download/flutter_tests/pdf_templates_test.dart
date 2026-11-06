@@ -26,7 +26,7 @@ void main() {
     name: 'تشرين الأول',
     gradeLevel: 'الثالث متوسط',
     section: 'أ',
-    columns: [
+    customColumns: [
       CustomColumn(id: 'col_oral', name: 'الشفهي', maxScore: 10),
       CustomColumn(id: 'col_daily', name: 'اليومي', maxScore: 10),
     ],

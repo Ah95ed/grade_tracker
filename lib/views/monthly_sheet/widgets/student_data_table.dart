@@ -2,12 +2,108 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
 import '../../../controllers/monthly_sheet_controller.dart';
-import '../../../core/localization/app_localizations.dart';
-import '../../../core/localization/translation_keys.dart';
+import '../../../controllers/teacher_profile_controller.dart';
 import '../../../core/theme/app_colors.dart';
-import 'student_row_item.dart';
+import '../../../models/student_row.dart';
+import '../../../models/monthly_model.dart';
+import '../../../core/utils/grade_calculator.dart';
+import '../../common/rating_badge.dart';
+import 'add_student_dialog.dart';
+import 'add_column_dialog.dart';
+import 'final_operation_dialog.dart';
+import 'rounding_settings_dialog.dart';
 
-/// Interactive data table displaying students and their scores
+/// Computed column widths for the interactive table
+class _TableWidths {
+  final double delete;
+  final double name;
+  final double grade;
+  final double section;
+  final double subject;
+  final double written;
+  final double customCol;
+  final double addCol;
+  final double finalScore;
+  final double totalWidth;
+
+  const _TableWidths({
+    required this.delete,
+    required this.name,
+    required this.grade,
+    required this.section,
+    required this.subject,
+    required this.written,
+    required this.customCol,
+    required this.addCol,
+    required this.finalScore,
+    required this.totalWidth,
+  });
+
+  factory _TableWidths.calculate({
+    required double availableWidth,
+    required int customColumnCount,
+  }) {
+    final baseDelete = 54.w;
+    final baseName = 240.w;
+    final baseGrade = 84.w;
+    final baseSection = 72.w;
+    final baseSubject = 72.w;
+    final baseWritten = 275.w;
+    final baseCustom = 135.w;
+    final baseAddCol = 125.w;
+    final baseFinal = 305.w;
+
+    final minTotal = baseDelete +
+        baseName +
+        baseGrade +
+        baseSection +
+        baseSubject +
+        baseWritten +
+        (customColumnCount * baseCustom) +
+        baseAddCol +
+        baseFinal;
+
+    if (availableWidth > minTotal) {
+      final extra = availableWidth - minTotal;
+      // Proportional expansion weights
+      const wName = 3.5;
+      const wWritten = 2.5;
+      const wFinal = 2.5;
+      const wGrade = 0.5;
+      const wSection = 0.5;
+      const wSubject = 0.5;
+      const totalW = wName + wWritten + wFinal + wGrade + wSection + wSubject;
+
+      return _TableWidths(
+        delete: baseDelete,
+        name: baseName + (wName / totalW) * extra,
+        grade: baseGrade + (wGrade / totalW) * extra,
+        section: baseSection + (wSection / totalW) * extra,
+        subject: baseSubject + (wSubject / totalW) * extra,
+        written: baseWritten + (wWritten / totalW) * extra,
+        customCol: baseCustom,
+        addCol: baseAddCol,
+        finalScore: baseFinal + (wFinal / totalW) * extra,
+        totalWidth: availableWidth,
+      );
+    } else {
+      return _TableWidths(
+        delete: baseDelete,
+        name: baseName,
+        grade: baseGrade,
+        section: baseSection,
+        subject: baseSubject,
+        written: baseWritten,
+        customCol: baseCustom,
+        addCol: baseAddCol,
+        finalScore: baseFinal,
+        totalWidth: minTotal,
+      );
+    }
+  }
+}
+
+/// Full-fidelity Interactive Data Table matching Daragat Web App screenshot
 class StudentDataTable extends StatefulWidget {
   const StudentDataTable({super.key});
 
@@ -17,10 +113,14 @@ class StudentDataTable extends StatefulWidget {
 
 class _StudentDataTableState extends State<StudentDataTable> {
   final ScrollController _scrollController = ScrollController();
+  final TextEditingController _searchController = TextEditingController();
+
+  static const double headerHeight = 118.0;
 
   @override
   void dispose() {
     _scrollController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -31,122 +131,1160 @@ class _StudentDataTableState extends State<StudentDataTable> {
 
     if (model == null) {
       return Center(
-        child: Text(
-          context.tr(AppKeys.noModelsYet),
-          style: TextStyle(fontSize: 14.sp, color: AppColors.textMuted),
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: 40.h),
+          child: Text(
+            'لا يوجد أي جدول درجات حالياً. أنشئ جدولاً جديداً للبدء.',
+            style: TextStyle(fontSize: 14.sp, color: AppColors.textMuted),
+          ),
         ),
       );
     }
 
     final students = controller.filteredStudents;
-    if (students.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: EdgeInsets.symmetric(vertical: 40.h),
-          child: Text(
-            context.tr(AppKeys.noStudentsYet),
-            style: TextStyle(fontSize: 13.sp, color: AppColors.textMuted),
+    final totalAllocated = model.writtenMaxScore +
+        model.customColumns.fold<double>(0.0, (sum, c) => sum + c.maxScore);
+    final isComplete = totalAllocated.toInt() == model.totalMaxScore.toInt();
+    final customColumns = model.customColumns;
+
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Container(
+        margin: EdgeInsets.symmetric(horizontal: 14.w),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFAF7EC), // #FAF7EC
+          borderRadius: BorderRadius.vertical(bottom: Radius.circular(16.r)),
+          border: const Border(
+            left: BorderSide(color: Color(0xFFD8CEBD), width: 1.2),
+            right: BorderSide(color: Color(0xFFD8CEBD), width: 1.2),
+            bottom: BorderSide(color: Color(0xFFD8CEBD), width: 1.2),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF5A4128).withValues(alpha: 0.05),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.vertical(bottom: Radius.circular(16.r)),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final widths = _TableWidths.calculate(
+                availableWidth: constraints.maxWidth,
+                customColumnCount: customColumns.length,
+              );
+              final isOverflowing = widths.totalWidth > constraints.maxWidth;
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Horizontal scroll navigation ribbon when there are extra columns
+                  if (isOverflowing)
+                    _buildScrollNavigationRibbon(context, customColumns.length),
+
+                  RawScrollbar(
+                    controller: _scrollController,
+                    thumbVisibility: true,
+                    trackVisibility: true,
+                    interactive: true,
+                    thickness: 9.h,
+                    radius: Radius.circular(6.r),
+                    thumbColor: const Color(0xFFBA916C).withValues(alpha: 0.85),
+                    trackColor: const Color(0xFFEFE8D8),
+                    trackBorderColor: const Color(0xFFD5C8B2),
+                    child: SingleChildScrollView(
+                      controller: _scrollController,
+                      scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+                      child: SizedBox(
+                        width: widths.totalWidth,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // 1. Table Header Row (uniform height for all columns)
+                            _buildTableHeader(
+                              context,
+                              model,
+                              controller,
+                              totalAllocated,
+                              isComplete,
+                              widths,
+                            ),
+
+                            // 2. Table Body: Either Empty State OR Student Rows
+                            if (students.isEmpty)
+                              _buildEmptyState(context, model, widths.totalWidth)
+                            else
+                              ...students.asMap().entries.map((entry) {
+                                final idx = entry.key;
+                                final student = entry.value;
+                                return _buildStudentRow(
+                                  context,
+                                  student,
+                                  model,
+                                  controller,
+                                  idx,
+                                  widths,
+                                );
+                              }),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
         ),
-      );
-    }
+      ),
+    );
+  }
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final double minTableWidth = constraints.maxWidth > 700 ? constraints.maxWidth : 680.0;
-
-        return Container(
-          margin: EdgeInsets.symmetric(horizontal: 14.w),
-          decoration: BoxDecoration(
-            color: AppColors.craftCardBg, // #FAF6EC
-            borderRadius: BorderRadius.circular(16.r),
-            border: Border.all(color: AppColors.craftBorder, width: 1.5), // #AA8362
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF5A4128).withValues(alpha: 0.08),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
+  /// Ribbon indicating horizontal overflow with quick scroll buttons
+  Widget _buildScrollNavigationRibbon(BuildContext context, int customCount) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 4.h),
+      decoration: const BoxDecoration(
+        color: Color(0xFFF3ECE0),
+        border: Border(bottom: BorderSide(color: Color(0xFFD5C8B2))),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.swap_horiz_rounded, size: 16, color: Color(0xFFBA916C)),
+          SizedBox(width: 4.w),
+          Expanded(
+            child: Text(
+              customCount > 0
+                  ? 'الجدول عريض ($customCount حقول إضافية) — اسحب بالماوس أو اضغط للتمرير'
+                  : 'يمكنك سحب الجدول بالماوس أو التمرير يميناً ويساراً',
+              style: TextStyle(
+                fontSize: 11.sp,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF5A4128),
               ),
-            ],
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(16.r),
-            child: Scrollbar(
-              controller: _scrollController,
-              thumbVisibility: true,
-              child: SingleChildScrollView(
-                controller: _scrollController,
-                scrollDirection: Axis.horizontal,
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(minWidth: minTableWidth),
-                  child: DataTable(
-                    headingRowHeight: 50,
-                    dataRowMinHeight: 48,
-                    dataRowMaxHeight: 56,
-                    horizontalMargin: 16.w,
-                    columnSpacing: 20.w,
-                    headingRowColor: WidgetStateProperty.all(AppColors.craftBadgeBg), // #E8D7C2 craft-table-header
-                    columns: _buildColumns(context, model),
-                    rows: students.map((s) => buildStudentDataRow(context, s, model, controller)).toList(),
+          SizedBox(width: 8.w),
+          InkWell(
+            onTap: () {
+              if (_scrollController.hasClients) {
+                _scrollController.animateTo(
+                  (_scrollController.offset - 250).clamp(0.0, _scrollController.position.maxScrollExtent),
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOut,
+                );
+              }
+            },
+            borderRadius: BorderRadius.circular(6.r),
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(6.r),
+                border: Border.all(color: const Color(0xFFD5C8B2)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.chevron_right_rounded, size: 15.r, color: const Color(0xFF2F2822)),
+                  SizedBox(width: 2.w),
+                  Text(
+                    'يمين',
+                    style: TextStyle(
+                      fontSize: 11.sp,
+                      fontWeight: FontWeight.w900,
+                      color: const Color(0xFF2F2822),
+                    ),
                   ),
+                ],
+              ),
+            ),
+          ),
+          SizedBox(width: 6.w),
+          InkWell(
+            onTap: () {
+              if (_scrollController.hasClients) {
+                _scrollController.animateTo(
+                  (_scrollController.offset + 250).clamp(0.0, _scrollController.position.maxScrollExtent),
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOut,
+                );
+              }
+            },
+            borderRadius: BorderRadius.circular(6.r),
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(6.r),
+                border: Border.all(color: const Color(0xFFD5C8B2)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'يسار',
+                    style: TextStyle(
+                      fontSize: 11.sp,
+                      fontWeight: FontWeight.w900,
+                      color: const Color(0xFF2F2822),
+                    ),
+                  ),
+                  SizedBox(width: 2.w),
+                  Icon(Icons.chevron_left_rounded, size: 15.r, color: const Color(0xFF2F2822)),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Exact Table Header Row matching user's uploaded screenshot with uniform height
+  Widget _buildTableHeader(
+    BuildContext context,
+    MonthlyModel model,
+    MonthlySheetController controller,
+    double totalAllocated,
+    bool isComplete,
+    _TableWidths widths,
+  ) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFFEFE8D8), // #EFE8D8
+        border: Border(bottom: BorderSide(color: Color(0xFFD5C8B2), width: 1.2)),
+      ),
+      child: IntrinsicHeight(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // 1. Delete (#) Column Header
+          _buildHeaderCell(
+            width: widths.delete,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                Text(
+                  'حذف',
+                  style: TextStyle(
+                    fontSize: 12.5.sp,
+                    fontWeight: FontWeight.w900,
+                    color: const Color(0xFF9C3838),
+                  ),
+                ),
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 5.w, vertical: 2.h),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.7),
+                    borderRadius: BorderRadius.circular(6.r),
+                    border: Border.all(color: const Color(0xFFD5C8B2)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.refresh_rounded, size: 12.r, color: Colors.black45),
+                      SizedBox(width: 3.w),
+                      Text(
+                        '#',
+                        style: TextStyle(
+                          fontSize: 11.5.sp,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.black54,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // 2. Student Name Column Header with Embedded Search Input
+          _buildHeaderCell(
+            width: widths.name,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          'اسم الطالب',
+                          style: TextStyle(
+                            fontSize: 14.sp,
+                            fontWeight: FontWeight.w900,
+                            color: const Color(0xFF2F2822),
+                          ),
+                        ),
+                        SizedBox(width: 5.w),
+                        Icon(Icons.edit_rounded, size: 13.r, color: Colors.black45),
+                      ],
+                    ),
+                    Icon(Icons.refresh_rounded, size: 13.r, color: Colors.black45),
+                  ],
+                ),
+                Container(
+                  height: 32.h,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(8.r),
+                    border: Border.all(color: const Color(0xFFCBD5E1)),
+                  ),
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: controller.setSearchQuery,
+                    style: TextStyle(
+                      fontSize: 12.5.sp,
+                      color: const Color(0xFF2F2822),
+                      fontWeight: FontWeight.w600,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'بحث بالاسم...',
+                      hintStyle: TextStyle(
+                        fontSize: 12.sp,
+                        color: const Color(0xFF94A3B8),
+                      ),
+                      prefixIcon: Icon(
+                        Icons.search_rounded,
+                        size: 16.r,
+                        color: const Color(0xFF64748B),
+                      ),
+                      contentPadding: EdgeInsets.zero,
+                      border: InputBorder.none,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // 3. Grade / Stage Column Header
+          _buildHeaderCell(
+            width: widths.grade,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.refresh_rounded, size: 12.r, color: Colors.black45),
+                    SizedBox(width: 4.w),
+                    Icon(Icons.edit_rounded, size: 12.r, color: Colors.black45),
+                  ],
+                ),
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 3.h),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.8),
+                    borderRadius: BorderRadius.circular(6.r),
+                    border: Border.all(color: const Color(0xFFD5C8B2)),
+                  ),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'الصف',
+                          style: TextStyle(
+                            fontSize: 12.sp,
+                            fontWeight: FontWeight.w900,
+                            color: const Color(0xFF2F2822),
+                          ),
+                        ),
+                        Icon(Icons.arrow_drop_down_rounded, size: 16.r, color: Colors.black54),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // 4. Section Column Header
+          _buildHeaderCell(
+            width: widths.section,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  'كل الشُعب',
+                  style: TextStyle(
+                    fontSize: 12.5.sp,
+                    fontWeight: FontWeight.w900,
+                    color: const Color(0xFF2F2822),
+                  ),
+                ),
+                SizedBox(height: 4.h),
+                Icon(Icons.chevron_left_rounded, size: 16.r, color: Colors.black54),
+              ],
+            ),
+          ),
+
+          // 5. Subject Column Header
+          _buildHeaderCell(
+            width: widths.subject,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                Container(
+                  padding: EdgeInsets.all(4.r),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE0EDF8),
+                    borderRadius: BorderRadius.circular(6.r),
+                  ),
+                  child: Icon(Icons.refresh_rounded, size: 14.r, color: const Color(0xFF3A6C8F)),
+                ),
+                Text(
+                  'المادة',
+                  style: TextStyle(
+                    fontSize: 12.5.sp,
+                    fontWeight: FontWeight.w900,
+                    color: const Color(0xFF2F2822),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // 6. Written Exam Column Header (درجة التحريري بالورقة)
+          _buildHeaderCell(
+            width: widths.written,
+            color: const Color(0xFFFAF7EC),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Top row: Label + Max score badge + pencil + refresh
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'درجة التحريري بالورقة من',
+                        style: TextStyle(
+                          fontSize: 13.sp,
+                          fontWeight: FontWeight.w900,
+                          color: const Color(0xFF1E293B),
+                        ),
+                      ),
+                      SizedBox(width: 6.w),
+                      Container(
+                        padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 2.h),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(6.r),
+                          border: Border.all(color: const Color(0xFFCBD5E1)),
+                        ),
+                        child: Text(
+                          model.writtenMaxScore.toInt().toString(),
+                          style: TextStyle(
+                            fontSize: 12.5.sp,
+                            fontWeight: FontWeight.w900,
+                            color: const Color(0xFF1E293B),
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: 4.w),
+                      Icon(Icons.edit_rounded, size: 13.r, color: Colors.black45),
+                      SizedBox(width: 3.w),
+                      Icon(Icons.refresh_rounded, size: 13.r, color: Colors.black45),
+                    ],
+                  ),
+                ),
+
+                // Radio Options Box matching screenshot
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 3.h),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5F9), // slate-100
+                    borderRadius: BorderRadius.circular(8.r),
+                    border: Border.all(color: const Color(0xFFCBD5E1)),
+                  ),
+                  child: Column(
+                    children: [
+                      _buildRadioOption(
+                        label: 'الدرجة كما في ورقة الطالب',
+                        isSelected: model.writtenScoreMode == 'raw',
+                        onTap: () => controller.updateWrittenScoreMode('raw'),
+                      ),
+                      _buildRadioOption(
+                        label: 'الدرجة النسبية للطالب',
+                        isSelected: model.writtenScoreMode == 'relative',
+                        onTap: () => controller.updateWrittenScoreMode('relative'),
+                      ),
+                    ],
+                  ),
+                ),
+
+                Text(
+                  '(مفعل تلقائي - كما في الورقة بدون نسبة)',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 10.5.sp,
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFF15803D),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // 7. Optional Custom Columns
+          ...model.customColumns.map((col) {
+            return _buildHeaderCell(
+              width: widths.customCol,
+              color: const Color(0xFFF1F5F9),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          col.name,
+                          style: TextStyle(
+                            fontSize: 13.sp,
+                            fontWeight: FontWeight.w900,
+                            color: const Color(0xFF1E293B),
+                          ),
+                        ),
+                        SizedBox(width: 4.w),
+                        Text(
+                          '(${col.maxScore.toInt()})',
+                          style: TextStyle(
+                            fontSize: 11.5.sp,
+                            fontWeight: FontWeight.bold,
+                            color: const Color(0xFF64748B),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  InkWell(
+                    onTap: () {
+                      final updated = model.customColumns.where((c) => c.id != col.id).toList();
+                      controller.updateModel(model.copyWith(customColumns: updated));
+                    },
+                    child: Container(
+                      padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFEE2E2),
+                        borderRadius: BorderRadius.circular(4.r),
+                        border: Border.all(color: const Color(0xFFFECACA)),
+                      ),
+                      child: Text(
+                        'حذف الحقل',
+                        style: TextStyle(
+                          fontSize: 10.sp,
+                          color: const Color(0xFFDC2626),
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+
+          // 8. Add Column Header Button matching screenshot
+          _buildHeaderCell(
+            width: widths.addCol,
+            color: const Color(0xFFFAF7EC),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                Text(
+                  'إذا أردت إضافة حقل\nاضغط هنا',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 12.sp,
+                    fontWeight: FontWeight.w900,
+                    color: const Color(0xFF2B6CB0),
+                    height: 1.25,
+                  ),
+                ),
+                InkWell(
+                  onTap: () => showDialog(
+                    context: context,
+                    builder: (_) => const AddColumnDialog(),
+                  ),
+                  borderRadius: BorderRadius.circular(16.r),
+                  child: Container(
+                    padding: EdgeInsets.all(5.r),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF2B6CB0),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.add, size: 15.r, color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // 9. Final Score Column Header (الدرجة النهائية من)
+          _buildHeaderCell(
+            width: widths.finalScore,
+            color: const Color(0xFFFAF7EC),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Top row: Label + Score box + pencil + refresh
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'الدرجة النهائية من',
+                        style: TextStyle(
+                          fontSize: 13.5.sp,
+                          fontWeight: FontWeight.w900,
+                          color: const Color(0xFF1E293B),
+                        ),
+                      ),
+                      SizedBox(width: 6.w),
+                      Container(
+                        padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 2.h),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(6.r),
+                          border: Border.all(color: const Color(0xFFCBD5E1)),
+                        ),
+                        child: Text(
+                          model.totalMaxScore.toInt().toString(),
+                          style: TextStyle(
+                            fontSize: 12.5.sp,
+                            fontWeight: FontWeight.w900,
+                            color: const Color(0xFF1E293B),
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: 4.w),
+                      Icon(Icons.edit_rounded, size: 13.r, color: Colors.black45),
+                      SizedBox(width: 3.w),
+                      Icon(Icons.refresh_rounded, size: 13.r, color: Colors.black45),
+                    ],
+                  ),
+                ),
+
+                // Controls row matching screenshot: Status + Operation + Rating Toggle
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // Status Badge
+                      Text(
+                        '✓ مكتمل (${totalAllocated.toInt()}/${model.totalMaxScore.toInt()})',
+                        style: TextStyle(
+                          fontSize: 11.5.sp,
+                          fontWeight: FontWeight.w900,
+                          color: isComplete ? const Color(0xFF15803D) : const Color(0xFFB45309),
+                        ),
+                      ),
+                      SizedBox(width: 6.w),
+
+                      // Math Operation Button
+                      InkWell(
+                        onTap: () => showDialog(
+                          context: context,
+                          builder: (_) => const FinalOperationDialog(),
+                        ),
+                        child: Container(
+                          padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 3.h),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(5.r),
+                            border: Border.all(color: const Color(0xFFCBD5E1)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.calculate_outlined, size: 13.r, color: const Color(0xFF2B6CB0)),
+                              SizedBox(width: 3.w),
+                              Text(
+                                '+ × - ÷ عملية',
+                                style: TextStyle(
+                                  fontSize: 10.5.sp,
+                                  fontWeight: FontWeight.bold,
+                                  color: const Color(0xFF2B6CB0),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: 6.w),
+
+                      // Rating Visibility Toggle
+                      InkWell(
+                        onTap: controller.toggleRatingColumn,
+                        child: Container(
+                          padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 3.h),
+                          decoration: BoxDecoration(
+                            color: controller.showRatingColumn ? const Color(0xFFEBF4EE) : Colors.white,
+                            borderRadius: BorderRadius.circular(5.r),
+                            border: Border.all(
+                              color: controller.showRatingColumn ? const Color(0xFF86EFAC) : const Color(0xFFCBD5E1),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                controller.showRatingColumn ? Icons.visibility_rounded : Icons.visibility_off_rounded,
+                                size: 13.r,
+                                color: controller.showRatingColumn ? const Color(0xFF15803D) : const Color(0xFF64748B),
+                              ),
+                              SizedBox(width: 3.w),
+                              Text(
+                                'التقدير: ${controller.showRatingColumn ? "ظاهر" : "مخفي"}',
+                                style: TextStyle(
+                                  fontSize: 10.5.sp,
+                                  fontWeight: FontWeight.bold,
+                                  color: controller.showRatingColumn ? const Color(0xFF15803D) : const Color(0xFF64748B),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+  /// Empty State Card exactly matching the user's uploaded screenshot
+  Widget _buildEmptyState(BuildContext context, MonthlyModel model, double tableWidth) {
+    return Container(
+      width: tableWidth,
+      padding: EdgeInsets.symmetric(vertical: 52.h, horizontal: 20.w),
+      color: Colors.white,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // Circular Soft Blue Avatar Icon with Plus
+          Container(
+            width: 62.r,
+            height: 62.r,
+            decoration: BoxDecoration(
+              color: const Color(0xFFEEF6FC), // Soft ice blue
+              borderRadius: BorderRadius.circular(16.r),
+              border: Border.all(color: const Color(0xFFD6E8F6)),
+            ),
+            child: const Icon(
+              Icons.person_add_alt_1_rounded,
+              size: 30,
+              color: Color(0xFF5692BE),
+            ),
+          ),
+          SizedBox(height: 18.h),
+
+          // Main Header Text
+          Text(
+            'لا يوجد طلاب مضافين في هذا النموذج (${model.gradeLevel.isNotEmpty ? model.gradeLevel : model.name})',
+            style: TextStyle(
+              fontSize: 18.sp,
+              fontWeight: FontWeight.w900,
+              color: const Color(0xFF2F2822),
+            ),
+            textAlign: TextAlign.center,
+          ),
+          SizedBox(height: 8.h),
+
+          // Subtitle
+          Text(
+            'يمكنك إضافة طالب أو لصق كشف أسماء الطلاب بسهولة للبدء برصد الدرجات.',
+            style: TextStyle(
+              fontSize: 13.5.sp,
+              color: const Color(0xFF786C5E),
+              fontWeight: FontWeight.w600,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          SizedBox(height: 24.h),
+
+          // Big Camel Brown Button: "إضافة أو استيراد كشف الطلاب"
+          InkWell(
+            onTap: () => showDialog(
+              context: context,
+              builder: (_) => const AddStudentDialog(),
+            ),
+            borderRadius: BorderRadius.circular(12.r),
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
+              decoration: BoxDecoration(
+                color: const Color(0xFFBA916C), // Camel craft brown #BA916C
+                borderRadius: BorderRadius.circular(12.r),
+                border: Border.all(color: const Color(0xFF9E7752), width: 1.5),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF5A4128).withValues(alpha: 0.22),
+                    blurRadius: 5,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.folder_shared_rounded, size: 20, color: Colors.white),
+                    SizedBox(width: 8.w),
+                    Text(
+                      'إضافة أو استيراد كشف الطلاب',
+                      style: TextStyle(
+                        fontSize: 14.5.sp,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                      ),
+                    ),
+                    SizedBox(width: 6.w),
+                    const Icon(Icons.person_add_rounded, size: 18, color: Colors.white),
+                  ],
                 ),
               ),
             ),
           ),
-        );
-      },
+        ],
+      ),
     );
   }
 
-  List<DataColumn> _buildColumns(BuildContext context, dynamic model) {
-    final List<DataColumn> cols = [
-      DataColumn(
-        label: Text(
-          context.tr(AppKeys.studentName),
-          style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w900, color: AppColors.inkDark),
-        ),
-      ),
-      DataColumn(
-        label: Text(
-          context.tr(AppKeys.section),
-          style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w900, color: AppColors.inkDark),
-        ),
-      ),
-      DataColumn(
-        label: Text(
-          '${context.tr(AppKeys.writtenScore)} (${model.writtenMaxScore.toInt()})',
-          style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w900, color: AppColors.inkDark),
-        ),
-      ),
-    ];
+  /// Interactive Student Data Row matching the header columns
+  Widget _buildStudentRow(
+    BuildContext context,
+    StudentRow student,
+    MonthlyModel model,
+    MonthlySheetController controller,
+    int idx,
+    _TableWidths widths,
+  ) {
+    final finalScore = controller.calculateFinalStudentScore(student, model);
+    final rating = GradeCalculator.getRating(finalScore, model.totalMaxScore);
+    final isEven = idx % 2 == 0;
 
-    for (final col in model.customColumns) {
-      cols.add(
-        DataColumn(
-          label: Text(
-            '${col.name} (${col.maxScore.toInt()})',
-            style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w900, color: AppColors.inkDark),
+    return Container(
+      height: 52.h,
+      decoration: BoxDecoration(
+        color: isEven ? Colors.white : const Color(0xFFFAF7EC),
+        border: const Border(bottom: BorderSide(color: Color(0xFFE8DDCF))),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 1. Delete button
+          Container(
+            width: widths.delete,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(
+              border: Border(left: BorderSide(color: Color(0xFFE8DDCF))),
+            ),
+            child: IconButton(
+              icon: Icon(Icons.delete_outline_rounded, size: 17.r, color: Colors.red.shade700),
+              onPressed: () => controller.deleteStudent(student.id),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+            ),
+          ),
+
+          // 2. Student Name
+          Container(
+            width: widths.name,
+            padding: EdgeInsets.symmetric(horizontal: 10.w),
+            alignment: Alignment.centerRight,
+            decoration: const BoxDecoration(
+              border: Border(left: BorderSide(color: Color(0xFFE8DDCF))),
+            ),
+            child: Text(
+              student.name,
+              style: TextStyle(
+                fontSize: 13.5.sp,
+                fontWeight: FontWeight.w900,
+                color: const Color(0xFF2F2822),
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+
+          // 3. Grade
+          Container(
+            width: widths.grade,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(
+              border: Border(left: BorderSide(color: Color(0xFFE8DDCF))),
+            ),
+            child: Text(
+              student.gradeLevel.isNotEmpty ? student.gradeLevel : (model.gradeLevel.isNotEmpty ? model.gradeLevel : '-'),
+              style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.bold, color: Colors.black87),
+            ),
+          ),
+
+          // 4. Section
+          Container(
+            width: widths.section,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(
+              border: Border(left: BorderSide(color: Color(0xFFE8DDCF))),
+            ),
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 7.w, vertical: 2.h),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE5D7BE),
+                borderRadius: BorderRadius.circular(4.r),
+              ),
+              child: Text(
+                student.section.isNotEmpty ? student.section : 'أ',
+                style: TextStyle(fontSize: 12.5.sp, fontWeight: FontWeight.w900, color: const Color(0xFF2F2822)),
+              ),
+            ),
+          ),
+
+          // 5. Subject
+          Container(
+            width: widths.subject,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(
+              border: Border(left: BorderSide(color: Color(0xFFE8DDCF))),
+            ),
+            child: Text(
+              model.subject.isNotEmpty ? model.subject : '-',
+              style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.bold, color: const Color(0xFF3A6C8F)),
+            ),
+          ),
+
+          // 6. Written Exam Score cell
+          Container(
+            width: widths.written,
+            padding: EdgeInsets.symmetric(horizontal: 16.w),
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(
+              border: Border(left: BorderSide(color: Color(0xFFE8DDCF))),
+            ),
+            child: _buildClickableScore(
+              score: student.writtenRawScore,
+              maxScore: model.writtenMaxScore,
+              onSave: (val) => controller.updateStudentScore(student.id, writtenScore: val),
+            ),
+          ),
+
+          // 7. Custom Column score cells
+          ...model.customColumns.map((col) {
+            final score = student.scores[col.id];
+            return Container(
+              width: widths.customCol,
+              padding: EdgeInsets.symmetric(horizontal: 10.w),
+              alignment: Alignment.center,
+              decoration: const BoxDecoration(
+                border: Border(left: BorderSide(color: Color(0xFFE8DDCF))),
+              ),
+              child: _buildClickableScore(
+                score: score,
+                maxScore: col.maxScore,
+                onSave: (val) => controller.updateStudentScore(student.id, colId: col.id, colScore: val),
+              ),
+            );
+          }),
+
+          // 8. Spacer under the Add Column button
+          Container(
+            width: widths.addCol,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(
+              border: Border(left: BorderSide(color: Color(0xFFE8DDCF))),
+            ),
+            child: const Text('—', style: TextStyle(color: Colors.black26)),
+          ),
+
+          // 9. Final Score Cell + Rating badge
+          Container(
+            width: widths.finalScore,
+            padding: EdgeInsets.symmetric(horizontal: 12.w),
+            alignment: Alignment.center,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  finalScore != null ? finalScore.toStringAsFixed(1).replaceAll('.0', '') : '—',
+                  style: TextStyle(
+                    fontSize: 16.sp,
+                    fontWeight: FontWeight.w900,
+                    color: const Color(0xFF4A82A8),
+                  ),
+                ),
+                if (controller.showRatingColumn) ...[
+                  SizedBox(width: 8.w),
+                  RatingBadge(ratingKey: rating.key, status: rating.status),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildClickableScore({
+    required double? score,
+    required double maxScore,
+    required ValueChanged<double?> onSave,
+  }) {
+    return InkWell(
+      onTap: () => _promptScoreEdit(score, maxScore, onSave),
+      borderRadius: BorderRadius.circular(8.r),
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 6.h),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(8.r),
+          border: Border.all(color: const Color(0xFFD5C8B2)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 2,
+              offset: const Offset(0, 1),
+            ),
+          ],
+        ),
+        child: Text(
+          score != null ? score.toStringAsFixed(1).replaceAll('.0', '') : '—',
+          style: TextStyle(
+            fontSize: 14.sp,
+            fontWeight: FontWeight.w900,
+            color: score != null ? const Color(0xFF2F2822) : Colors.black38,
           ),
         ),
-      );
-    }
+      ),
+    );
+  }
 
-    cols.addAll([
-      DataColumn(
-        label: Text(
-          '${context.tr(AppKeys.finalScore)} (${model.totalMaxScore.toInt()})',
-          style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w900, color: AppColors.monthlyBlueDark),
+  void _promptScoreEdit(double? initialScore, double maxScore, ValueChanged<double?> onSave) {
+    final textController = TextEditingController(text: initialScore?.toString() ?? '');
+    showDialog(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.r)),
+          title: Text(
+            'رصد الدرجة (من ${maxScore.toInt()})',
+            style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w900),
+          ),
+          content: TextField(
+            controller: textController,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            autofocus: true,
+            style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.bold),
+            decoration: InputDecoration(
+              hintText: '0 - ${maxScore.toInt()}',
+              contentPadding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10.r)),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('إلغاء'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final val = double.tryParse(textController.text.trim());
+                onSave(val);
+                Navigator.of(ctx).pop();
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF5692BE)),
+              child: const Text(
+                'حفظ الدرجة',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
         ),
       ),
-      DataColumn(
-        label: Text(
-          context.tr(AppKeys.rating),
-          style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w900, color: AppColors.inkDark),
+    );
+  }
+
+  Widget _buildHeaderCell({
+    required double width,
+    required Widget child,
+    Color? color,
+  }) {
+    return Container(
+      width: width,
+      constraints: BoxConstraints(minHeight: 110.h),
+      padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 8.h),
+      decoration: BoxDecoration(
+        color: color ?? const Color(0xFFEFE8D8),
+        border: const Border(
+          left: BorderSide(color: Color(0xFFD5C8B2), width: 1.2),
         ),
       ),
-      const DataColumn(label: SizedBox(width: 24)),
-    ]);
+      alignment: Alignment.center,
+      child: child,
+    );
+  }
 
-    return cols;
+  Widget _buildRadioOption({
+    required String label,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: EdgeInsets.symmetric(vertical: 2.h),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
+              size: 14.r,
+              color: isSelected ? const Color(0xFF2B6CB0) : Colors.black45,
+            ),
+            SizedBox(width: 4.w),
+            Flexible(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11.5.sp,
+                  fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
+                  color: isSelected ? const Color(0xFF1E40AF) : const Color(0xFF334155),
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

@@ -180,25 +180,28 @@ class GradebookApiService {
     bool isAdmin = false,
     bool isTrial = false,
   }) async {
-    try {
-      final uri = Uri.parse('$baseUrl${ApiEndpoints.dataEndpoint}?uid=${Uri.encodeComponent(userUid)}');
-      final res = await _client.get(
-        uri,
-        headers: ApiEndpoints.getHeaders(
-          token: token,
-          userUid: userUid,
-          userEmail: email,
-          isAdmin: isAdmin,
-          isTrial: isTrial,
-        ),
-      ).timeout(ApiEndpoints.requestTimeout);
-      if (res.statusCode == 200) {
-        final decoded = jsonDecode(res.body) as Map<String, dynamic>;
-        if (decoded['success'] == true && decoded['data'] != null) {
-          return decoded['data'] as Map<String, dynamic>;
+    final urls = [baseUrl, ApiEndpoints.fallbackBaseUrl];
+    for (final host in urls) {
+      try {
+        final uri = Uri.parse('$host${ApiEndpoints.dataEndpoint}?uid=${Uri.encodeComponent(userUid)}');
+        final res = await _client.get(
+          uri,
+          headers: ApiEndpoints.getHeaders(
+            token: token,
+            userUid: userUid,
+            userEmail: email,
+            isAdmin: isAdmin,
+            isTrial: isTrial,
+          ),
+        ).timeout(ApiEndpoints.requestTimeout);
+        if (res.statusCode == 200) {
+          final decoded = jsonDecode(res.body) as Map<String, dynamic>;
+          if (decoded['success'] == true && decoded['data'] != null) {
+            return decoded['data'] as Map<String, dynamic>;
+          }
         }
-      }
-    } catch (_) {}
+      } catch (_) {}
+    }
     return null;
   }
 
@@ -214,41 +217,51 @@ class GradebookApiService {
     bool isAdmin = false,
     bool isTrial = false,
   }) async {
-    try {
-      final res = await _client.post(
-        Uri.parse('$baseUrl${ApiEndpoints.dataEndpoint}'),
-        headers: ApiEndpoints.getHeaders(
-          token: token,
-          userUid: userUid,
-          userEmail: email,
-          isAdmin: isAdmin,
-          isTrial: isTrial,
-        ),
-        body: jsonEncode({
-          'userUid': userUid,
-          'email': email ?? '',
-          'profile': profile.toJson(),
-          'models': models.map((m) => m.toJson()).toList(),
-          'terms': terms.map((t) => t.toJson()).toList(),
-          'timestamp': DateTime.now().toIso8601String(),
-        }),
-      ).timeout(const Duration(seconds: 20));
+    final urls = [baseUrl, ApiEndpoints.fallbackBaseUrl];
+    Map<String, dynamic> lastResult = {'success': false, 'statusCode': 0, 'error': 'NETWORK_ERROR'};
 
-      final statusCode = res.statusCode;
-      if (statusCode == 200 || statusCode == 201) {
-        return {'success': true, 'statusCode': statusCode, 'message': 'تمت المزامنة بنجاح'};
-      }
-
-      String errMsg = 'فشل في حفظ البيانات السحابية';
+    for (final host in urls) {
       try {
-        final body = jsonDecode(res.body) as Map<String, dynamic>;
-        if (body['error'] != null) errMsg = body['error'].toString();
-      } catch (_) {}
+        final res = await _client.post(
+          Uri.parse('$host${ApiEndpoints.dataEndpoint}'),
+          headers: ApiEndpoints.getHeaders(
+            token: token,
+            userUid: userUid,
+            userEmail: email,
+            isAdmin: isAdmin,
+            isTrial: isTrial,
+          ),
+          body: jsonEncode({
+            'userUid': userUid,
+            'email': email ?? '',
+            'profile': profile.toJson(),
+            'models': models.map((m) => m.toJson()).toList(),
+            'terms': terms.map((t) => t.toJson()).toList(),
+            'timestamp': DateTime.now().toIso8601String(),
+          }),
+        ).timeout(const Duration(seconds: 20));
 
-      return {'success': false, 'statusCode': statusCode, 'error': errMsg};
-    } catch (e) {
-      return {'success': false, 'statusCode': 0, 'error': 'NETWORK_ERROR'};
+        final statusCode = res.statusCode;
+        if (statusCode == 200 || statusCode == 201) {
+          return {'success': true, 'statusCode': statusCode, 'message': 'تمت المزامنة بنجاح'};
+        }
+
+        String errMsg = 'فشل في حفظ البيانات السحابية';
+        try {
+          final body = jsonDecode(res.body) as Map<String, dynamic>;
+          if (body['error'] != null) errMsg = body['error'].toString();
+        } catch (_) {}
+
+        lastResult = {'success': false, 'statusCode': statusCode, 'error': errMsg};
+        if (statusCode == 401 || statusCode == 403) {
+          // Auth / permission error should not failover to second host, return immediately
+          return lastResult;
+        }
+      } catch (e) {
+        lastResult = {'success': false, 'statusCode': 0, 'error': 'NETWORK_ERROR'};
+      }
     }
+    return lastResult;
   }
 
   /// AI OCR endpoint for extracting students and scores from photo
