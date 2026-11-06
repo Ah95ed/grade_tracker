@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
-
 import 'package:firebase_core/firebase_core.dart';
 
 import 'firebase_options.dart';
@@ -21,6 +20,7 @@ import 'controllers/auth_controller.dart';
 import 'views/home/home_screen.dart';
 import 'views/auth/auth_screen.dart';
 
+//  الدالة الاساسية او ستارت ابب
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final storageService = await StorageService.init();

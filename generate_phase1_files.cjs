@@ -1,0 +1,404 @@
+const fs = require('fs');
+const path = require('path');
+
+const tokens = {
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "نظام تصميم درجات (Daragat Design Tokens)",
+  "description": "استخراج شامل ودقيق لكافة عناصر التصميم والألوان والمسافات والخطوط والظلال ونقاط التجاوب لمشروع درجات",
+  "version": "1.0.0",
+  "direction": "rtl",
+  "colorPalette": {
+    "pageAndCanvas": {
+      "pageBg": {
+        "value": "#F6F3E2",
+        "description": "خلفية الورق المشبك الدافئة لكامل صفحات التطبيق"
+      },
+      "pageLine": {
+        "value": "#D8D4C8",
+        "description": "لون خط الفواصل الدافئ"
+      },
+      "gridLine": {
+        "value": "rgba(195, 187, 170, 0.45)",
+        "hexFallback": "#C3BBAA",
+        "size": "22px 22px",
+        "description": "خطوط شبكة الورق المشبك الرياضي (Graph Paper Grid)"
+      }
+    },
+    "craftLeather": {
+      "craftBrown": {
+        "value": "#BA916C",
+        "description": "لون الجلد الكرافتي الأساسي لأزرار العمليات الرئيسية مثل (+ جدول درجات جديد)"
+      },
+      "craftBrownHover": {
+        "value": "#A67E56",
+        "description": "لون التمرير للأزرار الكرافتية"
+      },
+      "craftBrownDark": {
+        "value": "#8C6544",
+        "description": "لون الضغط والإطار الداكن للكرافت"
+      },
+      "craftBorder": {
+        "value": "#AA8362",
+        "description": "لون حدود البطاقات الكرتونية"
+      },
+      "craftCardBg": {
+        "value": "#FAF6EC",
+        "description": "لون خلفية البطاقات الكرتونية الدافئة (craft-card)"
+      },
+      "craftTableHeader": {
+        "value": "#E8D7C2",
+        "description": "لون خلفية ترويسة الجداول المدرسية"
+      },
+      "craftTableBorder": {
+        "value": "#C2A88F",
+        "description": "لون حدود ترويسة الجدول وخلاياه"
+      },
+      "craftBadgeBg": {
+        "value": "#E8D7C2",
+        "description": "لون شارات التنبيه والإحصائيات الكرافتية"
+      },
+      "craftBadgeBorder": {
+        "value": "#C2A88F",
+        "description": "حدود الشارات الكرافتية"
+      }
+    },
+    "moduleThemes": {
+      "monthlySheet": {
+        "name": "صفحة جدول الدرجات الشهرية",
+        "accent": "#5692BE",
+        "dark": "#4A82A8",
+        "button": "#BA916C",
+        "description": "أزرق السماء الهادئ المتناسق مع الورق المدرسي"
+      },
+      "termCalculation": {
+        "name": "صفحة حساب المعدل والفصول",
+        "accent": "#B86848",
+        "dark": "#A05537",
+        "button": "#B56846",
+        "description": "لون التراكوتا والبرونز الكرافتي"
+      },
+      "reportCards": {
+        "name": "صفحة الكروت والشهادات المدرسية",
+        "accent": "#4E7A68",
+        "dark": "#3B6554",
+        "button": "#4E7A68",
+        "description": "لون الميرمية والزيتوني الهادئ الأكاديمي"
+      },
+      "adminDashboard": {
+        "name": "لوحة الإدارة والاشتراكات",
+        "accent": "#3E5771",
+        "dark": "#2F445B",
+        "button": "#3E5771",
+        "description": "لون الكحلي الفولاذي الإداري"
+      }
+    },
+    "typographyColors": {
+      "inkDark": {
+        "value": "#2F2822",
+        "description": "لون الحبر الداكن الكلاسيكي لكافة العناوين والنصوص الرئيسية بدلاً من الأسود الحاد"
+      },
+      "inkMuted": {
+        "value": "#6B5E51",
+        "description": "لون حبر النصوص الفرعية والتوضيحية"
+      },
+      "textMuted": {
+        "value": "#8C7E72",
+        "description": "لون النصوص الباهتة وتلميحات الحقول (Placeholder)"
+      },
+      "textWhite": {
+        "value": "#FFFFFF",
+        "description": "النصوص البيضاء داخل الأزرار والبانرات الملونة"
+      }
+    },
+    "semanticFeedback": {
+      "success": {
+        "main": "#10B981",
+        "dark": "#047857",
+        "light": "#D1FAE5",
+        "border": "#A7F3D0",
+        "description": "حالات النجاح، الطلاب الناجحون، تمام المزامنة"
+      },
+      "warning": {
+        "main": "#F59E0B",
+        "dark": "#B45309",
+        "light": "#FEF3C7",
+        "border": "#FDE68A",
+        "description": "التنبيهات، الطلاب المعرضون للرسوب، الجلسات المعلقة"
+      },
+      "danger": {
+        "main": "#EF4444",
+        "dark": "#B91C1C",
+        "light": "#FEE2E2",
+        "border": "#FECACA",
+        "description": "الرسوب، الحذف، أخطاء الاتصال، انتهاء الاشتراك"
+      },
+      "info": {
+        "main": "#3B82F6",
+        "dark": "#1D4ED8",
+        "light": "#DBEAFE",
+        "border": "#BFDBFE",
+        "description": "المعلومات التوجيهية وتحديثات النظام"
+      }
+    },
+    "keypad": {
+      "keyBg": "#FFFFFF",
+      "keyBorder": "#D5C8B2",
+      "keyHover": "#F8F4EA",
+      "keyActive": "#EFE8D8",
+      "keyText": "#2F2822",
+      "actionDeleteBg": "#FEE2E2",
+      "actionDeleteBorder": "#FECACA",
+      "actionDeleteText": "#DC2626",
+      "actionNextBg": "#E8D7C2",
+      "actionNextBorder": "#C2A88F",
+      "actionNextText": "#2F2822",
+      "description": "لوحة المفاتيح اللمسية السريعة المدمجة لإدخال الدرجات"
+    },
+    "neutralShades": {
+      "slate50": "#F8FAFC",
+      "slate100": "#F1F5F9",
+      "slate200": "#E2E8F0",
+      "slate300": "#CBD5E1",
+      "slate400": "#94A3B8",
+      "slate500": "#64748B",
+      "slate600": "#475569",
+      "slate700": "#334155",
+      "slate800": "#1E293B",
+      "slate900": "#0F172A",
+      "slate950": "#020617"
+    }
+  },
+  "spacingScale": {
+    "baseUnit": "4px",
+    "scale": {
+      "0": "0px",
+      "0.5": "2px",
+      "1": "4px",
+      "1.5": "6px",
+      "2": "8px",
+      "2.5": "10px",
+      "3": "12px",
+      "3.5": "14px",
+      "4": "16px",
+      "5": "20px",
+      "6": "24px",
+      "7": "28px",
+      "8": "32px",
+      "9": "36px",
+      "10": "40px",
+      "12": "48px",
+      "14": "56px",
+      "16": "64px",
+      "20": "80px",
+      "24": "96px"
+    },
+    "graphPaperCellSize": "22px",
+    "keypadKeyHeightMobile": "48px",
+    "keypadKeyHeightDesktop": "54px"
+  },
+  "borderRadius": {
+    "none": "0px",
+    "sm": "4px",
+    "base": "6px",
+    "md": "8px",
+    "lg": "10px",
+    "xl": "12px",
+    "2xl": "16px",
+    "3xl": "24px",
+    "full": "9999px",
+    "components": {
+      "card": "16px",
+      "modal": "24px",
+      "button": "12px",
+      "badge": "9999px",
+      "tableCell": "8px",
+      "input": "12px",
+      "keypadKey": "12px"
+    }
+  },
+  "shadows": {
+    "craftCard": {
+      "value": "0 2px 4px rgba(90, 65, 40, 0.08)",
+      "description": "ظل البطاقة الكرتونية الدافئة"
+    },
+    "craftBtn": {
+      "value": "0 2px 5px rgba(100, 70, 45, 0.2)",
+      "description": "ظل الزر الجلدي الكرافتي"
+    },
+    "craftTableHeader": {
+      "value": "inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 1px 2px rgba(80, 55, 30, 0.08)",
+      "description": "تأثير ترويسة الجدول البارزة"
+    },
+    "elevationSm": {
+      "value": "0 1px 2px 0 rgba(0, 0, 0, 0.05)",
+      "description": "ظل خفيف جداً للأزرار والحقول"
+    },
+    "elevationMd": {
+      "value": "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1)",
+      "description": "ظل القوائم المنسدلة والبطاقات المرتفعة"
+    },
+    "elevationLg": {
+      "value": "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1)",
+      "description": "ظل النوافذ المنبثقة (Modals)"
+    },
+    "elevationXl": {
+      "value": "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
+      "description": "ظل الشاشات المعلقة العائمة"
+    }
+  },
+  "typography": {
+    "fontFamily": {
+      "primary": "Cairo",
+      "fallback": "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+    },
+    "fontWeights": {
+      "normal": 400,
+      "medium": 500,
+      "semibold": 600,
+      "bold": 700,
+      "extrabold": 800,
+      "black": 900
+    },
+    "fontSizes": {
+      "xs": {
+        "size": "12px",
+        "lineHeight": "16px"
+      },
+      "sm": {
+        "size": "14px",
+        "lineHeight": "20px"
+      },
+      "base": {
+        "size": "16px",
+        "lineHeight": "24px"
+      },
+      "lg": {
+        "size": "18px",
+        "lineHeight": "28px"
+      },
+      "xl": {
+        "size": "20px",
+        "lineHeight": "28px"
+      },
+      "2xl": {
+        "size": "24px",
+        "lineHeight": "32px"
+      },
+      "3xl": {
+        "size": "30px",
+        "lineHeight": "36px"
+      },
+      "4xl": {
+        "size": "36px",
+        "lineHeight": "40px"
+      },
+      "5xl": {
+        "size": "48px",
+        "lineHeight": "48px"
+      }
+    }
+  },
+  "transitions": {
+    "keypad": "all 0.1s ease",
+    "buttonHover": "all 0.15s ease-in-out",
+    "themeHeader": "all 0.2s ease",
+    "modalOpen": "all 0.3s cubic-bezier(0.16, 1, 0.3, 1)"
+  },
+  "breakpoints": {
+    "sm": {
+      "width": "640px",
+      "description": "الهواتف الكبيرة والشاشات الصغيرة"
+    },
+    "md": {
+      "width": "768px",
+      "description": "الأجهزة اللوحية (Tablets)"
+    },
+    "lg": {
+      "width": "1024px",
+      "description": "شاشات الحاسوب المحمول (Laptops)"
+    },
+    "xl": {
+      "width": "1280px",
+      "description": "شاشات الحواسيب المكتبية القياسية"
+    },
+    "2xl": {
+      "width": "1536px",
+      "description": "شاشات سطح المكتب الكبيرة والعريضة"
+    },
+    "compactThreshold": {
+      "width": "720px",
+      "description": "الحد الفاصل بين العرض المتنقل المدمج والعرض المكتبي الموسع للجداول والكروت"
+    }
+  },
+  "printSpecification": {
+    "paperTypes": ["A4", "A5"],
+    "orientation": ["portrait", "landscape"],
+    "colorAdjust": "exact",
+    "breakInside": "avoid",
+    "background": "#FFFFFF",
+    "color": "#000000"
+  }
+};
+
+const jsonStr = JSON.stringify(tokens, null, 2);
+
+const summaryMd = `# ملخص استخراج نظام التصميم — درجات (Phase 1 Summary)
+
+## 1. الهوية البصرية الأساسية (Brand Identity)
+- **نوع التصميم**: دفتر درجات ورقي مدرسي بغلاف جلدي كرافتي أصيل.
+- **خلفية الصفحات**: أرضية بيج ورقية دافئة \`#F6F3E2\` مع شبكة خطوط هندسية بحجم \`22px × 22px\` ولون \`rgba(195, 187, 170, 0.45)\`.
+- **خط النصوص الأساسي**: \`Cairo\` بجميع أوزانه (من Regular 400 حتى Black 900) مع دعم كامل للاتجاه من اليمين لليسار (RTL).
+- **لون الحبر المدرسي**: \`#2F2822\` (Ink Dark) بدلاً من الأسود الحاد 000000.
+
+## 2. سمات التبويبات الأربعة (Module Accents)
+1. **جدول الدرجات الشهرية**: أزرق سماوي هادئ (\`#5692BE\`) متناسق مع الورق المدرسي.
+2. **حساب المعدل والفصول**: تيراكوتا وبرونز كرافتي (\`#B86848\`).
+3. **الكروت والشهادات**: أخضر ميرمية وزيتوني أكاديمي (\`#4E7A68\`).
+4. **لوحة الإدارة**: كحلي فولاذي إداري (\`#3E5771\`).
+
+## 3. عناصر الجلد الكرافتي (Craft Leather Elements)
+- الزر الأساسي (\`craft-btn-primary\`): لون \`#BA916C\` مع حواف \`#9E7752\` وظل بارز \`0 2px 5px rgba(100, 70, 45, 0.2)\`.
+- البطاقات (\`craft-card\`): لون \`#FAF6EC\` مع حواف جلدية دافئة \`#AA8362\` بعرض 1.5px.
+- ترويسة الجداول (\`craft-table-header\`): لون \`#E8D7C2\` مع حواف \`#C2A88F\` وتأثير نقش داخلي.
+- لوحة المفاتيح السريعة (\`craft-keypad-key\`): أزرار بيضاء ناصعة بارتفاع 48px/54px وزوايا 12px.
+
+## 4. مقياس المسافات والزوايا والظلال
+- **مقياس المسافات**: وحدة قياس 4px (من 2px حتى 96px).
+- **أنصاف الأقطار (Border Radius)**:
+  - كبسولات وشارات: \`9999px\`
+  - كروت وبطاقات: \`16px\`
+  - أزرار وحقول: \`12px\`
+  - نوافذ منبثقة: \`24px\`
+- **الظلال**:
+  - كروت الكرافت: \`0 2px 4px rgba(90, 65, 40, 0.08)\`
+  - النوافذ المنبثقة: \`0 10px 15px -3px rgba(0,0,0,0.1)\`
+
+## 5. مواصفات الطباعة المدرسية (@media print)
+- إخفاء تام للعناصر غير المطبوعة (\`.no-print\`).
+- تحويل الخلفية إلى أبيض ناصع \`#FFFFFF\` والخط إلى أسود كامل \`#000000\`.
+- تفعيل خاصية \`break-inside: avoid\` لعدم قص شهادة الطالب بين ورقتين.
+- دعم قياسات A4 و A5 بالطول والعرض.
+
+## 6. مسار الملف المنظم
+- \`/home/z/my-project/download/design_tokens.json\`
+- \`/home/z/my-project/download/phase1_summary.md\`
+`;
+
+const targetDirs = [
+  '/home/z/my-project/download',
+  'D:/home/z/my-project/download',
+  'C:/home/z/my-project/download',
+  path.join(__dirname, 'download')
+];
+
+for (const d of targetDirs) {
+  try {
+    fs.mkdirSync(d, { recursive: true });
+    fs.writeFileSync(path.join(d, 'design_tokens.json'), jsonStr, 'utf8');
+    fs.writeFileSync(path.join(d, 'phase1_summary.md'), summaryMd, 'utf8');
+    console.log('Saved to:', d);
+  } catch (err) {
+    console.log('Could not write to:', d, err.message);
+  }
+}
+

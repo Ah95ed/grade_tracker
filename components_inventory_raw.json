@@ -1,0 +1,2107 @@
+[
+  {
+    "name": "AdminDashboardView",
+    "path": "src/components/Admin/AdminDashboardView.tsx",
+    "category": "شاشة / لوحة رئيسية",
+    "priority": 1,
+    "priorityLabel": "عالية (شاشات وتوجيه أساسي)",
+    "propsCount": 2,
+    "props": [
+      "currentUser: AppUser",
+      "onRefreshData?: () => void"
+    ],
+    "stateCount": 14,
+    "stateVars": [
+      "users",
+      "admins",
+      "newAdminEmail",
+      "adminSuccessMsg",
+      "adminErrorMsg",
+      "searchQuery",
+      "filterType",
+      "actionNotice",
+      "isSqlModalOpen",
+      "isRefreshing",
+      "syncResult",
+      "nowTick",
+      "quickEmail",
+      "quickPlan"
+    ],
+    "hooks": [
+      "useState",
+      "useEffect",
+      "useMemo"
+    ],
+    "subComponents": [
+      "SqlDatabaseModal",
+      "AppUser",
+      "RemoteUsersResult",
+      "PRIMARY_ADMIN_EMAIL",
+      "SUPPORT_PHONE_NUMBER",
+      "TRIAL_DURATION_MS",
+      "IRAQ_TIMEZONE"
+    ],
+    "externalDependencies": [
+      "lucide-react",
+      "firebase/auth"
+    ]
+  },
+  {
+    "name": "App",
+    "path": "src/App.tsx",
+    "category": "شاشة / لوحة رئيسية",
+    "priority": 1,
+    "priorityLabel": "عالية (شاشات وتوجيه أساسي)",
+    "propsCount": 0,
+    "props": [],
+    "stateCount": 19,
+    "stateVars": [
+      "currentUser",
+      "hadExpiredNotice",
+      "isPrivacyPage",
+      "models",
+      "terms",
+      "profile",
+      "activeTab",
+      "activeModelId",
+      "activeTermId",
+      "hasDismissedProfileModal",
+      "isProfileModalOpen",
+      "isSubscriptionModalOpen",
+      "isRoleModalOpen",
+      "isRoundingModalOpen",
+      "toastMessage",
+      "isOfflineTimeoutModalOpen",
+      "cancelledAccountInfo",
+      "isExitSyncModalOpen",
+      "isLoggingOutSyncing"
+    ],
+    "hooks": [
+      "useState",
+      "useEffect",
+      "useRef"
+    ],
+    "subComponents": [
+      "MonthlyModel",
+      "TermModel",
+      "TeacherProfile",
+      "RoundingMode",
+      "DEFAULT_TEACHER_PROFILE",
+      "AppUser",
+      "OFFLINE_VERIFICATION_TIMEOUT_MS",
+      "SUPPORT_PHONE_NUMBER",
+      "AuthScreen",
+      "TrialBanner",
+      "SubscriptionExpiredModal",
+      "OfflineVerificationModal",
+      "AccountCancelledModal",
+      "RoleSelectionModal",
+      "AdminDashboardView",
+      "Header",
+      "MonthlySheetView",
+      "TermCalculationView",
+      "ReportCardsView",
+      "TeacherSettingsModal",
+      "ScoreRoundingModal",
+      "PrivacyPolicyView"
+    ],
+    "externalDependencies": [
+      "react",
+      "firebase/auth",
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "CleanTableView",
+    "path": "src/components/MonthlySheet/CleanTableView.tsx",
+    "category": "شاشة / لوحة رئيسية",
+    "priority": 1,
+    "priorityLabel": "عالية (شاشات وتوجيه أساسي)",
+    "propsCount": 14,
+    "props": [
+      "model: MonthlyModel",
+      "allModels?: MonthlyModel[]",
+      "onClose: () => void",
+      "onUpdateStudent?: (studentId: string, updates: Partial<StudentRow>) => void",
+      "showRatingColumn?: boolean",
+      "totalMax: number",
+      "effectiveTotalMax: number",
+      "effectiveWrittenWeight: number",
+      "writtenScoreMode: WrittenScoreMode",
+      "columnLabels?: ColumnLabels",
+      "selectedGradeLevel?: string",
+      "selectedSection?: string",
+      "onGradeChange?: (grade: string) => void",
+      "onSectionChange?: (section: string) => void"
+    ],
+    "stateCount": 2,
+    "stateVars": [
+      "activeStudentCloud",
+      "selectedAttendanceStudent"
+    ],
+    "hooks": [
+      "useState",
+      "useEffect",
+      "useRef",
+      "useMemo"
+    ],
+    "subComponents": [
+      "MonthlyModel",
+      "StudentRow",
+      "CustomColumn",
+      "AttendanceRecord",
+      "WrittenScoreMode",
+      "ColumnLabels",
+      "StudentFloatingCloud",
+      "ActiveStudentCloudInfo",
+      "AttendanceRecordModal"
+    ],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "CleanTermTableView",
+    "path": "src/components/TermCalculation/CleanTermTableView.tsx",
+    "category": "شاشة / لوحة رئيسية",
+    "priority": 1,
+    "priorityLabel": "عالية (شاشات وتوجيه أساسي)",
+    "propsCount": 9,
+    "props": [
+      "term: TermModel",
+      "monthlyModels: MonthlyModel[]",
+      "onClose: () => void",
+      "showRatingColumn?: boolean",
+      "showSubjectColumn?: boolean",
+      "selectedGradeLevel?: string",
+      "selectedSection?: string",
+      "onGradeChange?: (grade: string) => void",
+      "onSectionChange?: (section: string) => void"
+    ],
+    "stateCount": 1,
+    "stateVars": [
+      "activeStudentCloud"
+    ],
+    "hooks": [
+      "useState",
+      "useEffect",
+      "useRef",
+      "useMemo"
+    ],
+    "subComponents": [
+      "TermModel",
+      "MonthlyModel",
+      "StudentFloatingCloud",
+      "ActiveStudentCloudInfo"
+    ],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "EditorArea",
+    "path": "src/components/EditorArea.tsx",
+    "category": "شاشة / لوحة رئيسية",
+    "priority": 1,
+    "priorityLabel": "عالية (شاشات وتوجيه أساسي)",
+    "propsCount": 8,
+    "props": [
+      "files: WorkspaceFile[]",
+      "activeFile: WorkspaceFile | null",
+      "openFileIds: string[]",
+      "settings: EditorSettings",
+      "onSelectTab: (fileId: string) => void",
+      "onCloseTab: (fileId: string) => void",
+      "onChangeContent: (fileId: string, content: string) => void",
+      "onRun: () => void"
+    ],
+    "stateCount": 6,
+    "stateVars": [
+      "copied",
+      "showSearch",
+      "searchQuery",
+      "replaceQuery",
+      "cursorPos",
+      "isEditorFullscreen"
+    ],
+    "hooks": [
+      "useState",
+      "useEffect",
+      "useRef"
+    ],
+    "subComponents": [
+      "WorkspaceFile",
+      "EditorSettings"
+    ],
+    "externalDependencies": [
+      "lucide-react",
+      "prismjs"
+    ]
+  },
+  {
+    "name": "Header",
+    "path": "src/components/Header.tsx",
+    "category": "شاشة / لوحة رئيسية",
+    "priority": 1,
+    "priorityLabel": "عالية (شاشات وتوجيه أساسي)",
+    "propsCount": 14,
+    "props": [
+      "activeTab: 'monthly' | 'term' | 'cards' | 'admin'",
+      "setActiveTab: (tab: 'monthly' | 'term' | 'cards' | 'admin') => void",
+      "profile: TeacherProfile",
+      "currentUser: AppUser | null",
+      "onLogout: () => void",
+      "onDeleteAccount: () => Promise<void> | void",
+      "onOpenProfileModal: () => void",
+      "onOpenSubscriptionModal: () => void",
+      "onOpenRoundingModal?: () => void",
+      "onExportBackup: () => void",
+      "onImportBackup: (jsonString: string) => void",
+      "onResetDefaults: () => void",
+      "onOpenPrivacy?: () => void",
+      "hasUnsavedChanges?: boolean"
+    ],
+    "stateCount": 5,
+    "stateVars": [
+      "isMenuOpen",
+      "isResetModalOpen",
+      "isDeleteAccountModalOpen",
+      "isContactModalOpen",
+      "isInstallModalOpen"
+    ],
+    "hooks": [
+      "useRef",
+      "useState",
+      "useEffect",
+      "usePWAInstall"
+    ],
+    "subComponents": [
+      "TeacherProfile",
+      "AppUser",
+      "ConfirmDeleteModal",
+      "DeleteAccountModal",
+      "ContactModal",
+      "SyncStatusBadge",
+      "PWAInstallButton",
+      "PWAInstallModal",
+      "AppLogo"
+    ],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "InteractiveClassroomView",
+    "path": "src/components/MonthlySheet/InteractiveClassroomView.tsx",
+    "category": "شاشة / لوحة رئيسية",
+    "priority": 1,
+    "priorityLabel": "عالية (شاشات وتوجيه أساسي)",
+    "propsCount": 10,
+    "props": [
+      "model: MonthlyModel",
+      "allGradeLevels: string[]",
+      "allSections: string[]",
+      "selectedGradeLevel: string",
+      "selectedSection: string",
+      "onSelectGrade: (grade: string) => void",
+      "onSelectSection: (section: string) => void",
+      "onUpdateStudent: (studentId: string, updates: Partial<StudentRow>) => void",
+      "onAddNewColumn: (name: string, maxScore: number) => string | undefined",
+      "onSwitchToTableView: () => void"
+    ],
+    "stateCount": 17,
+    "stateVars": [
+      "activeTab",
+      "searchQuery",
+      "session",
+      "selectedParticipationColId",
+      "selectedOralColId",
+      "columnAlert",
+      "createColModal",
+      "confirmResetOpen",
+      "isSyncModalOpen",
+      "syncTargetColId",
+      "newSyncColName",
+      "syncColMaxScore",
+      "syncSuccessMsg",
+      "oralFilter",
+      "gradingStudent",
+      "gradingScoreInput",
+      "randomStudentHighlight"
+    ],
+    "hooks": [
+      "useState",
+      "useEffect",
+      "useMemo",
+      "useInstitutionTerms"
+    ],
+    "subComponents": [
+      "MonthlyModel",
+      "StudentRow",
+      "ParticipationRecord"
+    ],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "MonthlySheetView",
+    "path": "src/components/MonthlySheet/MonthlySheetView.tsx",
+    "category": "شاشة / لوحة رئيسية",
+    "priority": 1,
+    "priorityLabel": "عالية (شاشات وتوجيه أساسي)",
+    "propsCount": 9,
+    "props": [
+      "models: MonthlyModel[]",
+      "activeModelId: string",
+      "onSelectModel: (id: string) => void",
+      "onUpdateModel: (updatedModel: MonthlyModel) => void",
+      "onUpdateAllModels?: (updatedModels: MonthlyModel[]) => void",
+      "onDeleteModel: (id: string) => void",
+      "onAddModel: (newModel: MonthlyModel) => void",
+      "profile: TeacherProfile",
+      "currentUser?: AppUser | null"
+    ],
+    "stateCount": 42,
+    "stateVars": [
+      "isBatchImportOpen",
+      "isCreateModelOpen",
+      "editingModelForRename",
+      "isSectionsSwapOpen",
+      "swapInitialGrade",
+      "swapInitialSubject",
+      "selectedGradeFilter",
+      "selectedSubjectFilter",
+      "isAddingColumn",
+      "newColName",
+      "newColMax",
+      "isAttendanceMode",
+      "attendanceAffectsGrade",
+      "presentAction",
+      "presentPoints",
+      "excusedAction",
+      "excusedPoints",
+      "absentAction",
+      "absentPoints",
+      "attendanceCrossMonthMode",
+      "selectedPriorModelIds",
+      "selectedStudentForAttendance",
+      "isClassCumulativeAttendanceOpen",
+      "isRoundingModalOpen",
+      "isFinalOperationModalOpen",
+      "viewMode",
+      "isCleanTableView",
+      "searchQuery",
+      "selectedGradeLevel",
+      "selectedSection",
+      "managingGrade",
+      "columnSlants",
+      "activeStudentCloud",
+      "isNameColumnVisible",
+      "isTableScrolledIntoView",
+      "confirmDelete",
+      "actionPrompt",
+      "newlyCreatedModel",
+      "isRenameColumnsModalOpen",
+      "editingColumnKey",
+      "inlineEditValue",
+      "showRatingColumn"
+    ],
+    "hooks": [
+      "useState",
+      "useEffect",
+      "useMemo",
+      "useRef",
+      "useCallback"
+    ],
+    "subComponents": [
+      "MonthlyModel",
+      "StudentRow",
+      "CustomColumn",
+      "TeacherProfile",
+      "RoundingMode",
+      "WrittenScoreMode",
+      "ColumnLabels",
+      "FinalScoreOperation",
+      "AttendanceRecord",
+      "AttendanceColumnConfig",
+      "InteractiveClassroomView",
+      "CleanTableView",
+      "GradeRenameMergeModal",
+      "BatchImportModal",
+      "CreateModelModal",
+      "EditModelModal",
+      "TeacherSectionsSwapModal",
+      "ConfirmDeleteModal",
+      "ScoreRoundingModal",
+      "RenameColumnsModal",
+      "FinalScoreOperationModal",
+      "AttendanceRecordModal",
+      "ClassCumulativeAttendanceModal",
+      "StudentFloatingCloud",
+      "ActiveStudentCloudInfo",
+      "ColumnSlant",
+      "SlantButton",
+      "AppUser"
+    ],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "PrivacyPolicyView",
+    "path": "src/components/PrivacyPolicy/PrivacyPolicyView.tsx",
+    "category": "شاشة / لوحة رئيسية",
+    "priority": 1,
+    "priorityLabel": "عالية (شاشات وتوجيه أساسي)",
+    "propsCount": 2,
+    "props": [
+      "onBack: () => void",
+      "currentUser?: AppUser | null"
+    ],
+    "stateCount": 2,
+    "stateVars": [
+      "copiedType",
+      "isMobileDevice"
+    ],
+    "hooks": [
+      "useState",
+      "useEffect"
+    ],
+    "subComponents": [
+      "AppLogo",
+      "AppUser"
+    ],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "ReportCardsView",
+    "path": "src/components/ReportCards/ReportCardsView.tsx",
+    "category": "شاشة / لوحة رئيسية",
+    "priority": 1,
+    "priorityLabel": "عالية (شاشات وتوجيه أساسي)",
+    "propsCount": 5,
+    "props": [
+      "monthlyModels: MonthlyModel[]",
+      "terms: TermModel[]",
+      "profile: TeacherProfile",
+      "onUpdateProfile?: (profile: TeacherProfile) => void",
+      "onNavigateToTerms?: () => void"
+    ],
+    "stateCount": 10,
+    "stateVars": [
+      "cardGroupingMode",
+      "searchQuery",
+      "selectedSection",
+      "selectedGradeLevel",
+      "selectedSubjectFilter",
+      "viewMode",
+      "isPrintSettingsOpen",
+      "selectedCardForModal",
+      "selectedStudentForModal",
+      "printSettings"
+    ],
+    "hooks": [
+      "useState",
+      "useMemo"
+    ],
+    "subComponents": [
+      "MonthlyModel",
+      "TermModel",
+      "TeacherProfile",
+      "StudentSimpleCard",
+      "ClassSectionCard",
+      "PrintSettings",
+      "ReportCardItem",
+      "StudentCardModal",
+      "PrintSettingsModal",
+      "StudentIndividualCardItem",
+      "StudentCardData",
+      "StudentSubjectScoreDetail",
+      "SingleStudentCardModal"
+    ],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "TermCalculationView",
+    "path": "src/components/TermCalculation/TermCalculationView.tsx",
+    "category": "شاشة / لوحة رئيسية",
+    "priority": 1,
+    "priorityLabel": "عالية (شاشات وتوجيه أساسي)",
+    "propsCount": 10,
+    "props": [
+      "terms: TermModel[]",
+      "activeTermId: string",
+      "onSelectTerm: (id: string) => void",
+      "onUpdateTerm: (updatedTerm: TermModel) => void",
+      "onUpdateAllTerms?: (updatedTerms: TermModel[]) => void",
+      "onAddTerm: (newTerm: TermModel) => void",
+      "onDeleteTerm: (id: string) => void",
+      "monthlyModels: MonthlyModel[]",
+      "profile: TeacherProfile",
+      "currentUser?: AppUser | null"
+    ],
+    "stateCount": 22,
+    "stateVars": [
+      "searchQuery",
+      "selectedGradeLevel",
+      "selectedSection",
+      "isCleanTableView",
+      "columnSlants",
+      "activeStudentCloud",
+      "isNameColumnVisible",
+      "isAddingNewTerm",
+      "newTermName",
+      "newTermGrade",
+      "newTermSubject",
+      "newTermTeacher",
+      "newTermSections",
+      "isDeleteModalOpen",
+      "isRoundingModalOpen",
+      "showRatingColumn",
+      "isEditingTermName",
+      "editTermNameValue",
+      "editTermGradeValue",
+      "editTermSubjectValue",
+      "editTermTeacherValue",
+      "editTermSectionsValue"
+    ],
+    "hooks": [
+      "useState",
+      "useMemo",
+      "useEffect",
+      "useRef",
+      "useCallback"
+    ],
+    "subComponents": [
+      "MonthlyModel",
+      "TermModel",
+      "TeacherProfile",
+      "RoundingMode",
+      "STANDARD_GRADE_LEVELS",
+      "CleanTermTableView",
+      "ConfirmDeleteModal",
+      "ScoreRoundingModal",
+      "StudentFloatingCloud",
+      "ActiveStudentCloudInfo",
+      "ColumnSlant",
+      "SlantButton",
+      "AppUser"
+    ],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "AccountCancelledModal",
+    "path": "src/components/Auth/AccountCancelledModal.tsx",
+    "category": "نافذة منبثقة (Modal)",
+    "priority": 2,
+    "priorityLabel": "متوسطة (نوافذ منبثقة وحوارية)",
+    "propsCount": 6,
+    "props": [
+      "isOpen: boolean",
+      "message?: string",
+      "onLogout?: () => void",
+      "onSwitchAccount?: () => void",
+      "onRecheck?: () => Promise<void> | void",
+      "userEmail?: string"
+    ],
+    "stateCount": 2,
+    "stateVars": [
+      "isChecking",
+      "checkStatus"
+    ],
+    "hooks": [
+      "useState"
+    ],
+    "subComponents": [
+      "SUPPORT_PHONE_NUMBER",
+      "SUPPORT_WHATSAPP_NUMBER"
+    ],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "AttendanceRecordModal",
+    "path": "src/components/MonthlySheet/AttendanceRecordModal.tsx",
+    "category": "نافذة منبثقة (Modal)",
+    "priority": 2,
+    "priorityLabel": "متوسطة (نوافذ منبثقة وحوارية)",
+    "propsCount": 7,
+    "props": [
+      "isOpen: boolean",
+      "onClose: () => void",
+      "student: StudentRow",
+      "column: CustomColumn",
+      "model: MonthlyModel",
+      "allModels: MonthlyModel[]",
+      "onSaveRecords: (studentId: string, columnId: string, records: AttendanceRecord[]) => void"
+    ],
+    "stateCount": 4,
+    "stateVars": [
+      "activeTab",
+      "selectedDay",
+      "selectedDate",
+      "note"
+    ],
+    "hooks": [
+      "useState"
+    ],
+    "subComponents": [
+      "StudentRow",
+      "CustomColumn",
+      "AttendanceRecord",
+      "AttendanceStatus",
+      "MonthlyModel"
+    ],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "BatchImportModal",
+    "path": "src/components/MonthlySheet/BatchImportModal.tsx",
+    "category": "نافذة منبثقة (Modal)",
+    "priority": 2,
+    "priorityLabel": "متوسطة (نوافذ منبثقة وحوارية)",
+    "propsCount": 7,
+    "props": [
+      "isOpen: boolean",
+      "onClose: () => void",
+      "onImport: (",
+      "students: Partial<StudentRow>[],",
+      "options?: {",
+      "updateExisting?: boolean",
+      "newCustomColumns?: Array<{ name: string; maxScore?: number"
+    ],
+    "stateCount": 20,
+    "stateVars": [
+      "savedCustomSections",
+      "activeTab",
+      "namesText",
+      "gradeLevel",
+      "isCustomGrade",
+      "gradeValidationError",
+      "section",
+      "images",
+      "isProcessing",
+      "errorMessage",
+      "isPrepaymentError",
+      "extractedStudents",
+      "detectedColumns",
+      "columnMappings",
+      "hasExtracted",
+      "updateExisting",
+      "autoAddColumns",
+      "trialCount",
+      "isCropOpen",
+      "cropImageIndex"
+    ],
+    "hooks": [
+      "useState",
+      "useEffect",
+      "useRef",
+      "useMemo"
+    ],
+    "subComponents": [
+      "CustomColumn",
+      "StudentRow",
+      "SmartCropModal",
+      "SuspectedMatchResult",
+      "SemanticMatchResult"
+    ],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "ClassCumulativeAttendanceModal",
+    "path": "src/components/MonthlySheet/ClassCumulativeAttendanceModal.tsx",
+    "category": "نافذة منبثقة (Modal)",
+    "priority": 2,
+    "priorityLabel": "متوسطة (نوافذ منبثقة وحوارية)",
+    "propsCount": 6,
+    "props": [
+      "isOpen: boolean",
+      "onClose: () => void",
+      "currentModel: MonthlyModel",
+      "allModels: MonthlyModel[]",
+      "selectedGradeLevel?: string",
+      "selectedSection?: string"
+    ],
+    "stateCount": 1,
+    "stateVars": [
+      "search"
+    ],
+    "hooks": [
+      "useState",
+      "useMemo"
+    ],
+    "subComponents": [
+      "MonthlyModel",
+      "StudentRow"
+    ],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "ColumnSettingsModal",
+    "path": "src/components/MonthlySheet/ColumnSettingsModal.tsx",
+    "category": "نافذة منبثقة (Modal)",
+    "priority": 2,
+    "priorityLabel": "متوسطة (نوافذ منبثقة وحوارية)",
+    "propsCount": 4,
+    "props": [
+      "isOpen: boolean",
+      "onClose: () => void",
+      "model: MonthlyModel",
+      "onSave: (updated: Partial<MonthlyModel>) => void"
+    ],
+    "stateCount": 9,
+    "stateVars": [
+      "writtenWeight",
+      "writtenMaxScore",
+      "writtenScoreMode",
+      "totalMaxScore",
+      "customColumns",
+      "roundingMode",
+      "roundingThreshold",
+      "newColName",
+      "newColMaxScore"
+    ],
+    "hooks": [
+      "useState",
+      "useEffect"
+    ],
+    "subComponents": [
+      "CustomColumn",
+      "MonthlyModel",
+      "RoundingMode",
+      "WrittenScoreMode"
+    ],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "ConfirmDeleteModal",
+    "path": "src/components/Common/ConfirmDeleteModal.tsx",
+    "category": "نافذة منبثقة (Modal)",
+    "priority": 2,
+    "priorityLabel": "متوسطة (نوافذ منبثقة وحوارية)",
+    "propsCount": 7,
+    "props": [
+      "isOpen: boolean",
+      "title: string",
+      "message: string",
+      "confirmText?: string",
+      "cancelText?: string",
+      "onConfirm: () => void",
+      "onCancel: () => void"
+    ],
+    "stateCount": 0,
+    "stateVars": [],
+    "hooks": [],
+    "subComponents": [],
+    "externalDependencies": [
+      "react",
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "ContactModal",
+    "path": "src/components/Common/ContactModal.tsx",
+    "category": "نافذة منبثقة (Modal)",
+    "priority": 2,
+    "priorityLabel": "متوسطة (نوافذ منبثقة وحوارية)",
+    "propsCount": 2,
+    "props": [
+      "isOpen: boolean",
+      "onClose: () => void"
+    ],
+    "stateCount": 2,
+    "stateVars": [
+      "copiedType",
+      "isMobileDevice"
+    ],
+    "hooks": [
+      "useState",
+      "useEffect"
+    ],
+    "subComponents": [],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "CreateModelModal",
+    "path": "src/components/MonthlySheet/CreateModelModal.tsx",
+    "category": "نافذة منبثقة (Modal)",
+    "priority": 2,
+    "priorityLabel": "متوسطة (نوافذ منبثقة وحوارية)",
+    "propsCount": 8,
+    "props": [
+      "isOpen: boolean",
+      "onClose: () => void",
+      "currentModel?: MonthlyModel",
+      "allModels: MonthlyModel[]",
+      "onCreate: (newModel: MonthlyModel) => void",
+      "profileSubject?: string",
+      "currentUser?: AppUser | null",
+      "onOpenSectionsSwap?: (grade?: string, subject?: string) => void"
+    ],
+    "stateCount": 13,
+    "stateVars": [
+      "modelName",
+      "totalMaxInput",
+      "subjectName",
+      "gradeLevelInput",
+      "showValidation",
+      "customSubjects",
+      "newSubjectInput",
+      "showAddSubjectInput",
+      "teacherNameInput",
+      "selectedSections",
+      "customSectionsList",
+      "newSectionInput",
+      "showAddSectionInput"
+    ],
+    "hooks": [
+      "useState",
+      "useEffect",
+      "useMemo"
+    ],
+    "subComponents": [
+      "MonthlyModel",
+      "StudentRow",
+      "STANDARD_GRADE_LEVELS",
+      "AppUser"
+    ],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "DeleteAccountModal",
+    "path": "src/components/Common/DeleteAccountModal.tsx",
+    "category": "نافذة منبثقة (Modal)",
+    "priority": 2,
+    "priorityLabel": "متوسطة (نوافذ منبثقة وحوارية)",
+    "propsCount": 5,
+    "props": [
+      "isOpen: boolean",
+      "userEmail: string",
+      "userName?: string",
+      "onConfirm: () => Promise<void> | void",
+      "onCancel: () => void"
+    ],
+    "stateCount": 2,
+    "stateVars": [
+      "isDeleting",
+      "confirmedCheck"
+    ],
+    "hooks": [
+      "useState"
+    ],
+    "subComponents": [],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "EditModelModal",
+    "path": "src/components/MonthlySheet/EditModelModal.tsx",
+    "category": "نافذة منبثقة (Modal)",
+    "priority": 2,
+    "priorityLabel": "متوسطة (نوافذ منبثقة وحوارية)",
+    "propsCount": 14,
+    "props": [
+      "isOpen: boolean",
+      "onClose: () => void",
+      "model: MonthlyModel | null",
+      "onSave: (",
+      "modelId: string,",
+      "newName: string,",
+      "newSubject: string,",
+      "newGradeLevel?: string,",
+      "newTeacherName?: string,",
+      "newAssignedSections?: string[]",
+      "profileSubject?: string",
+      "allModels?: MonthlyModel[]",
+      "currentUser?: AppUser | null",
+      "onOpenSectionsSwap?: (grade?: string, subject?: string) => void"
+    ],
+    "stateCount": 8,
+    "stateVars": [
+      "name",
+      "subject",
+      "gradeLevel",
+      "teacherName",
+      "selectedSections",
+      "customSectionsList",
+      "newSectionInput",
+      "showAddSectionInput"
+    ],
+    "hooks": [
+      "useState",
+      "useEffect",
+      "useMemo"
+    ],
+    "subComponents": [
+      "MonthlyModel",
+      "AppUser"
+    ],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "ExitSyncModal",
+    "path": "src/components/Common/ExitSyncModal.tsx",
+    "category": "نافذة منبثقة (Modal)",
+    "priority": 2,
+    "priorityLabel": "متوسطة (نوافذ منبثقة وحوارية)",
+    "propsCount": 4,
+    "props": [
+      "isOpen: boolean",
+      "onClose: () => void",
+      "onConfirmSyncAndExit: () => Promise<void>",
+      "onExitWithoutSync: () => void"
+    ],
+    "stateCount": 2,
+    "stateVars": [
+      "isSyncing",
+      "syncFeedback"
+    ],
+    "hooks": [
+      "useState"
+    ],
+    "subComponents": [],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "FinalScoreOperationModal",
+    "path": "src/components/MonthlySheet/FinalScoreOperationModal.tsx",
+    "category": "نافذة منبثقة (Modal)",
+    "priority": 2,
+    "priorityLabel": "متوسطة (نوافذ منبثقة وحوارية)",
+    "propsCount": 8,
+    "props": [
+      "isOpen: boolean",
+      "onClose: () => void",
+      "currentOperation?: FinalScoreOperation",
+      "totalMaxScore: number",
+      "modelName: string",
+      "gradeLevel?: string",
+      "subject?: string",
+      "onSave: (operation: FinalScoreOperation, applyToSameGradeAndSubject: boolean) => void"
+    ],
+    "stateCount": 4,
+    "stateVars": [
+      "selectedType",
+      "value",
+      "applyScope",
+      "testScore"
+    ],
+    "hooks": [
+      "useState",
+      "useEffect"
+    ],
+    "subComponents": [
+      "FinalScoreOperation"
+    ],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "GradeRenameMergeModal",
+    "path": "src/components/MonthlySheet/GradeRenameMergeModal.tsx",
+    "category": "نافذة منبثقة (Modal)",
+    "priority": 2,
+    "priorityLabel": "متوسطة (نوافذ منبثقة وحوارية)",
+    "propsCount": 10,
+    "props": [
+      "isOpen: boolean",
+      "onClose: () => void",
+      "currentGrade: string",
+      "allGrades: string[]",
+      "currentSections: string[]",
+      "studentCount: number",
+      "gradeStudentCounts?: Record<string, number>",
+      "onRenameGrade: (oldGrade: string, newGrade: string) => void",
+      "onMergeGrade: (sourceGrade: string, targetGrade: string) => void",
+      "onRenameSection?: (grade: string, oldSection: string, newSection: string) => void"
+    ],
+    "stateCount": 6,
+    "stateVars": [
+      "activeTab",
+      "newGradeName",
+      "selectedTargetGrade",
+      "isConfirmingMerge",
+      "editingSection",
+      "newSectionName"
+    ],
+    "hooks": [
+      "useState",
+      "useInstitutionTerms"
+    ],
+    "subComponents": [],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "NewProjectModal",
+    "path": "src/components/NewProjectModal.tsx",
+    "category": "نافذة منبثقة (Modal)",
+    "priority": 2,
+    "priorityLabel": "متوسطة (نوافذ منبثقة وحوارية)",
+    "propsCount": 8,
+    "props": [
+      "isOpen: boolean",
+      "onClose: () => void",
+      "projects: Project[]",
+      "activeProjectId: string",
+      "onSelectProject: (id: string) => void",
+      "onCreateProject: (name: string, template: 'empty' | 'web' | 'python' | 'react') => void",
+      "onDeleteProject: (id: string) => void",
+      "settings: EditorSettings"
+    ],
+    "stateCount": 3,
+    "stateVars": [
+      "isCreatingNew",
+      "newProjectName",
+      "selectedTemplate"
+    ],
+    "hooks": [
+      "useState"
+    ],
+    "subComponents": [
+      "Project",
+      "EditorSettings"
+    ],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "OfflineVerificationModal",
+    "path": "src/components/Auth/OfflineVerificationModal.tsx",
+    "category": "نافذة منبثقة (Modal)",
+    "priority": 2,
+    "priorityLabel": "متوسطة (نوافذ منبثقة وحوارية)",
+    "propsCount": 4,
+    "props": [
+      "isOpen: boolean",
+      "onRecheck: () => Promise<void>",
+      "onLogout: () => void",
+      "userEmail?: string"
+    ],
+    "stateCount": 2,
+    "stateVars": [
+      "isChecking",
+      "errorMsg"
+    ],
+    "hooks": [
+      "useState",
+      "useEffect"
+    ],
+    "subComponents": [],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "PrintSettingsModal",
+    "path": "src/components/ReportCards/PrintSettingsModal.tsx",
+    "category": "نافذة منبثقة (Modal)",
+    "priority": 2,
+    "priorityLabel": "متوسطة (نوافذ منبثقة وحوارية)",
+    "propsCount": 16,
+    "props": [
+      "isOpen: boolean",
+      "onClose: () => void",
+      "settings: PrintSettings",
+      "onUpdateSettings: (newSettings: PrintSettings) => void",
+      "profile: TeacherProfile",
+      "onUpdateProfile: (updated: TeacherProfile) => void",
+      "sampleClassCard?: ClassSectionCard",
+      "sampleStudent?: StudentSimpleCard",
+      "sampleStudentCard?: StudentCardData",
+      "groupingMode?: 'by_subject' | 'by_student'",
+      "terms: TermModel[]",
+      "academicYear?: string",
+      "subject?: string",
+      "onStartPrint: () => void",
+      "totalCardsCount: number",
+      "isAdministration?: boolean"
+    ],
+    "stateCount": 0,
+    "stateVars": [],
+    "hooks": [
+      "useRef"
+    ],
+    "subComponents": [
+      "TeacherProfile",
+      "PrintSettings",
+      "StudentSimpleCard",
+      "ClassSectionCard",
+      "TermModel",
+      "ReportCardItem",
+      "StudentIndividualCardItem",
+      "StudentCardData"
+    ],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "PWAInstallModal",
+    "path": "src/components/Common/PWAInstallModal.tsx",
+    "category": "نافذة منبثقة (Modal)",
+    "priority": 2,
+    "priorityLabel": "متوسطة (نوافذ منبثقة وحوارية)",
+    "propsCount": 2,
+    "props": [
+      "isOpen: boolean",
+      "onClose: () => void"
+    ],
+    "stateCount": 2,
+    "stateVars": [
+      "activeTab",
+      "installSuccess"
+    ],
+    "hooks": [
+      "useState",
+      "usePWAInstall"
+    ],
+    "subComponents": [
+      "AppLogo"
+    ],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "RenameColumnsModal",
+    "path": "src/components/MonthlySheet/RenameColumnsModal.tsx",
+    "category": "نافذة منبثقة (Modal)",
+    "priority": 2,
+    "priorityLabel": "متوسطة (نوافذ منبثقة وحوارية)",
+    "propsCount": 4,
+    "props": [
+      "isOpen: boolean",
+      "onClose: () => void",
+      "model: MonthlyModel",
+      "onSave: (newLabels: ColumnLabels, updatedCustomColumns: CustomColumn[]) => void"
+    ],
+    "stateCount": 2,
+    "stateVars": [
+      "labels",
+      "customCols"
+    ],
+    "hooks": [
+      "useState",
+      "useEffect"
+    ],
+    "subComponents": [
+      "MonthlyModel",
+      "ColumnLabels",
+      "CustomColumn"
+    ],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "RoleSelectionModal",
+    "path": "src/components/Auth/RoleSelectionModal.tsx",
+    "category": "نافذة منبثقة (Modal)",
+    "priority": 2,
+    "priorityLabel": "متوسطة (نوافذ منبثقة وحوارية)",
+    "propsCount": 5,
+    "props": [
+      "isOpen: boolean",
+      "currentUser: AppUser",
+      "onRoleSelected: (updatedUser: AppUser) => void",
+      "onLogout: () => void",
+      "onClose?: () => void"
+    ],
+    "stateCount": 4,
+    "stateVars": [
+      "isOnline",
+      "selectedChoice",
+      "isSubmitting",
+      "errorMessage"
+    ],
+    "hooks": [
+      "useState",
+      "useEffect"
+    ],
+    "subComponents": [
+      "AppUser"
+    ],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "ScoreRoundingModal",
+    "path": "src/components/MonthlySheet/ScoreRoundingModal.tsx",
+    "category": "نافذة منبثقة (Modal)",
+    "priority": 2,
+    "priorityLabel": "متوسطة (نوافذ منبثقة وحوارية)",
+    "propsCount": 9,
+    "props": [
+      "isOpen: boolean",
+      "onClose: () => void",
+      "currentMode: RoundingMode",
+      "currentThreshold?: number",
+      "modelName: string",
+      "gradeLevel?: string",
+      "subject?: string",
+      "onSave: (mode: RoundingMode, threshold: number, applyToSameGradeAndSubject: boolean) => void",
+      "applyToAllLabel?: string"
+    ],
+    "stateCount": 4,
+    "stateVars": [
+      "mode",
+      "threshold",
+      "applyScope",
+      "testScore"
+    ],
+    "hooks": [
+      "useState",
+      "useEffect"
+    ],
+    "subComponents": [
+      "RoundingMode"
+    ],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "SingleStudentCardModal",
+    "path": "src/components/ReportCards/SingleStudentCardModal.tsx",
+    "category": "نافذة منبثقة (Modal)",
+    "priority": 2,
+    "priorityLabel": "متوسطة (نوافذ منبثقة وحوارية)",
+    "propsCount": 8,
+    "props": [
+      "isOpen: boolean",
+      "onClose: () => void",
+      "studentCard: StudentCardData | null",
+      "terms: TermModel[]",
+      "profile: TeacherProfile",
+      "academicYear?: string",
+      "printSettings?: PrintSettings",
+      "isAdministration?: boolean"
+    ],
+    "stateCount": 0,
+    "stateVars": [],
+    "hooks": [],
+    "subComponents": [
+      "TeacherProfile",
+      "TermModel",
+      "PrintSettings",
+      "StudentIndividualCardItem",
+      "StudentCardData"
+    ],
+    "externalDependencies": [
+      "react",
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "SmartCropModal",
+    "path": "src/components/MonthlySheet/SmartCropModal.tsx",
+    "category": "نافذة منبثقة (Modal)",
+    "priority": 2,
+    "priorityLabel": "متوسطة (نوافذ منبثقة وحوارية)",
+    "propsCount": 8,
+    "props": [
+      "isOpen: boolean",
+      "onClose: () => void",
+      "images: ImageUploadItem[]",
+      "activeImageIndex?: number",
+      "onApplyCrop: (",
+      "croppedBase64: string,",
+      "imageIndex: number,",
+      "analyzeImmediately: boolean"
+    ],
+    "stateCount": 4,
+    "stateVars": [
+      "currentIdx",
+      "rotation",
+      "crop",
+      "activeHandle"
+    ],
+    "hooks": [
+      "useState",
+      "useRef",
+      "useEffect",
+      "useCallback"
+    ],
+    "subComponents": [],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "SnippetLibraryModal",
+    "path": "src/components/SnippetLibraryModal.tsx",
+    "category": "نافذة منبثقة (Modal)",
+    "priority": 2,
+    "priorityLabel": "متوسطة (نوافذ منبثقة وحوارية)",
+    "propsCount": 5,
+    "props": [
+      "isOpen: boolean",
+      "onClose: () => void",
+      "onInsertSnippet: (code: string) => void",
+      "onCreateFileWithSnippet: (fileName: string, code: string) => void",
+      "settings: EditorSettings"
+    ],
+    "stateCount": 2,
+    "stateVars": [
+      "selectedCategory",
+      "copiedId"
+    ],
+    "hooks": [
+      "useState"
+    ],
+    "subComponents": [
+      "CODE_SNIPPETS",
+      "EditorSettings"
+    ],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "SqlDatabaseModal",
+    "path": "src/components/Common/SqlDatabaseModal.tsx",
+    "category": "نافذة منبثقة (Modal)",
+    "priority": 2,
+    "priorityLabel": "متوسطة (نوافذ منبثقة وحوارية)",
+    "propsCount": 2,
+    "props": [
+      "isOpen: boolean",
+      "onClose: () => void"
+    ],
+    "stateCount": 2,
+    "stateVars": [
+      "selectedEngine",
+      "copied"
+    ],
+    "hooks": [
+      "useState"
+    ],
+    "subComponents": [],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "StudentCardModal",
+    "path": "src/components/ReportCards/StudentCardModal.tsx",
+    "category": "نافذة منبثقة (Modal)",
+    "priority": 2,
+    "priorityLabel": "متوسطة (نوافذ منبثقة وحوارية)",
+    "propsCount": 8,
+    "props": [
+      "isOpen: boolean",
+      "onClose: () => void",
+      "classCard: ClassSectionCard | null",
+      "terms: TermModel[]",
+      "profile: TeacherProfile",
+      "academicYear?: string",
+      "subject?: string",
+      "printSettings?: PrintSettings"
+    ],
+    "stateCount": 0,
+    "stateVars": [],
+    "hooks": [],
+    "subComponents": [
+      "ClassSectionCard",
+      "TeacherProfile",
+      "TermModel",
+      "PrintSettings",
+      "ReportCardItem"
+    ],
+    "externalDependencies": [
+      "react",
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "SubscriptionExpiredModal",
+    "path": "src/components/Auth/SubscriptionExpiredModal.tsx",
+    "category": "نافذة منبثقة (Modal)",
+    "priority": 2,
+    "priorityLabel": "متوسطة (نوافذ منبثقة وحوارية)",
+    "propsCount": 6,
+    "props": [
+      "isOpen: boolean",
+      "onClose?: () => void",
+      "user: AppUser",
+      "onLogout: () => void",
+      "canDismiss?: boolean",
+      "onSubscriptionActivated?: (updatedUser: AppUser) => void"
+    ],
+    "stateCount": 3,
+    "stateVars": [
+      "isChecking",
+      "checkStatusMsg",
+      "isMobileDevice"
+    ],
+    "hooks": [
+      "useState",
+      "useEffect"
+    ],
+    "subComponents": [
+      "AppUser",
+      "SUPPORT_PHONE_NUMBER",
+      "SUPPORT_WHATSAPP_NUMBER"
+    ],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "TeacherSectionsSwapModal",
+    "path": "src/components/MonthlySheet/TeacherSectionsSwapModal.tsx",
+    "category": "نافذة منبثقة (Modal)",
+    "priority": 2,
+    "priorityLabel": "متوسطة (نوافذ منبثقة وحوارية)",
+    "propsCount": 7,
+    "props": [
+      "isOpen: boolean",
+      "onClose: () => void",
+      "allModels: MonthlyModel[]",
+      "onUpdateAllModels?: (updatedModels: MonthlyModel[]) => void",
+      "initialGrade?: string",
+      "initialSubject?: string",
+      "currentUser?: AppUser | null"
+    ],
+    "stateCount": 7,
+    "stateVars": [
+      "selectedGrade",
+      "selectedSubject",
+      "teacherSectionsMap",
+      "customSectionsList",
+      "newSectionInput",
+      "showAddSectionInput",
+      "successNotice"
+    ],
+    "hooks": [
+      "useState",
+      "useMemo",
+      "useEffect"
+    ],
+    "subComponents": [
+      "MonthlyModel",
+      "StudentRow",
+      "AppUser"
+    ],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "TeacherSettingsModal",
+    "path": "src/components/TeacherSettingsModal.tsx",
+    "category": "نافذة منبثقة (Modal)",
+    "priority": 2,
+    "priorityLabel": "متوسطة (نوافذ منبثقة وحوارية)",
+    "propsCount": 6,
+    "props": [
+      "isOpen: boolean",
+      "onClose: () => void",
+      "profile: TeacherProfile",
+      "onSave: (updated: TeacherProfile) => void",
+      "currentUser?: AppUser | null",
+      "onChangeRole?: () => void"
+    ],
+    "stateCount": 1,
+    "stateVars": [
+      "formData"
+    ],
+    "hooks": [
+      "useState",
+      "useEffect",
+      "useRef"
+    ],
+    "subComponents": [
+      "TeacherProfile",
+      "AppUser"
+    ],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "TermModal",
+    "path": "src/components/TermCalculation/TermModal.tsx",
+    "category": "نافذة منبثقة (Modal)",
+    "priority": 2,
+    "priorityLabel": "متوسطة (نوافذ منبثقة وحوارية)",
+    "propsCount": 9,
+    "props": [
+      "isOpen: boolean",
+      "onClose: () => void",
+      "mode: 'create' | 'edit'",
+      "initialName?: string",
+      "initialSubject?: string",
+      "initialGrade?: string",
+      "availableSubjects: string[]",
+      "availableGrades: string[]",
+      "onSubmit: (name: string, subject: string, gradeLevel: string) => void"
+    ],
+    "stateCount": 4,
+    "stateVars": [
+      "termName",
+      "subject",
+      "gradeLevel",
+      "showValidation"
+    ],
+    "hooks": [
+      "useState",
+      "useEffect"
+    ],
+    "subComponents": [
+      "TermModel"
+    ],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "UploadModal",
+    "path": "src/components/UploadModal.tsx",
+    "category": "نافذة منبثقة (Modal)",
+    "priority": 2,
+    "priorityLabel": "متوسطة (نوافذ منبثقة وحوارية)",
+    "propsCount": 6,
+    "props": [
+      "isOpen: boolean",
+      "onClose: () => void",
+      "onFilesSelected: (files: FileList | File[]) => void",
+      "onZipSelected: (file: File) => void",
+      "onRawCodeSubmit: (fileName: string, code: string) => void",
+      "settings: EditorSettings"
+    ],
+    "stateCount": 5,
+    "stateVars": [
+      "activeTab",
+      "pasteFileName",
+      "pasteContent",
+      "isDragOver",
+      "statusMessage"
+    ],
+    "hooks": [
+      "useState",
+      "useRef"
+    ],
+    "subComponents": [
+      "EditorSettings"
+    ],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "AppLogo",
+    "path": "src/components/Common/AppLogo.tsx",
+    "category": "عنصر واجهة فرعي",
+    "priority": 3,
+    "priorityLabel": "منخفضة (كروت وعناصر فرعية)",
+    "propsCount": 3,
+    "props": [
+      "className?: string",
+      "size?: number | string",
+      "alt?: string"
+    ],
+    "stateCount": 0,
+    "stateVars": [],
+    "hooks": [],
+    "subComponents": [],
+    "externalDependencies": [
+      "react"
+    ]
+  },
+  {
+    "name": "AuthScreen",
+    "path": "src/components/Auth/AuthScreen.tsx",
+    "category": "عنصر واجهة فرعي",
+    "priority": 3,
+    "priorityLabel": "منخفضة (كروت وعناصر فرعية)",
+    "propsCount": 4,
+    "props": [
+      "onLoginSuccess: (user: AppUser, isTrial: boolean) => void",
+      "expiredNotice?: boolean",
+      "onOpenPrivacy?: () => void",
+      "onAccountCancelled?: (email: string, message?: string) => void"
+    ],
+    "stateCount": 11,
+    "stateVars": [
+      "activeMode",
+      "email",
+      "password",
+      "displayName",
+      "isLoading",
+      "errorMessage",
+      "resetSuccessMessage",
+      "pendingVerification",
+      "resendCooldown",
+      "resendInfo",
+      "showInstallModal"
+    ],
+    "hooks": [
+      "useEffect",
+      "useState",
+      "usePWAInstall"
+    ],
+    "subComponents": [
+      "AppLogo",
+      "PWAInstallModal",
+      "AppUser",
+      "SUPPORT_PHONE_NUMBER"
+    ],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "BottomScoreKeypad",
+    "path": "src/components/Common/BottomScoreKeypad.tsx",
+    "category": "عنصر واجهة فرعي",
+    "priority": 3,
+    "priorityLabel": "منخفضة (كروت وعناصر فرعية)",
+    "propsCount": 12,
+    "props": [
+      "isOpen: boolean",
+      "studentName: string",
+      "studentSection?: string",
+      "columnName: string",
+      "maxScore: number",
+      "currentValue: string",
+      "onValueChange: (newValue: string) => void",
+      "onNextStudent?: () => void",
+      "onPrevStudent?: () => void",
+      "hasNextStudent?: boolean",
+      "hasPrevStudent?: boolean",
+      "onClose: () => void"
+    ],
+    "stateCount": 0,
+    "stateVars": [],
+    "hooks": [
+      "useEffect",
+      "useCallback"
+    ],
+    "subComponents": [],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "BottomTerminal",
+    "path": "src/components/BottomTerminal.tsx",
+    "category": "عنصر واجهة فرعي",
+    "priority": 3,
+    "priorityLabel": "منخفضة (كروت وعناصر فرعية)",
+    "propsCount": 10,
+    "props": [
+      "logs: ConsoleLog[]",
+      "files: WorkspaceFile[]",
+      "settings: EditorSettings",
+      "isOpen: boolean",
+      "onToggleOpen: () => void",
+      "onClearLogs: () => void",
+      "onRunActiveCode: () => void",
+      "onCreateFile: (name: string, parentId: string | null) => void",
+      "onDeleteFile: (fileId: string) => void",
+      "onExportZip: () => void"
+    ],
+    "stateCount": 8,
+    "stateVars": [
+      "activeTab",
+      "filterLevel",
+      "searchTerm",
+      "copied",
+      "terminalHistory",
+      "commandInput",
+      "commandHistory",
+      "historyIndex"
+    ],
+    "hooks": [
+      "useState",
+      "useRef",
+      "useEffect"
+    ],
+    "subComponents": [
+      "ConsoleLog",
+      "WorkspaceFile",
+      "EditorSettings"
+    ],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "ClassesSectionsOverview",
+    "path": "src/components/MonthlySheet/ClassesSectionsOverview.tsx",
+    "category": "عنصر واجهة فرعي",
+    "priority": 3,
+    "priorityLabel": "منخفضة (كروت وعناصر فرعية)",
+    "propsCount": 6,
+    "props": [
+      "model: MonthlyModel",
+      "onSelectClassAndSection: (gradeLevel: string, section: string | 'ALL') => void",
+      "onOpenBatchImport: () => void",
+      "onOpenManageGrade: (gradeLevel: string) => void",
+      "onViewAllTable: () => void",
+      "onOpenSectionsSwap?: (gradeLevel: string) => void"
+    ],
+    "stateCount": 0,
+    "stateVars": [],
+    "hooks": [
+      "useMemo"
+    ],
+    "subComponents": [
+      "MonthlyModel",
+      "StudentRow"
+    ],
+    "externalDependencies": [
+      "react",
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "ColumnSlantToggle",
+    "path": "src/components/Common/ColumnSlantToggle.tsx",
+    "category": "عنصر واجهة فرعي",
+    "priority": 3,
+    "priorityLabel": "منخفضة (كروت وعناصر فرعية)",
+    "propsCount": 4,
+    "props": [
+      "slant: ColumnSlant | undefined",
+      "onToggle: () => void",
+      "title?: string",
+      "className?: string"
+    ],
+    "stateCount": 0,
+    "stateVars": [],
+    "hooks": [],
+    "subComponents": [],
+    "externalDependencies": [
+      "react",
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "ErrorBoundary",
+    "path": "src/components/Common/ErrorBoundary.tsx",
+    "category": "عنصر واجهة فرعي",
+    "priority": 3,
+    "priorityLabel": "منخفضة (كروت وعناصر فرعية)",
+    "propsCount": 2,
+    "props": [
+      "children: ReactNode",
+      "fallback?: ReactNode"
+    ],
+    "stateCount": 0,
+    "stateVars": [],
+    "hooks": [],
+    "subComponents": [],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "FileTreeItem",
+    "path": "src/components/FileTreeItem.tsx",
+    "category": "بطاقة / كرت عرض",
+    "priority": 3,
+    "priorityLabel": "منخفضة (كروت وبطاقات)",
+    "propsCount": 9,
+    "props": [
+      "file: WorkspaceFile",
+      "level: number",
+      "isActive: boolean",
+      "onSelect: (file: WorkspaceFile) => void",
+      "onToggleFolder: (fileId: string) => void",
+      "onRename: (fileId: string, newName: string) => void",
+      "onDelete: (fileId: string) => void",
+      "onDuplicate: (file: WorkspaceFile) => void",
+      "onDownload: (file: WorkspaceFile) => void"
+    ],
+    "stateCount": 2,
+    "stateVars": [
+      "isEditing",
+      "editName"
+    ],
+    "hooks": [
+      "useState"
+    ],
+    "subComponents": [
+      "WorkspaceFile"
+    ],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "PreviewPane",
+    "path": "src/components/PreviewPane.tsx",
+    "category": "عنصر واجهة فرعي",
+    "priority": 3,
+    "priorityLabel": "منخفضة (كروت وعناصر فرعية)",
+    "propsCount": 4,
+    "props": [
+      "files: WorkspaceFile[]",
+      "activeFile: WorkspaceFile | null",
+      "settings: EditorSettings",
+      "onReceiveIframeConsole: (level: string, message: string) => void"
+    ],
+    "stateCount": 2,
+    "stateVars": [
+      "viewport",
+      "refreshKey"
+    ],
+    "hooks": [
+      "useState",
+      "useEffect",
+      "useRef"
+    ],
+    "subComponents": [
+      "WorkspaceFile",
+      "EditorSettings"
+    ],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "PWAInstallButton",
+    "path": "src/components/Common/PWAInstallButton.tsx",
+    "category": "عنصر واجهة فرعي",
+    "priority": 3,
+    "priorityLabel": "منخفضة (كروت وعناصر فرعية)",
+    "propsCount": 2,
+    "props": [
+      "variant?: 'icon' | 'menu-item'",
+      "onAfterClick?: () => void"
+    ],
+    "stateCount": 1,
+    "stateVars": [
+      "showIOSModal"
+    ],
+    "hooks": [
+      "useState",
+      "usePWAInstall"
+    ],
+    "subComponents": [
+      "AppLogo"
+    ],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "ReportCardItem",
+    "path": "src/components/ReportCards/ReportCardItem.tsx",
+    "category": "بطاقة / كرت عرض",
+    "priority": 3,
+    "priorityLabel": "منخفضة (كروت وبطاقات)",
+    "propsCount": 11,
+    "props": [
+      "classCard: ClassSectionCard",
+      "terms: TermModel[]",
+      "profile: TeacherProfile",
+      "academicYear?: string",
+      "subject?: string",
+      "onPreview?: () => void",
+      "onPrint?: () => void",
+      "onExportExcel?: () => void",
+      "isPrintMode?: boolean",
+      "printSettings?: PrintSettings",
+      "searchQuery?: string"
+    ],
+    "stateCount": 0,
+    "stateVars": [],
+    "hooks": [],
+    "subComponents": [
+      "ClassSectionCard",
+      "TeacherProfile",
+      "TermModel",
+      "PrintSettings"
+    ],
+    "externalDependencies": [
+      "react",
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "Sidebar",
+    "path": "src/components/Sidebar.tsx",
+    "category": "عنصر واجهة فرعي",
+    "priority": 3,
+    "priorityLabel": "منخفضة (كروت وعناصر فرعية)",
+    "propsCount": 12,
+    "props": [
+      "files: WorkspaceFile[]",
+      "activeFileId: string | null",
+      "settings: EditorSettings",
+      "onSelectFile: (file: WorkspaceFile) => void",
+      "onCreateFile: (name: string, parentId: string | null) => void",
+      "onCreateFolder: (name: string, parentId: string | null) => void",
+      "onRenameFile: (fileId: string, newName: string) => void",
+      "onDeleteFile: (fileId: string) => void",
+      "onDuplicateFile: (file: WorkspaceFile) => void",
+      "onDownloadFile: (file: WorkspaceFile) => void",
+      "onTriggerUploadModal: () => void",
+      "onFilesDropped: (files: FileList) => void"
+    ],
+    "stateCount": 5,
+    "stateVars": [
+      "isCreatingFile",
+      "isCreatingFolder",
+      "newItemName",
+      "isDragOver",
+      "isExpanded"
+    ],
+    "hooks": [
+      "useState",
+      "useRef"
+    ],
+    "subComponents": [
+      "WorkspaceFile",
+      "EditorSettings",
+      "FileTreeItem"
+    ],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "StudentFloatingCloud",
+    "path": "src/components/Common/StudentFloatingCloud.tsx",
+    "category": "عنصر واجهة فرعي",
+    "priority": 3,
+    "priorityLabel": "منخفضة (كروت وعناصر فرعية)",
+    "propsCount": 4,
+    "props": [
+      "info: ActiveStudentCloudInfo | null",
+      "isOpen: boolean",
+      "onClose: () => void",
+      "zIndexClass?: string"
+    ],
+    "stateCount": 0,
+    "stateVars": [],
+    "hooks": [],
+    "subComponents": [],
+    "externalDependencies": [
+      "react",
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "StudentIndividualCardItem",
+    "path": "src/components/ReportCards/StudentIndividualCardItem.tsx",
+    "category": "بطاقة / كرت عرض",
+    "priority": 3,
+    "priorityLabel": "منخفضة (كروت وبطاقات)",
+    "propsCount": 9,
+    "props": [
+      "studentCard: StudentCardData",
+      "terms: TermModel[]",
+      "profile: TeacherProfile",
+      "academicYear?: string",
+      "onPreview?: () => void",
+      "onPrint?: () => void",
+      "isPrintMode?: boolean",
+      "printSettings?: PrintSettings",
+      "isAdministration?: boolean"
+    ],
+    "stateCount": 0,
+    "stateVars": [],
+    "hooks": [
+      "useMemo"
+    ],
+    "subComponents": [
+      "TeacherProfile",
+      "TermModel",
+      "PrintSettings"
+    ],
+    "externalDependencies": [
+      "react",
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "SyncStatusBadge",
+    "path": "src/components/Common/SyncStatusBadge.tsx",
+    "category": "بطاقة / كرت عرض",
+    "priority": 3,
+    "priorityLabel": "منخفضة (كروت وبطاقات)",
+    "propsCount": 1,
+    "props": [
+      "userUid?: string"
+    ],
+    "stateCount": 3,
+    "stateVars": [
+      "isConfirmModalOpen",
+      "isManualSyncing",
+      "syncOverlayStatus"
+    ],
+    "hooks": [
+      "useState",
+      "useSyncStatus"
+    ],
+    "subComponents": [],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  },
+  {
+    "name": "TrialBanner",
+    "path": "src/components/Auth/TrialBanner.tsx",
+    "category": "عنصر واجهة فرعي",
+    "priority": 3,
+    "priorityLabel": "منخفضة (كروت وعناصر فرعية)",
+    "propsCount": 4,
+    "props": [
+      "user: AppUser",
+      "onLogout: () => void",
+      "onExpire: () => void",
+      "onOpenSubscriptionModal?: () => void"
+    ],
+    "stateCount": 1,
+    "stateVars": [
+      "remaining"
+    ],
+    "hooks": [
+      "useState",
+      "useEffect"
+    ],
+    "subComponents": [
+      "AppUser",
+      "SUPPORT_PHONE_NUMBER",
+      "SUPPORT_WHATSAPP_NUMBER"
+    ],
+    "externalDependencies": [
+      "lucide-react"
+    ]
+  }
+]
