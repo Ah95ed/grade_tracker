@@ -1,4 +1,5 @@
 import 'dart:convert';
+
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
@@ -10,7 +11,11 @@ import '../controllers/monthly_sheet_controller.dart';
 /// Service to export grade tables into Excel-compatible CSV files with UTF-8 BOM
 class ExcelExportService {
   /// Generates CSV content with UTF-8 BOM (\uFEFF) for full Arabic character support in MS Excel
-  static String generateCsvContent(MonthlyModel model, MonthlySheetController controller, TeacherProfile? profile) {
+  static String generateCsvContent(
+    MonthlyModel model,
+    MonthlySheetController controller,
+    TeacherProfile? profile,
+  ) {
     final buffer = StringBuffer();
 
     // UTF-8 BOM signature for Excel to open Arabic text correctly without garbled symbols
@@ -18,10 +23,16 @@ class ExcelExportService {
 
     // Header metadata lines
     if (profile != null && profile.schoolName.isNotEmpty) {
-      buffer.writeln('المدرسة:,"${profile.schoolName}","المحافظة:","${profile.governorate}","نوع التعليم:","${profile.schoolType}"');
+      buffer.writeln(
+        'المدرسة:,"${profile.schoolName}","المحافظة:","${profile.governorate}","نوع التعليم:","${profile.schoolType}"',
+      );
     }
-    buffer.writeln('كشف درجات:,"${model.name}","المادة:","${model.subject}","الصف:","${model.gradeLevel}","الشعبة:","${model.section}"');
-    buffer.writeln('الأستاذ:,"${model.teacherName.isNotEmpty ? model.teacherName : profile?.teacherName ?? ''}","العام الدراسي:","${model.academicYear}"');
+    buffer.writeln(
+      'كشف درجات:,"${model.name}","المادة:","${model.subject}","الصف:","${model.gradeLevel}","الشعبة:","${model.section}"',
+    );
+    buffer.writeln(
+      'الأستاذ:,"${model.teacherName.isNotEmpty ? model.teacherName : profile?.teacherName ?? ''}","العام الدراسي:","${model.academicYear}"',
+    );
     buffer.writeln(''); // Empty spacer line
 
     // Column Headers
@@ -64,12 +75,16 @@ class ExcelExportService {
         '${i + 1}',
         st.name,
         st.section,
-        st.writtenRawScore != null ? st.writtenRawScore!.toStringAsFixed(1).replaceAll('.0', '') : '',
+        st.writtenRawScore != null
+            ? st.writtenRawScore!.toStringAsFixed(1).replaceAll('.0', '')
+            : '',
         ...model.customColumns.map((c) {
           final sc = st.scores[c.id];
           return sc != null ? sc.toStringAsFixed(1).replaceAll('.0', '') : '';
         }),
-        finalScore != null ? finalScore.toStringAsFixed(1).replaceAll('.0', '') : '',
+        finalScore != null
+            ? finalScore.toStringAsFixed(1).replaceAll('.0', '')
+            : '',
         rating,
       ];
 
@@ -90,9 +105,10 @@ class ExcelExportService {
     // Always copy to clipboard as instantaneous fallback
     await Clipboard.setData(ClipboardData(text: csvContent));
 
-    final defaultFileName = 'كشف_درجات_${model.name}_${model.gradeLevel}_${model.section}.csv'
-        .replaceAll(' ', '_')
-        .replaceAll('/', '_');
+    final defaultFileName =
+        'كشف_درجات_${model.name}_${model.gradeLevel}_${model.section}.csv'
+            .replaceAll(' ', '_')
+            .replaceAll('/', '_');
 
     if (kIsWeb) {
       return 'تم نسخ بيانات Excel للحافظة بنجاح';

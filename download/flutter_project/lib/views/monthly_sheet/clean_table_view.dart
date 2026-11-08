@@ -172,3 +172,4 @@ class CleanTableView extends StatelessWidget {
     );
   }
 }
+

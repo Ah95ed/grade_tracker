@@ -893,55 +893,77 @@ class _StudentDataTableState extends State<StudentDataTable> {
                   ),
 
                   // Controls row matching screenshot: Status + Operation + Rating Toggle
-                  FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        // Status Badge
-                        Text(
-                          '✓ مكتمل (${totalAllocated.toInt()}/${model.totalMaxScore.toInt()})',
-                          style: TextStyle(
-                            fontSize: 11.5.sp,
-                            fontWeight: FontWeight.w900,
-                            color: isComplete ? const Color(0xFF15803D) : const Color(0xFFB45309),
-                          ),
-                        ),
-                        SizedBox(width: 6.w),
+                  Builder(builder: (context) {
+                    final hasFinalOp = model.finalScoreOperation.hasOperation;
+                    final opLabel = model.finalScoreOperation.label;
+                    final effectiveTotalMax = model.finalScoreOperation.calculateEffectiveMax(model.totalMaxScore);
+                    final effStr = effectiveTotalMax.toString().replaceAll(RegExp(r'\.0$'), '');
 
-                        // Math Operation Button
-                        InkWell(
-                          onTap: () => showDialog(
-                            context: context,
-                            builder: (_) => const FinalOperationDialog(),
-                          ),
-                          child: Container(
-                            padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 3.h),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(5.r),
-                              border: Border.all(color: const Color(0xFFCBD5E1)),
+                    final statusText = hasFinalOp
+                        ? '(${totalAllocated.toInt()}/${model.totalMaxScore.toInt()}) ➔ $effStr'
+                        : '✓ مكتمل (${totalAllocated.toInt()}/${model.totalMaxScore.toInt()})';
+
+                    return FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          // Status Badge
+                          Text(
+                            statusText,
+                            style: TextStyle(
+                              fontSize: 11.5.sp,
+                              fontWeight: FontWeight.w900,
+                              color: isComplete ? const Color(0xFF15803D) : const Color(0xFFB45309),
                             ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.calculate_outlined, size: 13.r, color: const Color(0xFF2B6CB0)),
-                                SizedBox(width: 3.w),
-                                Text(
-                                  '+ × - ÷ عملية',
-                                  style: TextStyle(
-                                    fontSize: 10.5.sp,
-                                    fontWeight: FontWeight.bold,
-                                    color: const Color(0xFF2B6CB0),
+                          ),
+                          SizedBox(width: 6.w),
+
+                          // Math Operation Button
+                          Tooltip(
+                            message: hasFinalOp
+                                ? 'الدرجة مطبق عليها ($opLabel) والمحصلة من $effStr. انقر لتعديل أو إلغاء العملية.'
+                                : 'خيارات الدرجة النهائية: قسمة على عدد (مثلاً قسمة على 2)، ضرب، جمع، أو طرح',
+                            child: InkWell(
+                              onTap: () => showDialog(
+                                context: context,
+                                builder: (_) => const FinalOperationDialog(),
+                              ),
+                              child: Container(
+                                padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 3.h),
+                                decoration: BoxDecoration(
+                                  color: hasFinalOp ? const Color(0xFFEFF6FF) : Colors.white,
+                                  borderRadius: BorderRadius.circular(5.r),
+                                  border: Border.all(
+                                    color: hasFinalOp ? const Color(0xFF93C5FD) : const Color(0xFFCBD5E1),
+                                    width: hasFinalOp ? 1.2 : 1.0,
                                   ),
                                 ),
-                              ],
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.calculate_outlined,
+                                      size: 13.r,
+                                      color: hasFinalOp ? const Color(0xFF1D4ED8) : const Color(0xFF2B6CB0),
+                                    ),
+                                    SizedBox(width: 3.w),
+                                    Text(
+                                      hasFinalOp ? 'عملية: $opLabel' : '÷ × + - عملية',
+                                      style: TextStyle(
+                                        fontSize: 10.5.sp,
+                                        fontWeight: hasFinalOp ? FontWeight.w900 : FontWeight.bold,
+                                        color: hasFinalOp ? const Color(0xFF1D4ED8) : const Color(0xFF2B6CB0),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
                           ),
-                        ),
-                        SizedBox(width: 6.w),
+                          SizedBox(width: 6.w),
 
-                        // Rating Visibility Toggle
+                          // Rating Visibility Toggle
                         InkWell(
                           onTap: controller.toggleRatingColumn,
                           child: Container(
@@ -976,7 +998,8 @@ class _StudentDataTableState extends State<StudentDataTable> {
                         ),
                       ],
                     ),
-                  ),
+                  );
+                }),
                 ],
               ),
             ),

@@ -250,10 +250,21 @@ class MonthlySheetController extends ChangeNotifier {
     await updateModel(model.copyWith(roundingMode: mode, roundingThreshold: threshold));
   }
 
-  Future<void> setFinalScoreOperation(FinalScoreOperation op) async {
+  Future<void> setFinalScoreOperation(
+    FinalScoreOperation op, {
+    bool applyToSameGradeAndSubject = false,
+  }) async {
     final model = currentModel;
     if (model == null) return;
-    await updateModel(model.copyWith(finalScoreOperation: op));
+    if (applyToSameGradeAndSubject) {
+      for (final m in _models) {
+        if (m.gradeLevel == model.gradeLevel && m.subject == model.subject) {
+          await updateModel(m.copyWith(finalScoreOperation: op));
+        }
+      }
+    } else {
+      await updateModel(model.copyWith(finalScoreOperation: op));
+    }
   }
 
   double? calculateFinalStudentScore(StudentRow student, MonthlyModel model) {
