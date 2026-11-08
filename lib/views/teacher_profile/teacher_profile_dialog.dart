@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:file_picker/file_picker.dart';
@@ -7,7 +6,6 @@ import 'package:provider/provider.dart';
 
 import '../../controllers/teacher_profile_controller.dart';
 import '../../models/teacher_profile.dart';
-import '../../core/theme/app_colors.dart';
 
 /// نافذة إعدادات المعلم والمدرسة / الجامعة المتطابقة بصرياً ووظيفياً مع TeacherSettingsModal.tsx
 class TeacherProfileDialog extends StatefulWidget {

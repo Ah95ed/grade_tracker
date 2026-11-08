@@ -21,6 +21,8 @@ class MonthlyModel {
   final String teacherName;
   final String section;
   final List<String> assignedSections;
+  final Map<String, String> columnLabels;
+  final Map<String, String> columnSlants;
   final String createdAt;
   final String updatedAt;
 
@@ -42,12 +44,28 @@ class MonthlyModel {
     this.finalScoreOperation = const FinalScoreOperation(),
     this.teacherName = '',
     this.assignedSections = const [],
+    this.columnLabels = const {},
+    this.columnSlants = const {},
     this.createdAt = '',
     this.updatedAt = '',
   });
 
   /// Compatibility getter for columns
   List<CustomColumn> get columns => customColumns;
+
+  /// Effective column label (e.g. 'studentName', 'gradeLevel', 'section', 'subject', 'writtenExam', 'finalScore', 'rating')
+  String getColumnLabel(String key, String defaultLabel) {
+    final custom = columnLabels[key]?.trim();
+    if (custom != null && custom.isNotEmpty) {
+      return custom;
+    }
+    return defaultLabel;
+  }
+
+  /// Column text slant ('normal', 'italic', 'vertical')
+  String getColumnSlant(String key) {
+    return columnSlants[key] ?? 'normal';
+  }
 
   /// Effective list of sections
   List<String> get effectiveSections => assignedSections.isNotEmpty
@@ -80,6 +98,14 @@ class MonthlyModel {
       assignedSections: (json['assignedSections'] as List<dynamic>? ?? [])
           .map((sec) => sec.toString())
           .toList(),
+      columnLabels: (json['columnLabels'] as Map<String, dynamic>?)?.map(
+            (k, v) => MapEntry(k, v.toString()),
+          ) ??
+          const {},
+      columnSlants: (json['columnSlants'] as Map<String, dynamic>?)?.map(
+            (k, v) => MapEntry(k, v.toString()),
+          ) ??
+          const {},
       createdAt: json['createdAt'] as String? ?? DateTime.now().toIso8601String(),
       updatedAt: json['updatedAt'] as String? ?? '',
     );
@@ -102,6 +128,8 @@ class MonthlyModel {
         'finalScoreOperation': finalScoreOperation.toJson(),
         if (teacherName.isNotEmpty) 'teacherName': teacherName,
         if (assignedSections.isNotEmpty) 'assignedSections': assignedSections,
+        if (columnLabels.isNotEmpty) 'columnLabels': columnLabels,
+        if (columnSlants.isNotEmpty) 'columnSlants': columnSlants,
         'createdAt': createdAt,
         if (updatedAt.isNotEmpty) 'updatedAt': updatedAt,
       };
@@ -123,6 +151,8 @@ class MonthlyModel {
     FinalScoreOperation? finalScoreOperation,
     String? teacherName,
     List<String>? assignedSections,
+    Map<String, String>? columnLabels,
+    Map<String, String>? columnSlants,
     String? createdAt,
     String? updatedAt,
   }) {
@@ -143,6 +173,8 @@ class MonthlyModel {
       finalScoreOperation: finalScoreOperation ?? this.finalScoreOperation,
       teacherName: teacherName ?? this.teacherName,
       assignedSections: assignedSections ?? this.assignedSections,
+      columnLabels: columnLabels ?? this.columnLabels,
+      columnSlants: columnSlants ?? this.columnSlants,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );

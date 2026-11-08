@@ -2,16 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
 import '../../../controllers/monthly_sheet_controller.dart';
-import '../../../controllers/teacher_profile_controller.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../models/student_row.dart';
 import '../../../models/monthly_model.dart';
+import '../../../models/custom_column.dart';
 import '../../../core/utils/grade_calculator.dart';
 import '../../common/rating_badge.dart';
 import 'add_student_dialog.dart';
 import 'add_column_dialog.dart';
 import 'final_operation_dialog.dart';
-import 'rounding_settings_dialog.dart';
+import 'rename_columns_dialog.dart';
 
 /// Computed column widths for the interactive table
 class _TableWidths {
@@ -114,8 +114,6 @@ class StudentDataTable extends StatefulWidget {
 class _StudentDataTableState extends State<StudentDataTable> {
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
-
-  static const double headerHeight = 118.0;
 
   @override
   void dispose() {
@@ -366,517 +364,1020 @@ class _StudentDataTableState extends State<StudentDataTable> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // 1. Delete (#) Column Header
-          _buildHeaderCell(
-            width: widths.delete,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                Text(
-                  'حذف',
-                  style: TextStyle(
-                    fontSize: 12.5.sp,
-                    fontWeight: FontWeight.w900,
-                    color: const Color(0xFF9C3838),
-                  ),
-                ),
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 5.w, vertical: 2.h),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.7),
-                    borderRadius: BorderRadius.circular(6.r),
-                    border: Border.all(color: const Color(0xFFD5C8B2)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.refresh_rounded, size: 12.r, color: Colors.black45),
-                      SizedBox(width: 3.w),
-                      Text(
-                        '#',
-                        style: TextStyle(
-                          fontSize: 11.5.sp,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.black54,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // 2. Student Name Column Header with Embedded Search Input
-          _buildHeaderCell(
-            width: widths.name,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          'اسم الطالب',
-                          style: TextStyle(
-                            fontSize: 14.sp,
-                            fontWeight: FontWeight.w900,
-                            color: const Color(0xFF2F2822),
-                          ),
-                        ),
-                        SizedBox(width: 5.w),
-                        Icon(Icons.edit_rounded, size: 13.r, color: Colors.black45),
-                      ],
-                    ),
-                    Icon(Icons.refresh_rounded, size: 13.r, color: Colors.black45),
-                  ],
-                ),
-                Container(
-                  height: 32.h,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(8.r),
-                    border: Border.all(color: const Color(0xFFCBD5E1)),
-                  ),
-                  child: TextField(
-                    controller: _searchController,
-                    onChanged: controller.setSearchQuery,
-                    style: TextStyle(
-                      fontSize: 12.5.sp,
-                      color: const Color(0xFF2F2822),
-                      fontWeight: FontWeight.w600,
-                    ),
-                    decoration: InputDecoration(
-                      hintText: 'بحث بالاسم...',
-                      hintStyle: TextStyle(
-                        fontSize: 12.sp,
-                        color: const Color(0xFF94A3B8),
-                      ),
-                      prefixIcon: Icon(
-                        Icons.search_rounded,
-                        size: 16.r,
-                        color: const Color(0xFF64748B),
-                      ),
-                      contentPadding: EdgeInsets.zero,
-                      border: InputBorder.none,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // 3. Grade / Stage Column Header
-          _buildHeaderCell(
-            width: widths.grade,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.refresh_rounded, size: 12.r, color: Colors.black45),
-                    SizedBox(width: 4.w),
-                    Icon(Icons.edit_rounded, size: 12.r, color: Colors.black45),
-                  ],
-                ),
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 3.h),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.8),
-                    borderRadius: BorderRadius.circular(6.r),
-                    border: Border.all(color: const Color(0xFFD5C8B2)),
-                  ),
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'الصف',
-                          style: TextStyle(
-                            fontSize: 12.sp,
-                            fontWeight: FontWeight.w900,
-                            color: const Color(0xFF2F2822),
-                          ),
-                        ),
-                        Icon(Icons.arrow_drop_down_rounded, size: 16.r, color: Colors.black54),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // 4. Section Column Header
-          _buildHeaderCell(
-            width: widths.section,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  'كل الشُعب',
-                  style: TextStyle(
-                    fontSize: 12.5.sp,
-                    fontWeight: FontWeight.w900,
-                    color: const Color(0xFF2F2822),
-                  ),
-                ),
-                SizedBox(height: 4.h),
-                Icon(Icons.chevron_left_rounded, size: 16.r, color: Colors.black54),
-              ],
-            ),
-          ),
-
-          // 5. Subject Column Header
-          _buildHeaderCell(
-            width: widths.subject,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                Container(
-                  padding: EdgeInsets.all(4.r),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE0EDF8),
-                    borderRadius: BorderRadius.circular(6.r),
-                  ),
-                  child: Icon(Icons.refresh_rounded, size: 14.r, color: const Color(0xFF3A6C8F)),
-                ),
-                Text(
-                  'المادة',
-                  style: TextStyle(
-                    fontSize: 12.5.sp,
-                    fontWeight: FontWeight.w900,
-                    color: const Color(0xFF2F2822),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // 6. Written Exam Column Header (درجة التحريري بالورقة)
-          _buildHeaderCell(
-            width: widths.written,
-            color: const Color(0xFFFAF7EC),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Top row: Label + Max score badge + pencil + refresh
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        'درجة التحريري بالورقة من',
-                        style: TextStyle(
-                          fontSize: 13.sp,
-                          fontWeight: FontWeight.w900,
-                          color: const Color(0xFF1E293B),
-                        ),
-                      ),
-                      SizedBox(width: 6.w),
-                      Container(
-                        padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 2.h),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(6.r),
-                          border: Border.all(color: const Color(0xFFCBD5E1)),
-                        ),
-                        child: Text(
-                          model.writtenMaxScore.toInt().toString(),
-                          style: TextStyle(
-                            fontSize: 12.5.sp,
-                            fontWeight: FontWeight.w900,
-                            color: const Color(0xFF1E293B),
-                          ),
-                        ),
-                      ),
-                      SizedBox(width: 4.w),
-                      Icon(Icons.edit_rounded, size: 13.r, color: Colors.black45),
-                      SizedBox(width: 3.w),
-                      Icon(Icons.refresh_rounded, size: 13.r, color: Colors.black45),
-                    ],
-                  ),
-                ),
-
-                // Radio Options Box matching screenshot
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 3.h),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF1F5F9), // slate-100
-                    borderRadius: BorderRadius.circular(8.r),
-                    border: Border.all(color: const Color(0xFFCBD5E1)),
-                  ),
-                  child: Column(
-                    children: [
-                      _buildRadioOption(
-                        label: 'الدرجة كما في ورقة الطالب',
-                        isSelected: model.writtenScoreMode == 'raw',
-                        onTap: () => controller.updateWrittenScoreMode('raw'),
-                      ),
-                      _buildRadioOption(
-                        label: 'الدرجة النسبية للطالب',
-                        isSelected: model.writtenScoreMode == 'relative',
-                        onTap: () => controller.updateWrittenScoreMode('relative'),
-                      ),
-                    ],
-                  ),
-                ),
-
-                Text(
-                  '(مفعل تلقائي - كما في الورقة بدون نسبة)',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 10.5.sp,
-                    fontWeight: FontWeight.bold,
-                    color: const Color(0xFF15803D),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // 7. Optional Custom Columns
-          ...model.customColumns.map((col) {
-            return _buildHeaderCell(
-              width: widths.customCol,
-              color: const Color(0xFFF1F5F9),
+            _buildHeaderCell(
+              width: widths.delete,
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          col.name,
-                          style: TextStyle(
-                            fontSize: 13.sp,
-                            fontWeight: FontWeight.w900,
-                            color: const Color(0xFF1E293B),
-                          ),
-                        ),
-                        SizedBox(width: 4.w),
-                        Text(
-                          '(${col.maxScore.toInt()})',
-                          style: TextStyle(
-                            fontSize: 11.5.sp,
-                            fontWeight: FontWeight.bold,
-                            color: const Color(0xFF64748B),
-                          ),
-                        ),
-                      ],
+                  Text(
+                    'حذف',
+                    style: TextStyle(
+                      fontSize: 12.5.sp,
+                      fontWeight: FontWeight.w900,
+                      color: const Color(0xFF9C3838),
                     ),
                   ),
-                  InkWell(
-                    onTap: () {
-                      final updated = model.customColumns.where((c) => c.id != col.id).toList();
-                      controller.updateModel(model.copyWith(customColumns: updated));
-                    },
-                    child: Container(
-                      padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFEE2E2),
-                        borderRadius: BorderRadius.circular(4.r),
-                        border: Border.all(color: const Color(0xFFFECACA)),
-                      ),
-                      child: Text(
-                        'حذف الحقل',
-                        style: TextStyle(
-                          fontSize: 10.sp,
-                          color: const Color(0xFFDC2626),
-                          fontWeight: FontWeight.bold,
-                        ),
+                  Container(
+                    padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 2.h),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.7),
+                      borderRadius: BorderRadius.circular(6.r),
+                      border: Border.all(color: const Color(0xFFD5C8B2)),
+                    ),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _buildSlantButton(
+                            slant: model.getColumnSlant('index'),
+                            onToggle: () => controller.toggleColumnSlant('index'),
+                          ),
+                          SizedBox(width: 3.w),
+                          _buildSlantedText(
+                            '#',
+                            slant: model.getColumnSlant('index'),
+                            baseStyle: TextStyle(
+                              fontSize: 11.5.sp,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.black54,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
                 ],
               ),
-            );
-          }),
-
-          // 8. Add Column Header Button matching screenshot
-          _buildHeaderCell(
-            width: widths.addCol,
-            color: const Color(0xFFFAF7EC),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                Text(
-                  'إذا أردت إضافة حقل\nاضغط هنا',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 12.sp,
-                    fontWeight: FontWeight.w900,
-                    color: const Color(0xFF2B6CB0),
-                    height: 1.25,
-                  ),
-                ),
-                InkWell(
-                  onTap: () => showDialog(
-                    context: context,
-                    builder: (_) => const AddColumnDialog(),
-                  ),
-                  borderRadius: BorderRadius.circular(16.r),
-                  child: Container(
-                    padding: EdgeInsets.all(5.r),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF2B6CB0),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(Icons.add, size: 15.r, color: Colors.white),
-                  ),
-                ),
-              ],
             ),
-          ),
 
-          // 9. Final Score Column Header (الدرجة النهائية من)
-          _buildHeaderCell(
-            width: widths.finalScore,
-            color: const Color(0xFFFAF7EC),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Top row: Label + Score box + pencil + refresh
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+            // 2. Student Name Column Header with Embedded Search Input
+            _buildHeaderCell(
+              width: widths.name,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        'الدرجة النهائية من',
-                        style: TextStyle(
-                          fontSize: 13.5.sp,
-                          fontWeight: FontWeight.w900,
-                          color: const Color(0xFF1E293B),
+                      Expanded(
+                        child: Row(
+                          children: [
+                            Flexible(
+                              child: _buildSlantedText(
+                                model.getColumnLabel('studentName', 'اسم الطالب'),
+                                slant: model.getColumnSlant('studentName'),
+                                baseStyle: TextStyle(
+                                  fontSize: 14.sp,
+                                  fontWeight: FontWeight.w900,
+                                  color: const Color(0xFF2F2822),
+                                ),
+                              ),
+                            ),
+                            SizedBox(width: 5.w),
+                            _buildRenameButton(
+                              onTap: () => _promptRenameColumn(
+                                context,
+                                controller,
+                                model,
+                                'studentName',
+                                model.getColumnLabel('studentName', 'اسم الطالب'),
+                                'اسم الطالب',
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      SizedBox(width: 6.w),
-                      Container(
-                        padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 2.h),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(6.r),
-                          border: Border.all(color: const Color(0xFFCBD5E1)),
+                      _buildSlantButton(
+                        slant: model.getColumnSlant('studentName'),
+                        onToggle: () => controller.toggleColumnSlant('studentName'),
+                      ),
+                    ],
+                  ),
+                  Container(
+                    height: 32.h,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8.r),
+                      border: Border.all(color: const Color(0xFFCBD5E1)),
+                    ),
+                    child: TextField(
+                      controller: _searchController,
+                      onChanged: controller.setSearchQuery,
+                      style: TextStyle(
+                        fontSize: 12.5.sp,
+                        color: const Color(0xFF2F2822),
+                        fontWeight: FontWeight.w600,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: 'بحث بالاسم...',
+                        hintStyle: TextStyle(
+                          fontSize: 12.sp,
+                          color: const Color(0xFF94A3B8),
                         ),
-                        child: Text(
-                          model.totalMaxScore.toInt().toString(),
-                          style: TextStyle(
-                            fontSize: 12.5.sp,
+                        prefixIcon: Icon(
+                          Icons.search_rounded,
+                          size: 16.r,
+                          color: const Color(0xFF64748B),
+                        ),
+                        contentPadding: EdgeInsets.zero,
+                        border: InputBorder.none,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // 3. Grade / Stage Column Header
+            _buildHeaderCell(
+              width: widths.grade,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _buildSlantButton(
+                        slant: model.getColumnSlant('gradeLevel'),
+                        onToggle: () => controller.toggleColumnSlant('gradeLevel'),
+                      ),
+                      SizedBox(width: 4.w),
+                      _buildRenameButton(
+                        onTap: () => _promptRenameColumn(
+                          context,
+                          controller,
+                          model,
+                          'gradeLevel',
+                          model.getColumnLabel('gradeLevel', 'الصف'),
+                          'الصف',
+                        ),
+                      ),
+                    ],
+                  ),
+                  Container(
+                    padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 3.h),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.8),
+                      borderRadius: BorderRadius.circular(6.r),
+                      border: Border.all(color: const Color(0xFFD5C8B2)),
+                    ),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _buildSlantedText(
+                            model.getColumnLabel('gradeLevel', 'الصف'),
+                            slant: model.getColumnSlant('gradeLevel'),
+                            baseStyle: TextStyle(
+                              fontSize: 12.sp,
+                              fontWeight: FontWeight.w900,
+                              color: const Color(0xFF2F2822),
+                            ),
+                          ),
+                          Icon(Icons.arrow_drop_down_rounded, size: 16.r, color: Colors.black54),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // 4. Section Column Header
+            _buildHeaderCell(
+              width: widths.section,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _buildSlantButton(
+                        slant: model.getColumnSlant('section'),
+                        onToggle: () => controller.toggleColumnSlant('section'),
+                      ),
+                      SizedBox(width: 4.w),
+                      _buildRenameButton(
+                        onTap: () => _promptRenameColumn(
+                          context,
+                          controller,
+                          model,
+                          'section',
+                          model.getColumnLabel('section', 'كل الشُعب'),
+                          'الشعبة',
+                        ),
+                      ),
+                    ],
+                  ),
+                  _buildSlantedText(
+                    model.getColumnLabel('section', 'كل الشُعب'),
+                    slant: model.getColumnSlant('section'),
+                    baseStyle: TextStyle(
+                      fontSize: 12.5.sp,
+                      fontWeight: FontWeight.w900,
+                      color: const Color(0xFF2F2822),
+                    ),
+                  ),
+                  Icon(Icons.chevron_left_rounded, size: 16.r, color: Colors.black54),
+                ],
+              ),
+            ),
+
+            // 5. Subject Column Header
+            _buildHeaderCell(
+              width: widths.subject,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _buildSlantButton(
+                        slant: model.getColumnSlant('subject'),
+                        onToggle: () => controller.toggleColumnSlant('subject'),
+                      ),
+                      SizedBox(width: 4.w),
+                      _buildRenameButton(
+                        onTap: () => _promptRenameColumn(
+                          context,
+                          controller,
+                          model,
+                          'subject',
+                          model.getColumnLabel('subject', 'المادة'),
+                          'المادة',
+                        ),
+                      ),
+                    ],
+                  ),
+                  _buildSlantedText(
+                    model.getColumnLabel('subject', 'المادة'),
+                    slant: model.getColumnSlant('subject'),
+                    baseStyle: TextStyle(
+                      fontSize: 12.5.sp,
+                      fontWeight: FontWeight.w900,
+                      color: const Color(0xFF2F2822),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // 6. Written Exam Column Header (درجة التحريري بالورقة)
+            _buildHeaderCell(
+              width: widths.written,
+              color: const Color(0xFFFAF7EC),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Top row: Label + Max score badge + pencil + slant
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _buildSlantedText(
+                          model.getColumnLabel('writtenExam', 'درجة التحريري بالورقة من'),
+                          slant: model.getColumnSlant('writtenExam'),
+                          baseStyle: TextStyle(
+                            fontSize: 13.sp,
                             fontWeight: FontWeight.w900,
                             color: const Color(0xFF1E293B),
                           ),
                         ),
-                      ),
-                      SizedBox(width: 4.w),
-                      Icon(Icons.edit_rounded, size: 13.r, color: Colors.black45),
-                      SizedBox(width: 3.w),
-                      Icon(Icons.refresh_rounded, size: 13.r, color: Colors.black45),
-                    ],
-                  ),
-                ),
-
-                // Controls row matching screenshot: Status + Operation + Rating Toggle
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // Status Badge
-                      Text(
-                        '✓ مكتمل (${totalAllocated.toInt()}/${model.totalMaxScore.toInt()})',
-                        style: TextStyle(
-                          fontSize: 11.5.sp,
-                          fontWeight: FontWeight.w900,
-                          color: isComplete ? const Color(0xFF15803D) : const Color(0xFFB45309),
-                        ),
-                      ),
-                      SizedBox(width: 6.w),
-
-                      // Math Operation Button
-                      InkWell(
-                        onTap: () => showDialog(
-                          context: context,
-                          builder: (_) => const FinalOperationDialog(),
-                        ),
-                        child: Container(
-                          padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 3.h),
+                        SizedBox(width: 6.w),
+                        Container(
+                          padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 2.h),
                           decoration: BoxDecoration(
                             color: Colors.white,
-                            borderRadius: BorderRadius.circular(5.r),
+                            borderRadius: BorderRadius.circular(6.r),
                             border: Border.all(color: const Color(0xFFCBD5E1)),
                           ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.calculate_outlined, size: 13.r, color: const Color(0xFF2B6CB0)),
-                              SizedBox(width: 3.w),
-                              Text(
-                                '+ × - ÷ عملية',
-                                style: TextStyle(
-                                  fontSize: 10.5.sp,
-                                  fontWeight: FontWeight.bold,
-                                  color: const Color(0xFF2B6CB0),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      SizedBox(width: 6.w),
-
-                      // Rating Visibility Toggle
-                      InkWell(
-                        onTap: controller.toggleRatingColumn,
-                        child: Container(
-                          padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 3.h),
-                          decoration: BoxDecoration(
-                            color: controller.showRatingColumn ? const Color(0xFFEBF4EE) : Colors.white,
-                            borderRadius: BorderRadius.circular(5.r),
-                            border: Border.all(
-                              color: controller.showRatingColumn ? const Color(0xFF86EFAC) : const Color(0xFFCBD5E1),
+                          child: Text(
+                            model.writtenMaxScore.toInt().toString(),
+                            style: TextStyle(
+                              fontSize: 12.5.sp,
+                              fontWeight: FontWeight.w900,
+                              color: const Color(0xFF1E293B),
                             ),
                           ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                controller.showRatingColumn ? Icons.visibility_rounded : Icons.visibility_off_rounded,
-                                size: 13.r,
-                                color: controller.showRatingColumn ? const Color(0xFF15803D) : const Color(0xFF64748B),
-                              ),
-                              SizedBox(width: 3.w),
-                              Text(
-                                'التقدير: ${controller.showRatingColumn ? "ظاهر" : "مخفي"}',
-                                style: TextStyle(
-                                  fontSize: 10.5.sp,
-                                  fontWeight: FontWeight.bold,
-                                  color: controller.showRatingColumn ? const Color(0xFF15803D) : const Color(0xFF64748B),
-                                ),
-                              ),
-                            ],
+                        ),
+                        SizedBox(width: 4.w),
+                        _buildRenameButton(
+                          onTap: () => _promptRenameColumn(
+                            context,
+                            controller,
+                            model,
+                            'writtenExam',
+                            model.getColumnLabel('writtenExam', 'درجة التحريري بالورقة من'),
+                            'درجة التحريري بالورقة من',
                           ),
                         ),
+                        SizedBox(width: 3.w),
+                        _buildSlantButton(
+                          slant: model.getColumnSlant('writtenExam'),
+                          onToggle: () => controller.toggleColumnSlant('writtenExam'),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Radio Options Box matching screenshot
+                  Container(
+                    padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 3.h),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9), // slate-100
+                      borderRadius: BorderRadius.circular(8.r),
+                      border: Border.all(color: const Color(0xFFCBD5E1)),
+                    ),
+                    child: Column(
+                      children: [
+                        _buildRadioOption(
+                          label: 'الدرجة كما في ورقة الطالب',
+                          isSelected: model.writtenScoreMode == 'raw',
+                          onTap: () => controller.updateWrittenScoreMode('raw'),
+                        ),
+                        _buildRadioOption(
+                          label: 'الدرجة النسبية للطالب',
+                          isSelected: model.writtenScoreMode == 'relative',
+                          onTap: () => controller.updateWrittenScoreMode('relative'),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  Text(
+                    '(مفعل تلقائي - كما في الورقة بدون نسبة)',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 10.5.sp,
+                      fontWeight: FontWeight.bold,
+                      color: const Color(0xFF15803D),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // 7. Optional Custom Columns
+            ...model.customColumns.map((col) {
+              return _buildHeaderCell(
+                width: widths.customCol,
+                color: const Color(0xFFF1F5F9),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          _buildSlantedText(
+                            col.name,
+                            slant: model.getColumnSlant(col.id),
+                            baseStyle: TextStyle(
+                              fontSize: 13.sp,
+                              fontWeight: FontWeight.w900,
+                              color: const Color(0xFF1E293B),
+                            ),
+                          ),
+                          SizedBox(width: 4.w),
+                          Text(
+                            '(${col.maxScore.toInt()})',
+                            style: TextStyle(
+                              fontSize: 11.5.sp,
+                              fontWeight: FontWeight.bold,
+                              color: const Color(0xFF64748B),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _buildRenameButton(
+                          tooltip: 'تعديل اسم أو درجة الحقل',
+                          onTap: () => _promptEditCustomColumn(context, controller, col),
+                        ),
+                        SizedBox(width: 4.w),
+                        _buildSlantButton(
+                          slant: model.getColumnSlant(col.id),
+                          onToggle: () => controller.toggleColumnSlant(col.id),
+                        ),
+                        SizedBox(width: 4.w),
+                        Tooltip(
+                          message: 'حذف هذا الحقل',
+                          child: InkWell(
+                            onTap: () => _confirmDeleteColumn(context, controller, col),
+                            borderRadius: BorderRadius.circular(6.r),
+                            child: Container(
+                              padding: EdgeInsets.all(3.r),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFEE2E2),
+                                borderRadius: BorderRadius.circular(6.r),
+                                border: Border.all(color: const Color(0xFFFECACA), width: 0.8),
+                              ),
+                              child: Icon(
+                                Icons.delete_outline_rounded,
+                                size: 13.r,
+                                color: const Color(0xFFDC2626),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            }),
+
+            // 8. Add Column Header Button matching screenshot
+            _buildHeaderCell(
+              width: widths.addCol,
+              color: const Color(0xFFFAF7EC),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  Text(
+                    'إذا أردت إضافة حقل\nاضغط هنا',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 12.sp,
+                      fontWeight: FontWeight.w900,
+                      color: const Color(0xFF2B6CB0),
+                      height: 1.25,
+                    ),
+                  ),
+                  InkWell(
+                    onTap: () => showDialog(
+                      context: context,
+                      builder: (_) => const AddColumnDialog(),
+                    ),
+                    borderRadius: BorderRadius.circular(16.r),
+                    child: Container(
+                      padding: EdgeInsets.all(5.r),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFF2B6CB0),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(Icons.add, size: 15.r, color: Colors.white),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // 9. Final Score Column Header (الدرجة النهائية من)
+            _buildHeaderCell(
+              width: widths.finalScore,
+              color: const Color(0xFFFAF7EC),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Top row: Label + Score box + pencil + slant
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _buildSlantedText(
+                          model.getColumnLabel('finalScore', 'الدرجة النهائية من'),
+                          slant: model.getColumnSlant('finalScore'),
+                          baseStyle: TextStyle(
+                            fontSize: 13.5.sp,
+                            fontWeight: FontWeight.w900,
+                            color: const Color(0xFF1E293B),
+                          ),
+                        ),
+                        SizedBox(width: 6.w),
+                        Container(
+                          padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 2.h),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(6.r),
+                            border: Border.all(color: const Color(0xFFCBD5E1)),
+                          ),
+                          child: Text(
+                            model.totalMaxScore.toInt().toString(),
+                            style: TextStyle(
+                              fontSize: 12.5.sp,
+                              fontWeight: FontWeight.w900,
+                              color: const Color(0xFF1E293B),
+                            ),
+                          ),
+                        ),
+                        SizedBox(width: 4.w),
+                        _buildRenameButton(
+                          onTap: () => _promptRenameColumn(
+                            context,
+                            controller,
+                            model,
+                            'finalScore',
+                            model.getColumnLabel('finalScore', 'الدرجة النهائية من'),
+                            'الدرجة النهائية من',
+                          ),
+                        ),
+                        SizedBox(width: 3.w),
+                        _buildSlantButton(
+                          slant: model.getColumnSlant('finalScore'),
+                          onToggle: () => controller.toggleColumnSlant('finalScore'),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Controls row matching screenshot: Status + Operation + Rating Toggle
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        // Status Badge
+                        Text(
+                          '✓ مكتمل (${totalAllocated.toInt()}/${model.totalMaxScore.toInt()})',
+                          style: TextStyle(
+                            fontSize: 11.5.sp,
+                            fontWeight: FontWeight.w900,
+                            color: isComplete ? const Color(0xFF15803D) : const Color(0xFFB45309),
+                          ),
+                        ),
+                        SizedBox(width: 6.w),
+
+                        // Math Operation Button
+                        InkWell(
+                          onTap: () => showDialog(
+                            context: context,
+                            builder: (_) => const FinalOperationDialog(),
+                          ),
+                          child: Container(
+                            padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 3.h),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(5.r),
+                              border: Border.all(color: const Color(0xFFCBD5E1)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.calculate_outlined, size: 13.r, color: const Color(0xFF2B6CB0)),
+                                SizedBox(width: 3.w),
+                                Text(
+                                  '+ × - ÷ عملية',
+                                  style: TextStyle(
+                                    fontSize: 10.5.sp,
+                                    fontWeight: FontWeight.bold,
+                                    color: const Color(0xFF2B6CB0),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        SizedBox(width: 6.w),
+
+                        // Rating Visibility Toggle
+                        InkWell(
+                          onTap: controller.toggleRatingColumn,
+                          child: Container(
+                            padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 3.h),
+                            decoration: BoxDecoration(
+                              color: controller.showRatingColumn ? const Color(0xFFEBF4EE) : Colors.white,
+                              borderRadius: BorderRadius.circular(5.r),
+                              border: Border.all(
+                                color: controller.showRatingColumn ? const Color(0xFF86EFAC) : const Color(0xFFCBD5E1),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  controller.showRatingColumn ? Icons.visibility_rounded : Icons.visibility_off_rounded,
+                                  size: 13.r,
+                                  color: controller.showRatingColumn ? const Color(0xFF15803D) : const Color(0xFF64748B),
+                                ),
+                                SizedBox(width: 3.w),
+                                Text(
+                                  'التقدير: ${controller.showRatingColumn ? "ظاهر" : "مخفي"}',
+                                  style: TextStyle(
+                                    fontSize: 10.5.sp,
+                                    fontWeight: FontWeight.bold,
+                                    color: controller.showRatingColumn ? const Color(0xFF15803D) : const Color(0xFF64748B),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Slanted text rendering based on normal / italic / vertical
+  Widget _buildSlantedText(
+    String text, {
+    required String slant,
+    required TextStyle baseStyle,
+    TextAlign textAlign = TextAlign.center,
+    int maxLines = 1,
+  }) {
+    if (slant == 'italic') {
+      return Transform.rotate(
+        angle: -0.15,
+        child: Text(
+          text,
+          textAlign: textAlign,
+          maxLines: maxLines,
+          overflow: TextOverflow.ellipsis,
+          style: baseStyle.copyWith(fontStyle: FontStyle.italic),
+        ),
+      );
+    } else if (slant == 'vertical') {
+      return RotatedBox(
+        quarterTurns: 3,
+        child: Text(
+          text,
+          textAlign: textAlign,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: baseStyle.copyWith(letterSpacing: 1.2),
+        ),
+      );
+    }
+    return Text(
+      text,
+      textAlign: textAlign,
+      maxLines: maxLines,
+      overflow: TextOverflow.ellipsis,
+      style: baseStyle,
+    );
+  }
+
+  /// Rotate / Slant Button matching Daragat SlantButton
+  Widget _buildSlantButton({
+    required String slant,
+    required VoidCallback onToggle,
+    String? tooltip,
+  }) {
+    final isItalic = slant == 'italic';
+    final isVertical = slant == 'vertical';
+
+    final Color bgColor = isItalic
+        ? const Color(0xFFFEF3C7)
+        : isVertical
+            ? const Color(0xFFDBEAFE)
+            : Colors.white.withValues(alpha: 0.85);
+
+    final Color borderColor = isItalic
+        ? const Color(0xFFF59E0B)
+        : isVertical
+            ? const Color(0xFF3B82F6)
+            : const Color(0xFFCBD5E1);
+
+    final Color iconColor = isItalic
+        ? const Color(0xFFB45309)
+        : isVertical
+            ? const Color(0xFF1D4ED8)
+            : const Color(0xFF64748B);
+
+    final String message = tooltip ??
+        (isItalic
+            ? 'ميل النص: مائل (انقر للتحويل إلى عامودي)'
+            : isVertical
+                ? 'ميل النص: عامودي (انقر للإرجاع إلى عادي)'
+                : 'تغيير ميل النص (عادي / مائل / عامودي)');
+
+    return Tooltip(
+      message: message,
+      child: InkWell(
+        onTap: onToggle,
+        borderRadius: BorderRadius.circular(6.r),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: EdgeInsets.all(3.r),
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: BorderRadius.circular(6.r),
+            border: Border.all(
+              color: borderColor,
+              width: isItalic || isVertical ? 1.2 : 0.8,
+            ),
+          ),
+          child: AnimatedRotation(
+            turns: isItalic ? -0.125 : (isVertical ? -0.25 : 0.0),
+            duration: const Duration(milliseconds: 180),
+            child: Icon(
+              Icons.refresh_rounded,
+              size: 13.r,
+              color: iconColor,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Pencil Rename Button
+  Widget _buildRenameButton({
+    required VoidCallback onTap,
+    String tooltip = 'تعديل اسم العمود',
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(6.r),
+        child: Container(
+          padding: EdgeInsets.all(3.r),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.85),
+            borderRadius: BorderRadius.circular(6.r),
+            border: Border.all(color: const Color(0xFFCBD5E1), width: 0.8),
+          ),
+          child: Icon(
+            Icons.edit_rounded,
+            size: 13.r,
+            color: const Color(0xFF475569),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Prompt to rename a specific standard column
+  void _promptRenameColumn(
+    BuildContext context,
+    MonthlySheetController controller,
+    MonthlyModel model,
+    String key,
+    String currentTitle,
+    String defaultTitle,
+  ) {
+    final textCtrl = TextEditingController(text: currentTitle);
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.r)),
+            title: Row(
+              children: [
+                Icon(Icons.edit_note_rounded, color: const Color(0xFF2B6CB0), size: 22.r),
+                SizedBox(width: 8.w),
+                Expanded(
+                  child: Text(
+                    'تعديل عنوان العمود',
+                    style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w900),
                   ),
                 ),
               ],
             ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'الاسم الافتراضي: $defaultTitle',
+                  style: TextStyle(fontSize: 11.sp, color: const Color(0xFF64748B)),
+                ),
+                SizedBox(height: 10.h),
+                TextFormField(
+                  controller: textCtrl,
+                  autofocus: true,
+                  style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.bold),
+                  decoration: InputDecoration(
+                    labelText: 'عنوان العمود المفضل',
+                    filled: true,
+                    fillColor: const Color(0xFFF8FAFC),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10.r)),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(ctx).pop();
+                  showDialog(
+                    context: context,
+                    builder: (_) => RenameColumnsDialog(model: model, initialFocusKey: key),
+                  );
+                },
+                child: Text('تسمية جميع الأعمدة...', style: TextStyle(fontSize: 11.sp)),
+              ),
+              TextButton(
+                onPressed: () {
+                  controller.setColumnLabel(key, '');
+                  Navigator.of(ctx).pop();
+                },
+                child: Text('استعادة الافتراضي', style: TextStyle(fontSize: 11.sp, color: Colors.amber.shade900)),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  final newName = textCtrl.text.trim();
+                  controller.setColumnLabel(key, newName);
+                  Navigator.of(ctx).pop();
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF2B6CB0),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.r)),
+                ),
+                child: Text('حفظ', style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.bold)),
+              ),
+            ],
           ),
-        ],
-      ),
-    ),
-  );
-}
+        );
+      },
+    );
+  }
+
+  /// Prompt to edit custom column name and max score
+  void _promptEditCustomColumn(
+    BuildContext context,
+    MonthlySheetController controller,
+    CustomColumn col,
+  ) {
+    final nameCtrl = TextEditingController(text: col.name);
+    final scoreCtrl = TextEditingController(text: col.maxScore.toInt().toString());
+    bool isAttendance = col.isAttendance;
+    bool affectsGrade = col.affectsGrade;
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            return Directionality(
+              textDirection: TextDirection.rtl,
+              child: AlertDialog(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.r)),
+                title: Row(
+                  children: [
+                    Icon(Icons.tune_rounded, color: const Color(0xFF2B6CB0), size: 22.r),
+                    SizedBox(width: 8.w),
+                    Expanded(
+                      child: Text(
+                        'تعديل الحقل: ${col.name}',
+                        style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w900),
+                      ),
+                    ),
+                  ],
+                ),
+                content: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      TextFormField(
+                        controller: nameCtrl,
+                        style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.bold),
+                        decoration: InputDecoration(
+                          labelText: 'اسم الحقل',
+                          filled: true,
+                          fillColor: const Color(0xFFF8FAFC),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10.r)),
+                        ),
+                      ),
+                      SizedBox(height: 12.h),
+                      TextFormField(
+                        controller: scoreCtrl,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.bold),
+                        decoration: InputDecoration(
+                          labelText: 'الدرجة الكاملة للحقل',
+                          suffixText: 'درجة',
+                          filled: true,
+                          fillColor: const Color(0xFFF8FAFC),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10.r)),
+                        ),
+                      ),
+                      SizedBox(height: 12.h),
+                      CheckboxListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text('حقل غياب وحضور', style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.bold)),
+                        value: isAttendance,
+                        onChanged: (val) {
+                          setDialogState(() => isAttendance = val ?? false);
+                        },
+                      ),
+                      if (isAttendance)
+                        CheckboxListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text('يؤثر على الدرجات', style: TextStyle(fontSize: 11.5.sp)),
+                          value: affectsGrade,
+                          onChanged: (val) {
+                            setDialogState(() => affectsGrade = val ?? true);
+                          },
+                        ),
+                    ],
+                  ),
+                ),
+                actions: [
+                  TextButton.icon(
+                    onPressed: () {
+                      Navigator.of(ctx).pop();
+                      _confirmDeleteColumn(context, controller, col);
+                    },
+                    icon: Icon(Icons.delete_outline_rounded, color: Colors.red.shade700, size: 16.r),
+                    label: Text('حذف الحقل', style: TextStyle(color: Colors.red.shade700, fontSize: 11.sp)),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    child: Text('إلغاء', style: TextStyle(fontSize: 11.5.sp)),
+                  ),
+                  ElevatedButton(
+                    onPressed: () {
+                      final newName = nameCtrl.text.trim();
+                      final newScore = double.tryParse(scoreCtrl.text.trim()) ?? col.maxScore;
+                      if (newName.isNotEmpty) {
+                        controller.updateCustomColumn(
+                          col.id,
+                          name: newName,
+                          maxScore: newScore,
+                          isAttendance: isAttendance,
+                          affectsGrade: affectsGrade,
+                        );
+                      }
+                      Navigator.of(ctx).pop();
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF2B6CB0),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.r)),
+                    ),
+                    child: Text('حفظ التعديلات', style: TextStyle(fontSize: 11.5.sp, fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  /// Confirm delete custom column
+  void _confirmDeleteColumn(
+    BuildContext context,
+    MonthlySheetController controller,
+    CustomColumn col,
+  ) {
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.r)),
+            title: Row(
+              children: [
+                Icon(Icons.warning_amber_rounded, color: Colors.red.shade700, size: 22.r),
+                SizedBox(width: 8.w),
+                Text('تأكيد حذف الحقل', style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w900)),
+              ],
+            ),
+            content: Text(
+              'هل أنت متأكد من حذف الحقل "${col.name}"؟ سيتم حذف جميع درجات الطلاب المسجلة في هذا الحقل.',
+              style: TextStyle(fontSize: 12.sp, color: const Color(0xFF334155)),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: Text('إلغاء', style: TextStyle(fontSize: 12.sp)),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  controller.deleteColumn(col.id);
+                  Navigator.of(ctx).pop();
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red.shade700,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.r)),
+                ),
+                child: Text('نعم، احذف الحقل', style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 
   /// Empty State Card exactly matching the user's uploaded screenshot
   Widget _buildEmptyState(BuildContext context, MonthlyModel model, double tableWidth) {

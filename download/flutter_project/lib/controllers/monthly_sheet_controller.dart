@@ -137,6 +137,82 @@ class MonthlySheetController extends ChangeNotifier {
     await updateModel(model.copyWith(customColumns: updatedCols));
   }
 
+  Future<void> updateCustomColumn(
+    String colId, {
+    String? name,
+    double? maxScore,
+    bool? isAttendance,
+    bool? affectsGrade,
+  }) async {
+    final model = currentModel;
+    if (model == null) return;
+    final updatedCols = model.customColumns.map((col) {
+      if (col.id == colId) {
+        return col.copyWith(
+          name: name,
+          maxScore: maxScore,
+          isAttendance: isAttendance,
+          affectsGrade: affectsGrade,
+        );
+      }
+      return col;
+    }).toList();
+    await updateModel(model.copyWith(customColumns: updatedCols));
+  }
+
+  Future<void> deleteColumn(String colId) async {
+    final model = currentModel;
+    if (model == null) return;
+    final updatedCols = model.customColumns.where((c) => c.id != colId).toList();
+    final updatedStudents = model.students.map((st) {
+      if (!st.scores.containsKey(colId)) return st;
+      final newScores = Map<String, double?>.from(st.scores)..remove(colId);
+      return st.copyWith(scores: newScores);
+    }).toList();
+    await updateModel(model.copyWith(
+      customColumns: updatedCols,
+      students: updatedStudents,
+    ));
+  }
+
+  Future<void> setColumnLabel(String key, String newLabel) async {
+    final model = currentModel;
+    if (model == null) return;
+    final updatedLabels = Map<String, String>.from(model.columnLabels);
+    final trimmed = newLabel.trim();
+    if (trimmed.isEmpty) {
+      updatedLabels.remove(key);
+    } else {
+      updatedLabels[key] = trimmed;
+    }
+    await updateModel(model.copyWith(columnLabels: updatedLabels));
+  }
+
+  Future<void> setColumnLabels(Map<String, String> labels) async {
+    final model = currentModel;
+    if (model == null) return;
+    await updateModel(model.copyWith(columnLabels: Map<String, String>.from(labels)));
+  }
+
+  Future<void> resetColumnLabels() async {
+    final model = currentModel;
+    if (model == null) return;
+    await updateModel(model.copyWith(columnLabels: const {}));
+  }
+
+  Future<void> toggleColumnSlant(String key) async {
+    final model = currentModel;
+    if (model == null) return;
+    final current = model.getColumnSlant(key);
+    final next = current == 'normal'
+        ? 'italic'
+        : current == 'italic'
+            ? 'vertical'
+            : 'normal';
+    final updatedSlants = Map<String, String>.from(model.columnSlants)..[key] = next;
+    await updateModel(model.copyWith(columnSlants: updatedSlants));
+  }
+
   Future<void> addStudent(StudentRow student) async {
     final model = currentModel;
     if (model == null) return;
@@ -185,7 +261,9 @@ class MonthlySheetController extends ChangeNotifier {
     bool hasScore = false;
 
     if (student.writtenRawScore != null) {
-      final customSum = model.customColumns.fold<double>(0.0, (sum, c) => sum + c.maxScore);
+      final customSum = model.customColumns
+          .where((c) => !c.isAttendance || c.affectsGrade)
+          .fold<double>(0.0, (sum, c) => sum + c.maxScore);
       final autoWeight = (model.totalMaxScore - customSum).clamp(0.0, double.infinity);
       final written = GradeCalculator.calculateWrittenScore(
         rawScore: student.writtenRawScore,
@@ -200,6 +278,7 @@ class MonthlySheetController extends ChangeNotifier {
     }
 
     for (final col in model.customColumns) {
+      if (col.isAttendance && !col.affectsGrade) continue;
       final score = student.scores[col.id];
       if (score != null) {
         total += score;

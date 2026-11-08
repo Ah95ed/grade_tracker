@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
 import '../../../controllers/monthly_sheet_controller.dart';
 import '../../../controllers/teacher_profile_controller.dart';
 import '../../../core/theme/app_colors.dart';
+import '../clean_table_view.dart';
+import '../interactive_classroom_view.dart';
+import '../../../services/pdf/pdf_print_service.dart';
+import '../../../services/excel_export_service.dart';
 import 'add_student_dialog.dart';
-import 'add_column_dialog.dart';
 import 'edit_model_dialog.dart';
-import 'rounding_settings_dialog.dart';
-import 'final_operation_dialog.dart';
+import 'rename_columns_dialog.dart';
 
 /// Top Table Header & Action Toolbar matching Daragat Web App exactly as in user image
 class SheetToolbar extends StatelessWidget {
@@ -297,11 +298,9 @@ class SheetToolbar extends StatelessWidget {
                         textColor: const Color(0xFF4A2818),
                         iconColor: const Color(0xFFBA916C),
                         onTap: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              duration: Duration(seconds: 2),
-                              content: Text('الجدول الصافي: تم تفعيل التمرير الأفقي الموسع'),
-                            ),
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const CleanTableView()),
                           );
                         },
                       ),
@@ -315,11 +314,9 @@ class SheetToolbar extends StatelessWidget {
                         textColor: const Color(0xFF065F46),
                         iconColor: const Color(0xFF059669),
                         onTap: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              duration: Duration(seconds: 2),
-                              content: Text('الصف التفاعلي: يمكنك رصد الدرجات الشفهية مباشرة في الجدول'),
-                            ),
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const InteractiveClassroomView()),
                           );
                         },
                       ),
@@ -334,7 +331,7 @@ class SheetToolbar extends StatelessWidget {
                         iconColor: const Color(0xFF2B6CB0),
                         onTap: () => showDialog(
                           context: context,
-                          builder: (_) => const AddColumnDialog(),
+                          builder: (_) => RenameColumnsDialog(model: model),
                         ),
                       ),
 
@@ -371,13 +368,22 @@ class SheetToolbar extends StatelessWidget {
                         borderColor: const Color(0xFFCBD5E1),
                         iconColor: const Color(0xFF2B6CB0),
                         tooltip: 'طباعة كشف درجات ${model.name}',
-                        onTap: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              duration: const Duration(seconds: 2),
-                              content: Text('تم إرسال كشف ${model.name} للطباعة'),
-                            ),
-                          );
+                        onTap: () async {
+                          try {
+                            await PdfPrintService.printMonthlySheet(
+                              model: model,
+                              profile: profile,
+                            );
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  backgroundColor: Colors.red.shade700,
+                                  content: Text('تعذر فتح الطباعة: $e'),
+                                ),
+                              );
+                            }
+                          }
                         },
                       ),
 
@@ -388,20 +394,20 @@ class SheetToolbar extends StatelessWidget {
                         borderColor: const Color(0xFF86EFAC),
                         iconColor: const Color(0xFF15803D),
                         tooltip: 'تصدير جدول الدرجات إلى Excel / CSV',
-                        onTap: () {
-                          final buffer = StringBuffer();
-                          buffer.writeln('اسم الطالب,الشعبة,التحريري,النهائي');
-                          for (final st in model.students) {
-                            final finalScore = controller.calculateFinalStudentScore(st, model);
-                            buffer.writeln('${st.name},${st.section},${st.writtenRawScore ?? ""},${finalScore ?? ""}');
-                          }
-                          Clipboard.setData(ClipboardData(text: buffer.toString()));
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              backgroundColor: Color(0xFF15803D),
-                              content: Text('تم نسخ بيانات درجات الطلاب بصيغة Excel إلى الحافظة بنجاح'),
-                            ),
+                        onTap: () async {
+                          final res = await ExcelExportService.exportMonthlySheet(
+                            model: model,
+                            controller: controller,
+                            profile: profile,
                           );
+                          if (context.mounted && res != null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                backgroundColor: const Color(0xFF15803D),
+                                content: Text(res),
+                              ),
+                            );
+                          }
                         },
                       ),
                     ],

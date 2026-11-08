@@ -27,6 +27,7 @@ class TeacherProfile {
   });
 
   bool get isUniversity => institutionType == 'university';
+  String get schoolType => isUniversity ? 'جامعي' : 'مدرسي';
 
   String get effectiveInstitutionName {
     if (isUniversity) {

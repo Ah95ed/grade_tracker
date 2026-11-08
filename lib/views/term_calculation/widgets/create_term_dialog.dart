@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import '../../../controllers/monthly_sheet_controller.dart';
 import '../../../controllers/term_controller.dart';
 import '../../../controllers/teacher_profile_controller.dart';
-import '../../../core/constants/academic_presets.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../models/term_model.dart';
 
