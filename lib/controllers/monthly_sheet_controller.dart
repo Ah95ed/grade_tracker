@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+
 import '../models/monthly_model.dart';
 import '../models/student_row.dart';
 import '../models/custom_column.dart';
+import '../models/attendance_record.dart';
 import '../models/final_score_operation.dart';
 import '../services/storage_service.dart';
 import '../core/utils/grade_calculator.dart';
@@ -82,11 +84,13 @@ class MonthlySheetController extends ChangeNotifier {
     final model = currentModel;
     if (model == null) return [];
     return model.students.where((s) {
-      final matchesSection = _selectedSection == 'ALL' || s.section.trim() == _selectedSection;
+      final matchesSection =
+          _selectedSection == 'ALL' || s.section.trim() == _selectedSection;
       if (!matchesSection) return false;
       if (_searchQuery.trim().isEmpty) return true;
       final query = _searchQuery.trim().toLowerCase();
-      return s.name.toLowerCase().contains(query) || s.section.toLowerCase().contains(query);
+      return s.name.toLowerCase().contains(query) ||
+          s.section.toLowerCase().contains(query);
     }).toList();
   }
 
@@ -133,7 +137,8 @@ class MonthlySheetController extends ChangeNotifier {
   Future<void> addColumn(CustomColumn column) async {
     final model = currentModel;
     if (model == null) return;
-    final updatedCols = List<CustomColumn>.from(model.customColumns)..add(column);
+    final updatedCols = List<CustomColumn>.from(model.customColumns)
+      ..add(column);
     await updateModel(model.copyWith(customColumns: updatedCols));
   }
 
@@ -163,16 +168,17 @@ class MonthlySheetController extends ChangeNotifier {
   Future<void> deleteColumn(String colId) async {
     final model = currentModel;
     if (model == null) return;
-    final updatedCols = model.customColumns.where((c) => c.id != colId).toList();
+    final updatedCols = model.customColumns
+        .where((c) => c.id != colId)
+        .toList();
     final updatedStudents = model.students.map((st) {
       if (!st.scores.containsKey(colId)) return st;
       final newScores = Map<String, double?>.from(st.scores)..remove(colId);
       return st.copyWith(scores: newScores);
     }).toList();
-    await updateModel(model.copyWith(
-      customColumns: updatedCols,
-      students: updatedStudents,
-    ));
+    await updateModel(
+      model.copyWith(customColumns: updatedCols, students: updatedStudents),
+    );
   }
 
   Future<void> setColumnLabel(String key, String newLabel) async {
@@ -191,7 +197,9 @@ class MonthlySheetController extends ChangeNotifier {
   Future<void> setColumnLabels(Map<String, String> labels) async {
     final model = currentModel;
     if (model == null) return;
-    await updateModel(model.copyWith(columnLabels: Map<String, String>.from(labels)));
+    await updateModel(
+      model.copyWith(columnLabels: Map<String, String>.from(labels)),
+    );
   }
 
   Future<void> resetColumnLabels() async {
@@ -207,9 +215,10 @@ class MonthlySheetController extends ChangeNotifier {
     final next = current == 'normal'
         ? 'italic'
         : current == 'italic'
-            ? 'vertical'
-            : 'normal';
-    final updatedSlants = Map<String, String>.from(model.columnSlants)..[key] = next;
+        ? 'vertical'
+        : 'normal';
+    final updatedSlants = Map<String, String>.from(model.columnSlants)
+      ..[key] = next;
     await updateModel(model.copyWith(columnSlants: updatedSlants));
   }
 
@@ -220,7 +229,12 @@ class MonthlySheetController extends ChangeNotifier {
     await updateModel(model.copyWith(students: updatedStudents));
   }
 
-  Future<void> updateStudentScore(String studentId, {double? writtenScore, String? colId, double? colScore}) async {
+  Future<void> updateStudentScore(
+    String studentId, {
+    double? writtenScore,
+    String? colId,
+    double? colScore,
+  }) async {
     final model = currentModel;
     if (model == null) return;
     final students = model.students.map((st) {
@@ -229,7 +243,8 @@ class MonthlySheetController extends ChangeNotifier {
         return st.copyWith(writtenRawScore: writtenScore);
       }
       if (colId != null) {
-        final newScores = Map<String, double?>.from(st.scores)..[colId] = colScore;
+        final newScores = Map<String, double?>.from(st.scores)
+          ..[colId] = colScore;
         return st.copyWith(scores: newScores);
       }
       return st;
@@ -237,17 +252,30 @@ class MonthlySheetController extends ChangeNotifier {
     await updateModel(model.copyWith(students: students));
   }
 
+  Future<void> updateStudent(StudentRow student) async {
+    final model = currentModel;
+    if (model == null) return;
+    final updatedStudents = model.students
+        .map((s) => s.id == student.id ? student : s)
+        .toList();
+    await updateModel(model.copyWith(students: updatedStudents));
+  }
+
   Future<void> deleteStudent(String studentId) async {
     final model = currentModel;
     if (model == null) return;
-    final updatedStudents = model.students.where((s) => s.id != studentId).toList();
+    final updatedStudents = model.students
+        .where((s) => s.id != studentId)
+        .toList();
     await updateModel(model.copyWith(students: updatedStudents));
   }
 
   Future<void> setRoundingMode(String mode, double threshold) async {
     final model = currentModel;
     if (model == null) return;
-    await updateModel(model.copyWith(roundingMode: mode, roundingThreshold: threshold));
+    await updateModel(
+      model.copyWith(roundingMode: mode, roundingThreshold: threshold),
+    );
   }
 
   Future<void> setFinalScoreOperation(
@@ -275,7 +303,10 @@ class MonthlySheetController extends ChangeNotifier {
       final customSum = model.customColumns
           .where((c) => !c.isAttendance || c.affectsGrade)
           .fold<double>(0.0, (sum, c) => sum + c.maxScore);
-      final autoWeight = (model.totalMaxScore - customSum).clamp(0.0, double.infinity);
+      final autoWeight = (model.totalMaxScore - customSum).clamp(
+        0.0,
+        double.infinity,
+      );
       final written = GradeCalculator.calculateWrittenScore(
         rawScore: student.writtenRawScore,
         maxScore: model.writtenMaxScore,
@@ -289,7 +320,7 @@ class MonthlySheetController extends ChangeNotifier {
     }
 
     for (final col in model.customColumns) {
-      if (col.isAttendance && !col.affectsGrade) continue;
+      if (col.isAttendance) continue;
       final score = student.scores[col.id];
       if (score != null) {
         total += score;
@@ -297,9 +328,48 @@ class MonthlySheetController extends ChangeNotifier {
       }
     }
 
+    // Attendance columns impact (increases or decreases final score)
+    double attendanceDelta = 0.0;
+    for (final col in model.customColumns) {
+      if (!col.isAttendance) continue;
+      final records = student.attendanceRecords[col.id] ?? const [];
+      if (records.isNotEmpty) {
+        hasScore = true;
+      }
+      if (col.affectsGrade) {
+        for (final r in records) {
+          if (r.status == 'absent') {
+            if (col.absentAction == 'deduct') {
+              attendanceDelta -= col.absentPoints;
+            } else if (col.absentAction == 'add') {
+              attendanceDelta += col.absentPoints;
+            }
+          } else if (r.status == 'excused') {
+            if (col.excusedAction == 'deduct') {
+              attendanceDelta -= col.excusedPoints;
+            } else if (col.excusedAction == 'add') {
+              attendanceDelta += col.excusedPoints;
+            }
+          } else if (r.status == 'present') {
+            if (col.presentAction == 'add') {
+              attendanceDelta += col.presentPoints;
+            } else if (col.presentAction == 'deduct') {
+              attendanceDelta -= col.presentPoints;
+            }
+          }
+        }
+      }
+    }
+
     if (!hasScore) return null;
 
-    final operated = GradeCalculator.applyOperation(total, model.finalScoreOperation);
+    // Add attendance adjustment (clamped so total score cannot fall below 0)
+    total = (total + attendanceDelta).clamp(0.0, double.infinity);
+
+    final operated = GradeCalculator.applyOperation(
+      total,
+      model.finalScoreOperation,
+    );
     return GradeCalculator.applyRounding(
       operated,
       model.roundingMode,
@@ -308,9 +378,56 @@ class MonthlySheetController extends ChangeNotifier {
     );
   }
 
+  Future<void> saveStudentAttendanceRecords(
+    String studentId,
+    String columnId,
+    List<AttendanceRecord> records,
+  ) async {
+    final model = currentModel;
+    if (model == null) return;
+    final stIndex = model.students.indexWhere((s) => s.id == studentId);
+    if (stIndex < 0) return;
+
+    final student = model.students[stIndex];
+    final updatedMap = Map<String, List<AttendanceRecord>>.from(
+      student.attendanceRecords,
+    );
+    updatedMap[columnId] = records;
+
+    final updatedStudent = student.copyWith(attendanceRecords: updatedMap);
+    await updateStudent(updatedStudent);
+  }
+
+  double calculateStudentAttendanceDelta(StudentRow student, CustomColumn col) {
+    if (!col.isAttendance || !col.affectsGrade) return 0.0;
+    final records = student.attendanceRecords[col.id] ?? const [];
+    double delta = 0.0;
+    for (final r in records) {
+      if (r.status == 'absent') {
+        if (col.absentAction == 'deduct') {
+          delta -= col.absentPoints;
+        } else if (col.absentAction == 'add') {
+          delta += col.absentPoints;
+        }
+      } else if (r.status == 'excused') {
+        if (col.excusedAction == 'deduct') {
+          delta -= col.excusedPoints;
+        } else if (col.excusedAction == 'add') {
+          delta += col.excusedPoints;
+        }
+      } else if (r.status == 'present') {
+        if (col.presentAction == 'add') {
+          delta += col.presentPoints;
+        } else if (col.presentAction == 'deduct') {
+          delta -= col.presentPoints;
+        }
+      }
+    }
+    return delta;
+  }
+
   Future<void> _persist() async {
     await _storageService.saveModels(_models);
     notifyListeners();
   }
 }
-

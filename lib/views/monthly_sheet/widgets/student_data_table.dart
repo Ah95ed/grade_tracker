@@ -10,12 +10,14 @@ import '../../../core/utils/grade_calculator.dart';
 import '../../common/rating_badge.dart';
 import 'add_student_dialog.dart';
 import 'add_column_dialog.dart';
+import 'attendance_record_dialog.dart';
 import 'final_operation_dialog.dart';
 import 'rename_columns_dialog.dart';
 
 /// Computed column widths for the interactive table
 class _TableWidths {
   final double delete;
+  final double index;
   final double name;
   final double grade;
   final double section;
@@ -28,6 +30,7 @@ class _TableWidths {
 
   const _TableWidths({
     required this.delete,
+    required this.index,
     required this.name,
     required this.grade,
     required this.section,
@@ -43,17 +46,19 @@ class _TableWidths {
     required double availableWidth,
     required int customColumnCount,
   }) {
-    final baseDelete = 54.w;
-    final baseName = 240.w;
-    final baseGrade = 84.w;
-    final baseSection = 72.w;
-    final baseSubject = 72.w;
-    final baseWritten = 275.w;
+    final baseDelete = 48.w;
+    final baseIndex = 46.w;
+    final baseName = 225.w;
+    final baseGrade = 80.w;
+    final baseSection = 70.w;
+    final baseSubject = 75.w;
+    final baseWritten = 265.w;
     final baseCustom = 135.w;
-    final baseAddCol = 125.w;
-    final baseFinal = 305.w;
+    final baseAddCol = 115.w;
+    final baseFinal = 295.w;
 
     final minTotal = baseDelete +
+        baseIndex +
         baseName +
         baseGrade +
         baseSection +
@@ -76,6 +81,7 @@ class _TableWidths {
 
       return _TableWidths(
         delete: baseDelete,
+        index: baseIndex,
         name: baseName + (wName / totalW) * extra,
         grade: baseGrade + (wGrade / totalW) * extra,
         section: baseSection + (wSection / totalW) * extra,
@@ -89,6 +95,7 @@ class _TableWidths {
     } else {
       return _TableWidths(
         delete: baseDelete,
+        index: baseIndex,
         name: baseName,
         grade: baseGrade,
         section: baseSection,
@@ -363,51 +370,56 @@ class _StudentDataTableState extends State<StudentDataTable> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // 1. Delete (#) Column Header
+            // 1. Delete Column Header
             _buildHeaderCell(
               width: widths.delete,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  Text(
+              child: Center(
+                child: Container(
+                  padding: EdgeInsets.symmetric(horizontal: 5.w, vertical: 3.h),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.7),
+                    borderRadius: BorderRadius.circular(6.r),
+                    border: Border.all(color: const Color(0xFFD5C8B2)),
+                  ),
+                  child: Text(
                     'حذف',
                     style: TextStyle(
-                      fontSize: 12.5.sp,
+                      fontSize: 12.sp,
                       fontWeight: FontWeight.w900,
                       color: const Color(0xFF9C3838),
                     ),
                   ),
-                  Container(
-                    padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 2.h),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.7),
-                      borderRadius: BorderRadius.circular(6.r),
-                      border: Border.all(color: const Color(0xFFD5C8B2)),
-                    ),
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _buildSlantButton(
-                            slant: model.getColumnSlant('index'),
-                            onToggle: () => controller.toggleColumnSlant('index'),
-                          ),
-                          SizedBox(width: 3.w),
-                          _buildSlantedText(
-                            '#',
-                            slant: model.getColumnSlant('index'),
-                            baseStyle: TextStyle(
-                              fontSize: 11.5.sp,
-                              fontWeight: FontWeight.w900,
-                              color: Colors.black54,
-                            ),
-                          ),
-                        ],
+                ),
+              ),
+            ),
+
+            // 2. Index (#) Column Header
+            _buildHeaderCell(
+              width: widths.index,
+              child: Center(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _buildSlantButton(
+                        slant: model.getColumnSlant('index'),
+                        onToggle: () => controller.toggleColumnSlant('index'),
                       ),
-                    ),
+                      SizedBox(width: 2.w),
+                      _buildSlantedText(
+                        '#',
+                        slant: model.getColumnSlant('index'),
+                        baseStyle: TextStyle(
+                          fontSize: 12.sp,
+                          fontWeight: FontWeight.w900,
+                          color: const Color(0xFF2F2822),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
 
@@ -745,14 +757,32 @@ class _StudentDataTableState extends State<StudentDataTable> {
                             ),
                           ),
                           SizedBox(width: 4.w),
-                          Text(
-                            '(${col.maxScore.toInt()})',
-                            style: TextStyle(
-                              fontSize: 11.5.sp,
-                              fontWeight: FontWeight.bold,
-                              color: const Color(0xFF64748B),
+                          if (col.isAttendance)
+                            Container(
+                              padding: EdgeInsets.symmetric(horizontal: 5.w, vertical: 1.5.h),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFECFDF5),
+                                borderRadius: BorderRadius.circular(4.r),
+                                border: Border.all(color: const Color(0xFFA7F3D0)),
+                              ),
+                              child: Text(
+                                col.affectsGrade ? 'مؤثر بالدرجة' : 'توثيق سجل',
+                                style: TextStyle(
+                                  fontSize: 9.5.sp,
+                                  fontWeight: FontWeight.w900,
+                                  color: const Color(0xFF065F46),
+                                ),
+                              ),
+                            )
+                          else
+                            Text(
+                              '(${col.maxScore.toInt()})',
+                              style: TextStyle(
+                                fontSize: 11.5.sp,
+                                fontWeight: FontWeight.bold,
+                                color: const Color(0xFF64748B),
+                              ),
                             ),
-                          ),
                         ],
                       ),
                     ),
@@ -1539,7 +1569,25 @@ class _StudentDataTableState extends State<StudentDataTable> {
             ),
           ),
 
-          // 2. Student Name
+          // 2. Index Number
+          Container(
+            width: widths.index,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(
+              border: Border(left: BorderSide(color: Color(0xFFE8DDCF))),
+            ),
+            child: _buildSlantedText(
+              '${idx + 1}',
+              slant: model.getColumnSlant('index'),
+              baseStyle: TextStyle(
+                fontSize: 12.sp,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF544030),
+              ),
+            ),
+          ),
+
+          // 3. Student Name
           Container(
             width: widths.name,
             padding: EdgeInsets.symmetric(horizontal: 10.w),
@@ -1622,6 +1670,84 @@ class _StudentDataTableState extends State<StudentDataTable> {
 
           // 7. Custom Column score cells
           ...model.customColumns.map((col) {
+            if (col.isAttendance) {
+              final records = student.attendanceRecords[col.id] ?? const [];
+              int absentCount = 0;
+              int excusedCount = 0;
+              int presentCount = 0;
+              for (final r in records) {
+                if (r.status == 'absent') absentCount++;
+                if (r.status == 'excused') excusedCount++;
+                if (r.status == 'present') presentCount++;
+              }
+              final gradeDelta = controller.calculateStudentAttendanceDelta(student, col);
+
+              return Container(
+                width: widths.customCol,
+                padding: EdgeInsets.symmetric(horizontal: 4.w),
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                  border: Border(left: BorderSide(color: Color(0xFFE8DDCF))),
+                ),
+                child: Tooltip(
+                  message: 'انقر لتسجيل الحضور، الغياب، أو الإجازة مع التاريخ واليوم',
+                  child: InkWell(
+                    onTap: () => showDialog(
+                      context: context,
+                      builder: (_) => AttendanceRecordDialog(student: student, column: col),
+                    ),
+                    borderRadius: BorderRadius.circular(8.r),
+                    child: Container(
+                      padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 3.5.h),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF5EFE2),
+                        borderRadius: BorderRadius.circular(8.r),
+                        border: Border.all(color: const Color(0xFFD8CEBD)),
+                      ),
+                      child: records.isEmpty
+                          ? Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.calendar_month_rounded, size: 12.r, color: const Color(0xFF64748B)),
+                                SizedBox(width: 3.w),
+                                Text(
+                                  '+ رصد',
+                                  style: TextStyle(
+                                    fontSize: 11.sp,
+                                    fontWeight: FontWeight.bold,
+                                    color: const Color(0xFF64748B),
+                                  ),
+                                ),
+                              ],
+                            )
+                          : Wrap(
+                              spacing: 3.w,
+                              runSpacing: 2.h,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                if (absentCount > 0)
+                                  _buildAttendanceBadge('غ: $absentCount', const Color(0xFFE11D48)),
+                                if (excusedCount > 0)
+                                  _buildAttendanceBadge('م: $excusedCount', const Color(0xFF2563EB)),
+                                if (presentCount > 0)
+                                  _buildAttendanceBadge('ح: $presentCount', const Color(0xFF059669)),
+                                if (col.affectsGrade && gradeDelta != 0)
+                                  Text(
+                                    gradeDelta > 0 ? '(+$gradeDelta)' : '($gradeDelta)',
+                                    style: TextStyle(
+                                      fontSize: 10.sp,
+                                      fontWeight: FontWeight.w900,
+                                      color: gradeDelta < 0 ? const Color(0xFFE11D48) : const Color(0xFF059669),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                    ),
+                  ),
+                ),
+              );
+            }
+
             final score = student.scores[col.id];
             return Container(
               width: widths.customCol,
@@ -1672,6 +1798,24 @@ class _StudentDataTableState extends State<StudentDataTable> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildAttendanceBadge(String text, Color color) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.h),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(4.r),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 9.5.sp,
+          fontWeight: FontWeight.w900,
+          color: Colors.white,
+        ),
       ),
     );
   }

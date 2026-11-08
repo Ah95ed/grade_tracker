@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/monthly_model.dart';
 import '../models/student_row.dart';
 import '../models/custom_column.dart';
+import '../models/attendance_record.dart';
 import '../models/final_score_operation.dart';
 import '../services/storage_service.dart';
 import '../core/utils/grade_calculator.dart';
@@ -237,6 +238,13 @@ class MonthlySheetController extends ChangeNotifier {
     await updateModel(model.copyWith(students: students));
   }
 
+  Future<void> updateStudent(StudentRow student) async {
+    final model = currentModel;
+    if (model == null) return;
+    final updatedStudents = model.students.map((s) => s.id == student.id ? student : s).toList();
+    await updateModel(model.copyWith(students: updatedStudents));
+  }
+
   Future<void> deleteStudent(String studentId) async {
     final model = currentModel;
     if (model == null) return;
@@ -289,7 +297,7 @@ class MonthlySheetController extends ChangeNotifier {
     }
 
     for (final col in model.customColumns) {
-      if (col.isAttendance && !col.affectsGrade) continue;
+      if (col.isAttendance) continue;
       final score = student.scores[col.id];
       if (score != null) {
         total += score;
@@ -297,7 +305,43 @@ class MonthlySheetController extends ChangeNotifier {
       }
     }
 
+    // Attendance columns impact (increases or decreases final score)
+    double attendanceDelta = 0.0;
+    for (final col in model.customColumns) {
+      if (!col.isAttendance) continue;
+      final records = student.attendanceRecords[col.id] ?? const [];
+      if (records.isNotEmpty) {
+        hasScore = true;
+      }
+      if (col.affectsGrade) {
+        for (final r in records) {
+          if (r.status == 'absent') {
+            if (col.absentAction == 'deduct') {
+              attendanceDelta -= col.absentPoints;
+            } else if (col.absentAction == 'add') {
+              attendanceDelta += col.absentPoints;
+            }
+          } else if (r.status == 'excused') {
+            if (col.excusedAction == 'deduct') {
+              attendanceDelta -= col.excusedPoints;
+            } else if (col.excusedAction == 'add') {
+              attendanceDelta += col.excusedPoints;
+            }
+          } else if (r.status == 'present') {
+            if (col.presentAction == 'add') {
+              attendanceDelta += col.presentPoints;
+            } else if (col.presentAction == 'deduct') {
+              attendanceDelta -= col.presentPoints;
+            }
+          }
+        }
+      }
+    }
+
     if (!hasScore) return null;
+
+    // Add attendance adjustment (clamped so total score cannot fall below 0)
+    total = (total + attendanceDelta).clamp(0.0, double.infinity);
 
     final operated = GradeCalculator.applyOperation(total, model.finalScoreOperation);
     return GradeCalculator.applyRounding(
@@ -306,6 +350,52 @@ class MonthlySheetController extends ChangeNotifier {
       customThreshold: model.roundingThreshold,
       maxAllowed: model.totalMaxScore,
     );
+  }
+
+  Future<void> saveStudentAttendanceRecords(
+    String studentId,
+    String columnId,
+    List<AttendanceRecord> records,
+  ) async {
+    final model = currentModel;
+    if (model == null) return;
+    final stIndex = model.students.indexWhere((s) => s.id == studentId);
+    if (stIndex < 0) return;
+
+    final student = model.students[stIndex];
+    final updatedMap = Map<String, List<AttendanceRecord>>.from(student.attendanceRecords);
+    updatedMap[columnId] = records;
+
+    final updatedStudent = student.copyWith(attendanceRecords: updatedMap);
+    await updateStudent(updatedStudent);
+  }
+
+  double calculateStudentAttendanceDelta(StudentRow student, CustomColumn col) {
+    if (!col.isAttendance || !col.affectsGrade) return 0.0;
+    final records = student.attendanceRecords[col.id] ?? const [];
+    double delta = 0.0;
+    for (final r in records) {
+      if (r.status == 'absent') {
+        if (col.absentAction == 'deduct') {
+          delta -= col.absentPoints;
+        } else if (col.absentAction == 'add') {
+          delta += col.absentPoints;
+        }
+      } else if (r.status == 'excused') {
+        if (col.excusedAction == 'deduct') {
+          delta -= col.excusedPoints;
+        } else if (col.excusedAction == 'add') {
+          delta += col.excusedPoints;
+        }
+      } else if (r.status == 'present') {
+        if (col.presentAction == 'add') {
+          delta += col.presentPoints;
+        } else if (col.presentAction == 'deduct') {
+          delta -= col.presentPoints;
+        }
+      }
+    }
+    return delta;
   }
 
   Future<void> _persist() async {

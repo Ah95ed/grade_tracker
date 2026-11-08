@@ -566,7 +566,9 @@ class _AddColumnDialogState extends State<AddColumnDialog> {
                         final name = _nameController.text.trim();
                         if (name.isEmpty) return;
 
-                        final maxScore = double.tryParse(_maxScoreController.text.trim()) ?? 20.0;
+                        final maxScore = _isAttendance
+                            ? 0.0
+                            : (double.tryParse(_maxScoreController.text.trim()) ?? 20.0);
                         final newCol = CustomColumn(
                           id: 'col_${DateTime.now().millisecondsSinceEpoch}',
                           name: name,
