@@ -137,9 +137,58 @@ class MonthlySheetController extends ChangeNotifier {
   Future<void> addColumn(CustomColumn column) async {
     final model = currentModel;
     if (model == null) return;
+
+    List<StudentRow> updatedStudents = List<StudentRow>.from(model.students);
+    if (column.isAttendance &&
+        column.crossMonthMode == 'merge' &&
+        column.priorModelIds.isNotEmpty) {
+      updatedStudents = updatedStudents.map((st) {
+        final List<AttendanceRecord> mergedRecords = [];
+        for (final pModelId in column.priorModelIds) {
+          final pModel = _models.firstWhere(
+            (m) => m.id == pModelId,
+            orElse: () => model,
+          );
+          if (pModel.id == model.id) continue;
+          final pStudent = pModel.students.firstWhere(
+            (s) => s.id == st.id || s.name.trim() == st.name.trim(),
+            orElse: () => const StudentRow(id: '', name: ''),
+          );
+          if (pStudent.id.isEmpty) continue;
+          for (final entry in pStudent.attendanceRecords.entries) {
+            final pCol = pModel.customColumns.firstWhere(
+              (c) => c.id == entry.key && c.isAttendance,
+              orElse: () => const CustomColumn(id: '', name: '', maxScore: 0),
+            );
+            if (pCol.id.isNotEmpty) {
+              mergedRecords.addAll(
+                entry.value.map(
+                  (r) => r.copyWith(
+                    id: 'imp-${r.id}-${DateTime.now().millisecondsSinceEpoch}',
+                    modelId: pModel.id,
+                    modelName: pModel.name,
+                  ),
+                ),
+              );
+            }
+          }
+        }
+        if (mergedRecords.isNotEmpty) {
+          final updatedMap = Map<String, List<AttendanceRecord>>.from(
+            st.attendanceRecords,
+          );
+          updatedMap[column.id] = mergedRecords;
+          return st.copyWith(attendanceRecords: updatedMap);
+        }
+        return st;
+      }).toList();
+    }
+
     final updatedCols = List<CustomColumn>.from(model.customColumns)
       ..add(column);
-    await updateModel(model.copyWith(customColumns: updatedCols));
+    await updateModel(
+      model.copyWith(students: updatedStudents, customColumns: updatedCols),
+    );
   }
 
   Future<void> updateCustomColumn(

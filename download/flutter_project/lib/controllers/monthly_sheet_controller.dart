@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../models/monthly_model.dart';
 import '../models/student_row.dart';
 import '../models/custom_column.dart';
@@ -83,11 +84,13 @@ class MonthlySheetController extends ChangeNotifier {
     final model = currentModel;
     if (model == null) return [];
     return model.students.where((s) {
-      final matchesSection = _selectedSection == 'ALL' || s.section.trim() == _selectedSection;
+      final matchesSection =
+          _selectedSection == 'ALL' || s.section.trim() == _selectedSection;
       if (!matchesSection) return false;
       if (_searchQuery.trim().isEmpty) return true;
       final query = _searchQuery.trim().toLowerCase();
-      return s.name.toLowerCase().contains(query) || s.section.toLowerCase().contains(query);
+      return s.name.toLowerCase().contains(query) ||
+          s.section.toLowerCase().contains(query);
     }).toList();
   }
 
@@ -134,8 +137,44 @@ class MonthlySheetController extends ChangeNotifier {
   Future<void> addColumn(CustomColumn column) async {
     final model = currentModel;
     if (model == null) return;
+
+    List<StudentRow> updatedStudents = List<StudentRow>.from(model.students);
+    if (column.isAttendance && column.crossMonthMode == 'merge' && column.priorModelIds.isNotEmpty) {
+      updatedStudents = updatedStudents.map((st) {
+        final List<AttendanceRecord> mergedRecords = [];
+        for (final pModelId in column.priorModelIds) {
+          final pModel = _models.firstWhere((m) => m.id == pModelId, orElse: () => model);
+          if (pModel.id == model.id) continue;
+          final pStudent = pModel.students.firstWhere(
+            (s) => s.id == st.id || s.name.trim() == st.name.trim(),
+            orElse: () => const StudentRow(id: '', name: ''),
+          );
+          if (pStudent.id.isEmpty) continue;
+          for (final entry in pStudent.attendanceRecords.entries) {
+            final pCol = pModel.customColumns.firstWhere(
+              (c) => c.id == entry.key && c.isAttendance,
+              orElse: () => const CustomColumn(id: '', name: '', maxScore: 0),
+            );
+            if (pCol.id.isNotEmpty) {
+              mergedRecords.addAll(entry.value.map((r) => r.copyWith(
+                    id: 'imp-${r.id}-${DateTime.now().millisecondsSinceEpoch}',
+                    modelId: pModel.id,
+                    modelName: pModel.name,
+                  )));
+            }
+          }
+        }
+        if (mergedRecords.isNotEmpty) {
+          final updatedMap = Map<String, List<AttendanceRecord>>.from(st.attendanceRecords);
+          updatedMap[column.id] = mergedRecords;
+          return st.copyWith(attendanceRecords: updatedMap);
+        }
+        return st;
+      }).toList();
+    }
+
     final updatedCols = List<CustomColumn>.from(model.customColumns)..add(column);
-    await updateModel(model.copyWith(customColumns: updatedCols));
+    await updateModel(model.copyWith(students: updatedStudents, customColumns: updatedCols));
   }
 
   Future<void> updateCustomColumn(
@@ -164,16 +203,17 @@ class MonthlySheetController extends ChangeNotifier {
   Future<void> deleteColumn(String colId) async {
     final model = currentModel;
     if (model == null) return;
-    final updatedCols = model.customColumns.where((c) => c.id != colId).toList();
+    final updatedCols = model.customColumns
+        .where((c) => c.id != colId)
+        .toList();
     final updatedStudents = model.students.map((st) {
       if (!st.scores.containsKey(colId)) return st;
       final newScores = Map<String, double?>.from(st.scores)..remove(colId);
       return st.copyWith(scores: newScores);
     }).toList();
-    await updateModel(model.copyWith(
-      customColumns: updatedCols,
-      students: updatedStudents,
-    ));
+    await updateModel(
+      model.copyWith(customColumns: updatedCols, students: updatedStudents),
+    );
   }
 
   Future<void> setColumnLabel(String key, String newLabel) async {
@@ -192,7 +232,9 @@ class MonthlySheetController extends ChangeNotifier {
   Future<void> setColumnLabels(Map<String, String> labels) async {
     final model = currentModel;
     if (model == null) return;
-    await updateModel(model.copyWith(columnLabels: Map<String, String>.from(labels)));
+    await updateModel(
+      model.copyWith(columnLabels: Map<String, String>.from(labels)),
+    );
   }
 
   Future<void> resetColumnLabels() async {
@@ -208,9 +250,10 @@ class MonthlySheetController extends ChangeNotifier {
     final next = current == 'normal'
         ? 'italic'
         : current == 'italic'
-            ? 'vertical'
-            : 'normal';
-    final updatedSlants = Map<String, String>.from(model.columnSlants)..[key] = next;
+        ? 'vertical'
+        : 'normal';
+    final updatedSlants = Map<String, String>.from(model.columnSlants)
+      ..[key] = next;
     await updateModel(model.copyWith(columnSlants: updatedSlants));
   }
 
@@ -221,7 +264,12 @@ class MonthlySheetController extends ChangeNotifier {
     await updateModel(model.copyWith(students: updatedStudents));
   }
 
-  Future<void> updateStudentScore(String studentId, {double? writtenScore, String? colId, double? colScore}) async {
+  Future<void> updateStudentScore(
+    String studentId, {
+    double? writtenScore,
+    String? colId,
+    double? colScore,
+  }) async {
     final model = currentModel;
     if (model == null) return;
     final students = model.students.map((st) {
@@ -230,7 +278,8 @@ class MonthlySheetController extends ChangeNotifier {
         return st.copyWith(writtenRawScore: writtenScore);
       }
       if (colId != null) {
-        final newScores = Map<String, double?>.from(st.scores)..[colId] = colScore;
+        final newScores = Map<String, double?>.from(st.scores)
+          ..[colId] = colScore;
         return st.copyWith(scores: newScores);
       }
       return st;
@@ -241,21 +290,27 @@ class MonthlySheetController extends ChangeNotifier {
   Future<void> updateStudent(StudentRow student) async {
     final model = currentModel;
     if (model == null) return;
-    final updatedStudents = model.students.map((s) => s.id == student.id ? student : s).toList();
+    final updatedStudents = model.students
+        .map((s) => s.id == student.id ? student : s)
+        .toList();
     await updateModel(model.copyWith(students: updatedStudents));
   }
 
   Future<void> deleteStudent(String studentId) async {
     final model = currentModel;
     if (model == null) return;
-    final updatedStudents = model.students.where((s) => s.id != studentId).toList();
+    final updatedStudents = model.students
+        .where((s) => s.id != studentId)
+        .toList();
     await updateModel(model.copyWith(students: updatedStudents));
   }
 
   Future<void> setRoundingMode(String mode, double threshold) async {
     final model = currentModel;
     if (model == null) return;
-    await updateModel(model.copyWith(roundingMode: mode, roundingThreshold: threshold));
+    await updateModel(
+      model.copyWith(roundingMode: mode, roundingThreshold: threshold),
+    );
   }
 
   Future<void> setFinalScoreOperation(
@@ -283,7 +338,10 @@ class MonthlySheetController extends ChangeNotifier {
       final customSum = model.customColumns
           .where((c) => !c.isAttendance || c.affectsGrade)
           .fold<double>(0.0, (sum, c) => sum + c.maxScore);
-      final autoWeight = (model.totalMaxScore - customSum).clamp(0.0, double.infinity);
+      final autoWeight = (model.totalMaxScore - customSum).clamp(
+        0.0,
+        double.infinity,
+      );
       final written = GradeCalculator.calculateWrittenScore(
         rawScore: student.writtenRawScore,
         maxScore: model.writtenMaxScore,
@@ -343,7 +401,10 @@ class MonthlySheetController extends ChangeNotifier {
     // Add attendance adjustment (clamped so total score cannot fall below 0)
     total = (total + attendanceDelta).clamp(0.0, double.infinity);
 
-    final operated = GradeCalculator.applyOperation(total, model.finalScoreOperation);
+    final operated = GradeCalculator.applyOperation(
+      total,
+      model.finalScoreOperation,
+    );
     return GradeCalculator.applyRounding(
       operated,
       model.roundingMode,
@@ -363,7 +424,9 @@ class MonthlySheetController extends ChangeNotifier {
     if (stIndex < 0) return;
 
     final student = model.students[stIndex];
-    final updatedMap = Map<String, List<AttendanceRecord>>.from(student.attendanceRecords);
+    final updatedMap = Map<String, List<AttendanceRecord>>.from(
+      student.attendanceRecords,
+    );
     updatedMap[columnId] = records;
 
     final updatedStudent = student.copyWith(attendanceRecords: updatedMap);
@@ -403,4 +466,3 @@ class MonthlySheetController extends ChangeNotifier {
     notifyListeners();
   }
 }
-

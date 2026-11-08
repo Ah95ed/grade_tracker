@@ -11,6 +11,8 @@ class CustomColumn {
   final double excusedPoints;
   final String presentAction; // 'none', 'add', 'deduct'
   final double presentPoints;
+  final String crossMonthMode; // 'fresh' | 'merge'
+  final List<String> priorModelIds;
 
   const CustomColumn({
     required this.id,
@@ -24,6 +26,8 @@ class CustomColumn {
     this.excusedPoints = 0.0,
     this.presentAction = 'none',
     this.presentPoints = 0.0,
+    this.crossMonthMode = 'fresh',
+    this.priorModelIds = const [],
   });
 
   factory CustomColumn.fromJson(Map<String, dynamic> json) {
@@ -46,6 +50,9 @@ class CustomColumn {
       excusedPoints: (json['excusedPoints'] as num?)?.toDouble() ?? ((excusedMap?['points'] as num?)?.toDouble() ?? 0.0),
       presentAction: json['presentAction'] as String? ?? (presentMap?['action'] as String? ?? 'none'),
       presentPoints: (json['presentPoints'] as num?)?.toDouble() ?? ((presentMap?['points'] as num?)?.toDouble() ?? 0.0),
+      crossMonthMode: json['crossMonthMode'] as String? ?? (attendanceConfig?['crossMonthMode'] as String? ?? 'fresh'),
+      priorModelIds: (json['priorModelIds'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
+          ((attendanceConfig?['importedFromModelIds'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? const []),
     );
   }
 
@@ -61,6 +68,8 @@ class CustomColumn {
             'absent': {'action': absentAction, 'points': absentPoints},
             'excused': {'action': excusedAction, 'points': excusedPoints},
             'present': {'action': presentAction, 'points': presentPoints},
+            'crossMonthMode': crossMonthMode,
+            'importedFromModelIds': priorModelIds,
           },
         },
       };
@@ -77,6 +86,8 @@ class CustomColumn {
     double? excusedPoints,
     String? presentAction,
     double? presentPoints,
+    String? crossMonthMode,
+    List<String>? priorModelIds,
   }) {
     return CustomColumn(
       id: id ?? this.id,
@@ -90,6 +101,8 @@ class CustomColumn {
       excusedPoints: excusedPoints ?? this.excusedPoints,
       presentAction: presentAction ?? this.presentAction,
       presentPoints: presentPoints ?? this.presentPoints,
+      crossMonthMode: crossMonthMode ?? this.crossMonthMode,
+      priorModelIds: priorModelIds ?? this.priorModelIds,
     );
   }
 }

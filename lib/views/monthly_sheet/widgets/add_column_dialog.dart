@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../controllers/monthly_sheet_controller.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../models/custom_column.dart';
+import '../../../models/monthly_model.dart';
 import '../../common/custom_button.dart';
 
 /// Upgraded Add Column Dialog strictly matching the user specifications & Daragat Web App
@@ -15,12 +16,23 @@ class AddColumnDialog extends StatefulWidget {
 }
 
 class _AddColumnDialogState extends State<AddColumnDialog> {
-  final _nameController = TextEditingController();
+  final _nameController = TextEditingController(text: 'درجة الشفهي');
   final _maxScoreController = TextEditingController(text: '20');
 
   bool _isAttendance = false;
   bool _affectsGrade = true;
-  String _selectedPresetName = '';
+  String _selectedPresetName = 'درجة الشفهي';
+
+  // Attendance specific options matching Daragat web app
+  String _absentAction = 'deduct'; // 'deduct', 'add', 'none'
+  double _absentPoints = 1.0;
+  String _excusedAction = 'none'; // 'none', 'deduct', 'add'
+  double _excusedPoints = 1.0;
+  String _presentAction = 'none'; // 'none', 'add', 'deduct'
+  double _presentPoints = 1.0;
+
+  String _crossMonthMode = 'fresh'; // 'fresh' | 'merge'
+  final List<String> _selectedPriorModelIds = [];
 
   static const List<Map<String, dynamic>> _presets = [
     {'name': 'درجة الشفهي', 'max': 20.0},
@@ -52,7 +64,14 @@ class _AddColumnDialogState extends State<AddColumnDialog> {
       _isAttendance = true;
       _selectedPresetName = 'الغياب والحضور';
       _nameController.text = 'الغياب والحضور';
-      _maxScoreController.text = '10';
+      _maxScoreController.text = '0';
+      _affectsGrade = true;
+      _absentAction = 'deduct';
+      _absentPoints = 1.0;
+      _excusedAction = 'none';
+      _excusedPoints = 1.0;
+      _presentAction = 'none';
+      _presentPoints = 1.0;
     });
   }
 
@@ -66,7 +85,7 @@ class _AddColumnDialogState extends State<AddColumnDialog> {
         .where((c) => !c.isAttendance || c.affectsGrade)
         .fold<double>(0.0, (sum, c) => sum + c.maxScore);
 
-    final double enteredScore = _isAttendance && !_affectsGrade
+    final double enteredScore = _isAttendance
         ? 0.0
         : (double.tryParse(_maxScoreController.text.trim()) ?? 0.0);
 
@@ -80,7 +99,7 @@ class _AddColumnDialogState extends State<AddColumnDialog> {
         insetPadding: EdgeInsets.symmetric(horizontal: 18.w, vertical: 20.h),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.r)),
         child: Container(
-          constraints: BoxConstraints(maxWidth: 500.w, maxHeight: 720.h),
+          constraints: BoxConstraints(maxWidth: 520.w, maxHeight: 760.h),
           decoration: BoxDecoration(
             color: const Color(0xFFFAF7EC), // Craft cream parchment
             borderRadius: BorderRadius.circular(20.r),
@@ -294,40 +313,281 @@ class _AddColumnDialogState extends State<AddColumnDialog> {
                       ),
                       SizedBox(height: 16.h),
 
-                      // Input 1: Field Name
-                      Text(
-                        'اسم الحقل الجديد',
-                        style: TextStyle(
-                          fontSize: 12.sp,
-                          fontWeight: FontWeight.w800,
-                          color: const Color(0xFF334155),
-                        ),
-                      ),
-                      SizedBox(height: 5.h),
-                      TextFormField(
-                        controller: _nameController,
-                        onChanged: (_) => setState(() {}),
-                        style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.bold),
-                        decoration: InputDecoration(
-                          hintText: 'مثلا (درجة الشفهي)',
-                          hintStyle: TextStyle(fontSize: 12.sp, color: const Color(0xFF94A3B8)),
-                          filled: true,
-                          fillColor: Colors.white,
-                          contentPadding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10.r),
-                            borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10.r),
-                            borderSide: const BorderSide(color: Color(0xFF2B6CB0), width: 1.5),
+                      // CONDITIONAL: Attendance Form vs Standard Grade Column Form
+                      if (_isAttendance) ...[
+                        // 1. Field Name
+                        Text(
+                          'اسم الحقل',
+                          style: TextStyle(
+                            fontSize: 12.sp,
+                            fontWeight: FontWeight.w800,
+                            color: const Color(0xFF334155),
                           ),
                         ),
-                      ),
-                      SizedBox(height: 14.h),
+                        SizedBox(height: 5.h),
+                        TextFormField(
+                          controller: _nameController,
+                          style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.bold),
+                          decoration: InputDecoration(
+                            hintText: 'الغياب والحضور',
+                            filled: true,
+                            fillColor: Colors.white,
+                            contentPadding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10.r),
+                              borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                            ),
+                          ),
+                        ),
+                        SizedBox(height: 14.h),
 
-                      // Input 2: Max Score
-                      if (!_isAttendance || _affectsGrade) ...[
+                        // 2. Primary Toggle: هل يؤثر حقل الحضور والغياب على الدرجة النهائية للطالب؟
+                        Container(
+                          padding: EdgeInsets.all(12.r),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12.r),
+                            border: Border.all(color: const Color(0xFFCBD5E1)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Text(
+                                'هل يؤثر حقل الحضور والغياب على الدرجة النهائية للطالب؟',
+                                style: TextStyle(
+                                  fontSize: 12.sp,
+                                  fontWeight: FontWeight.w900,
+                                  color: const Color(0xFF1E293B),
+                                ),
+                              ),
+                              SizedBox(height: 8.h),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: InkWell(
+                                      onTap: () => setState(() => _affectsGrade = true),
+                                      borderRadius: BorderRadius.circular(10.r),
+                                      child: Container(
+                                        padding: EdgeInsets.all(10.r),
+                                        decoration: BoxDecoration(
+                                          color: _affectsGrade ? const Color(0xFFECFDF5) : const Color(0xFFF8FAFC),
+                                          borderRadius: BorderRadius.circular(10.r),
+                                          border: Border.all(
+                                            color: _affectsGrade ? const Color(0xFF059669) : const Color(0xFFCBD5E1),
+                                            width: _affectsGrade ? 1.8 : 1.0,
+                                          ),
+                                        ),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              'نعم، يؤثر على الدرجة',
+                                              style: TextStyle(
+                                                fontSize: 12.sp,
+                                                fontWeight: FontWeight.w900,
+                                                color: const Color(0xFF065F46),
+                                              ),
+                                            ),
+                                            SizedBox(height: 2.h),
+                                            Text(
+                                              'خصم أو إضافة من الدرجة النهائية',
+                                              style: TextStyle(
+                                                fontSize: 10.sp,
+                                                color: const Color(0xFF64748B),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(width: 8.w),
+                                  Expanded(
+                                    child: InkWell(
+                                      onTap: () => setState(() => _affectsGrade = false),
+                                      borderRadius: BorderRadius.circular(10.r),
+                                      child: Container(
+                                        padding: EdgeInsets.all(10.r),
+                                        decoration: BoxDecoration(
+                                          color: !_affectsGrade ? const Color(0xFFEFF6FF) : const Color(0xFFF8FAFC),
+                                          borderRadius: BorderRadius.circular(10.r),
+                                          border: Border.all(
+                                            color: !_affectsGrade ? const Color(0xFF2563EB) : const Color(0xFFCBD5E1),
+                                            width: !_affectsGrade ? 1.8 : 1.0,
+                                          ),
+                                        ),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              'لا، توثيق وحفظ فقط',
+                                              style: TextStyle(
+                                                fontSize: 12.sp,
+                                                fontWeight: FontWeight.w900,
+                                                color: const Color(0xFF1E40AF),
+                                              ),
+                                            ),
+                                            SizedBox(height: 2.h),
+                                            Text(
+                                              'تسجيل التواريخ دون المساس بالدرجات',
+                                              style: TextStyle(
+                                                fontSize: 10.sp,
+                                                color: const Color(0xFF64748B),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        SizedBox(height: 14.h),
+
+                        // 3. Status Action Config (if _affectsGrade is true)
+                        if (_affectsGrade) ...[
+                          Container(
+                            padding: EdgeInsets.all(12.r),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(14.r),
+                              border: Border.all(color: const Color(0xFFE2E8F0)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      'تحديد آلية التأثير (حاضر، مجاز، غائب):',
+                                      style: TextStyle(
+                                        fontSize: 12.sp,
+                                        fontWeight: FontWeight.w900,
+                                        color: const Color(0xFF1E293B),
+                                      ),
+                                    ),
+                                    Text(
+                                      'تطبق لكل يوم مسجل',
+                                      style: TextStyle(
+                                        fontSize: 10.sp,
+                                        fontWeight: FontWeight.bold,
+                                        color: const Color(0xFF64748B),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                SizedBox(height: 10.h),
+
+                                // 1. غائب (Absent)
+                                _buildStatusImpactCard(
+                                  title: 'حالة (غائب)',
+                                  subtitle: 'يُوثق باليوم والتاريخ',
+                                  dotColor: const Color(0xFFE11D48),
+                                  bgColor: const Color(0xFFFFF1F2),
+                                  borderColor: const Color(0xFFFECDD3),
+                                  textColor: const Color(0xFF881337),
+                                  action: _absentAction,
+                                  points: _absentPoints,
+                                  options: const [
+                                    {'label': 'نقصان من الدرجة (-)', 'value': 'deduct'},
+                                    {'label': 'زيادة على الدرجة (+)', 'value': 'add'},
+                                    {'label': 'بدون تأثير (0)', 'value': 'none'},
+                                  ],
+                                  onActionChanged: (val) => setState(() => _absentAction = val),
+                                  onPointsChanged: (val) => setState(() => _absentPoints = val),
+                                  pointsSuffix: 'درجة لكل غياب',
+                                ),
+                                SizedBox(height: 8.h),
+
+                                // 2. مجاز (Excused)
+                                _buildStatusImpactCard(
+                                  title: 'حالة (مجاز / إجازة بعذر)',
+                                  subtitle: 'يُوثق باليوم والتاريخ',
+                                  dotColor: const Color(0xFF2563EB),
+                                  bgColor: const Color(0xFFEFF6FF),
+                                  borderColor: const Color(0xFFBFDBFE),
+                                  textColor: const Color(0xFF1E3A8A),
+                                  action: _excusedAction,
+                                  points: _excusedPoints,
+                                  options: const [
+                                    {'label': 'بدون تأثير (0) - عادي', 'value': 'none'},
+                                    {'label': 'نقصان من الدرجة (-)', 'value': 'deduct'},
+                                    {'label': 'زيادة على الدرجة (+)', 'value': 'add'},
+                                  ],
+                                  onActionChanged: (val) => setState(() => _excusedAction = val),
+                                  onPointsChanged: (val) => setState(() => _excusedPoints = val),
+                                  pointsSuffix: 'درجة لكل إجازة',
+                                ),
+                                SizedBox(height: 8.h),
+
+                                // 3. حاضر (Present)
+                                _buildStatusImpactCard(
+                                  title: 'حالة (حاضر)',
+                                  subtitle: 'تسجيل الحضور',
+                                  dotColor: const Color(0xFF059669),
+                                  bgColor: const Color(0xFFECFDF5),
+                                  borderColor: const Color(0xFFA7F3D0),
+                                  textColor: const Color(0xFF065F46),
+                                  action: _presentAction,
+                                  points: _presentPoints,
+                                  options: const [
+                                    {'label': 'بدون تأثير (0) - عادي', 'value': 'none'},
+                                    {'label': 'زيادة على الدرجة (مكافأة مواظبة +)', 'value': 'add'},
+                                    {'label': 'نقصان من الدرجة (-)', 'value': 'deduct'},
+                                  ],
+                                  onActionChanged: (val) => setState(() => _presentAction = val),
+                                  onPointsChanged: (val) => setState(() => _presentPoints = val),
+                                  pointsSuffix: 'درجة لكل حضور',
+                                ),
+                              ],
+                            ),
+                          ),
+                          SizedBox(height: 14.h),
+                        ],
+
+                        // 4. Cross-Month linking options (if models.length > 1)
+                        if (controller.models.length > 1) ...[
+                          _buildCrossMonthCard(controller, model),
+                          SizedBox(height: 14.h),
+                        ],
+                      ] else ...[
+                        // Standard Grade Column Input Form
+                        Text(
+                          'اسم الحقل الجديد',
+                          style: TextStyle(
+                            fontSize: 12.sp,
+                            fontWeight: FontWeight.w800,
+                            color: const Color(0xFF334155),
+                          ),
+                        ),
+                        SizedBox(height: 5.h),
+                        TextFormField(
+                          controller: _nameController,
+                          onChanged: (_) => setState(() {}),
+                          style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.bold),
+                          decoration: InputDecoration(
+                            hintText: 'مثلا (درجة الشفهي)',
+                            hintStyle: TextStyle(fontSize: 12.sp, color: const Color(0xFF94A3B8)),
+                            filled: true,
+                            fillColor: Colors.white,
+                            contentPadding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10.r),
+                              borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10.r),
+                              borderSide: const BorderSide(color: Color(0xFF2B6CB0), width: 1.5),
+                            ),
+                          ),
+                        ),
+                        SizedBox(height: 14.h),
+
+                        // Max Score
                         Text(
                           'الدرجة الكاملة لهذا الحقل (يمكنك تعديلها وتحديدها هنا):',
                           style: TextStyle(
@@ -443,98 +703,6 @@ class _AddColumnDialogState extends State<AddColumnDialog> {
                           ),
                         ),
                       ],
-
-                      // Special Attendance Options
-                      if (_isAttendance) ...[
-                        SizedBox(height: 14.h),
-                        Container(
-                          padding: EdgeInsets.all(12.r),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(12.r),
-                            border: Border.all(color: const Color(0xFFCBD5E1)),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Text(
-                                'هل يؤثر حقل الحضور والغياب على الدرجة النهائية للطالب؟',
-                                style: TextStyle(
-                                  fontSize: 11.5.sp,
-                                  fontWeight: FontWeight.w900,
-                                  color: const Color(0xFF1E293B),
-                                ),
-                              ),
-                              SizedBox(height: 8.h),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: InkWell(
-                                      onTap: () => setState(() => _affectsGrade = true),
-                                      borderRadius: BorderRadius.circular(8.r),
-                                      child: Container(
-                                        padding: EdgeInsets.all(8.r),
-                                        decoration: BoxDecoration(
-                                          color: _affectsGrade ? const Color(0xFFECFDF5) : const Color(0xFFF8FAFC),
-                                          borderRadius: BorderRadius.circular(8.r),
-                                          border: Border.all(
-                                            color: _affectsGrade ? const Color(0xFF059669) : const Color(0xFFCBD5E1),
-                                            width: _affectsGrade ? 1.5 : 1.0,
-                                          ),
-                                        ),
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              'نعم، يؤثر على الدرجة',
-                                              style: TextStyle(fontSize: 11.sp, fontWeight: FontWeight.w900, color: const Color(0xFF065F46)),
-                                            ),
-                                            Text(
-                                              'خصم أو إضافة من الدرجة',
-                                              style: TextStyle(fontSize: 9.5.sp, color: const Color(0xFF64748B)),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  SizedBox(width: 8.w),
-                                  Expanded(
-                                    child: InkWell(
-                                      onTap: () => setState(() => _affectsGrade = false),
-                                      borderRadius: BorderRadius.circular(8.r),
-                                      child: Container(
-                                        padding: EdgeInsets.all(8.r),
-                                        decoration: BoxDecoration(
-                                          color: !_affectsGrade ? const Color(0xFFEFF6FF) : const Color(0xFFF8FAFC),
-                                          borderRadius: BorderRadius.circular(8.r),
-                                          border: Border.all(
-                                            color: !_affectsGrade ? const Color(0xFF2563EB) : const Color(0xFFCBD5E1),
-                                            width: !_affectsGrade ? 1.5 : 1.0,
-                                          ),
-                                        ),
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              'لا، توثيق وحفظ فقط',
-                                              style: TextStyle(fontSize: 11.sp, fontWeight: FontWeight.w900, color: const Color(0xFF1E40AF)),
-                                            ),
-                                            Text(
-                                              'تسجيل التواريخ دون درجات',
-                                              style: TextStyle(fontSize: 9.5.sp, color: const Color(0xFF64748B)),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
                     ],
                   ),
                 ),
@@ -566,15 +734,20 @@ class _AddColumnDialogState extends State<AddColumnDialog> {
                         final name = _nameController.text.trim();
                         if (name.isEmpty) return;
 
-                        final maxScore = _isAttendance
-                            ? 0.0
-                            : (double.tryParse(_maxScoreController.text.trim()) ?? 20.0);
                         final newCol = CustomColumn(
-                          id: 'col_${DateTime.now().millisecondsSinceEpoch}',
+                          id: _isAttendance ? 'col-att-${DateTime.now().millisecondsSinceEpoch}' : 'col-${DateTime.now().millisecondsSinceEpoch}',
                           name: name,
-                          maxScore: maxScore,
+                          maxScore: _isAttendance ? 0.0 : (double.tryParse(_maxScoreController.text.trim()) ?? 20.0),
                           isAttendance: _isAttendance,
-                          affectsGrade: _affectsGrade,
+                          affectsGrade: _isAttendance ? _affectsGrade : true,
+                          absentAction: _absentAction,
+                          absentPoints: _absentPoints,
+                          excusedAction: _excusedAction,
+                          excusedPoints: _excusedPoints,
+                          presentAction: _presentAction,
+                          presentPoints: _presentPoints,
+                          crossMonthMode: _crossMonthMode,
+                          priorModelIds: _selectedPriorModelIds,
                         );
 
                         controller.addColumn(newCol);
@@ -587,6 +760,240 @@ class _AddColumnDialogState extends State<AddColumnDialog> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildStatusImpactCard({
+    required String title,
+    required String subtitle,
+    required Color dotColor,
+    required Color bgColor,
+    required Color borderColor,
+    required Color textColor,
+    required String action,
+    required double points,
+    required List<Map<String, String>> options,
+    required ValueChanged<String> onActionChanged,
+    required ValueChanged<double> onPointsChanged,
+    required String pointsSuffix,
+  }) {
+    final hasPoints = action != 'none';
+
+    return Container(
+      padding: EdgeInsets.all(10.r),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(12.r),
+        border: Border.all(color: borderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 8.r,
+                    height: 8.r,
+                    decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle),
+                  ),
+                  SizedBox(width: 6.w),
+                  Text(
+                    title,
+                    style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w900, color: textColor),
+                  ),
+                ],
+              ),
+              Text(
+                subtitle,
+                style: TextStyle(fontSize: 10.sp, fontWeight: FontWeight.w700, color: dotColor),
+              ),
+            ],
+          ),
+          SizedBox(height: 8.h),
+          Wrap(
+            spacing: 8.w,
+            runSpacing: 6.h,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 2.h),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8.r),
+                  border: Border.all(color: borderColor),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: action,
+                    isDense: true,
+                    style: TextStyle(fontSize: 11.5.sp, fontWeight: FontWeight.bold, color: textColor),
+                    items: options.map((opt) {
+                      return DropdownMenuItem<String>(
+                        value: opt['value']!,
+                        child: Text(opt['label']!),
+                      );
+                    }).toList(),
+                    onChanged: (val) {
+                      if (val != null) onActionChanged(val);
+                    },
+                  ),
+                ),
+              ),
+              if (hasPoints) ...[
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('بمقدار: ', style: TextStyle(fontSize: 11.sp, color: const Color(0xFF475569))),
+                    SizedBox(
+                      width: 55.w,
+                      child: TextFormField(
+                        initialValue: points.toString().replaceAll(RegExp(r'\.0$'), ''),
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w900, color: textColor),
+                        onChanged: (val) {
+                          final parsed = double.tryParse(val.trim());
+                          if (parsed != null && parsed >= 0) {
+                            onPointsChanged(parsed);
+                          }
+                        },
+                        decoration: InputDecoration(
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 5.h),
+                          filled: true,
+                          fillColor: Colors.white,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(6.r),
+                            borderSide: BorderSide(color: borderColor),
+                          ),
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 4.w),
+                    Text(pointsSuffix, style: TextStyle(fontSize: 11.sp, color: const Color(0xFF64748B))),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCrossMonthCard(MonthlySheetController controller, MonthlyModel? currentModel) {
+    final otherModels = controller.models.where((m) => m.id != currentModel?.id).toList();
+    if (otherModels.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      padding: EdgeInsets.all(12.r),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFEF3C7).withValues(alpha: 0.7),
+        borderRadius: BorderRadius.circular(12.r),
+        border: Border.all(color: const Color(0xFFFDE68A)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'الربط مع سجلات الأشهر السابقة:',
+            style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w900, color: const Color(0xFF78350F)),
+          ),
+          SizedBox(height: 8.h),
+          InkWell(
+            onTap: () => setState(() => _crossMonthMode = 'fresh'),
+            child: Row(
+              children: [
+                Icon(
+                  _crossMonthMode == 'fresh' ? Icons.radio_button_checked : Icons.radio_button_off,
+                  size: 15.r,
+                  color: const Color(0xFFBA916C),
+                ),
+                SizedBox(width: 6.w),
+                Text(
+                  'البدء من هذا الشهر (سجل جديد لهذا الشهر فقط)',
+                  style: TextStyle(
+                    fontSize: 11.5.sp,
+                    fontWeight: _crossMonthMode == 'fresh' ? FontWeight.w900 : FontWeight.bold,
+                    color: const Color(0xFF1E293B),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(height: 6.h),
+          InkWell(
+            onTap: () => setState(() => _crossMonthMode = 'merge'),
+            child: Row(
+              children: [
+                Icon(
+                  _crossMonthMode == 'merge' ? Icons.radio_button_checked : Icons.radio_button_off,
+                  size: 15.r,
+                  color: const Color(0xFFBA916C),
+                ),
+                SizedBox(width: 6.w),
+                Text(
+                  'إضافة الحضور والغياب والإجازة من الأشهر السابقة',
+                  style: TextStyle(
+                    fontSize: 11.5.sp,
+                    fontWeight: _crossMonthMode == 'merge' ? FontWeight.w900 : FontWeight.bold,
+                    color: const Color(0xFF1E293B),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (_crossMonthMode == 'merge') ...[
+            SizedBox(height: 8.h),
+            const Divider(color: Color(0xFFFDE68A), height: 1),
+            SizedBox(height: 8.h),
+            Text(
+              'اختر الأشهر التي ترغب بدمج غياباتها مع هذا الشهر:',
+              style: TextStyle(fontSize: 11.sp, fontWeight: FontWeight.bold, color: const Color(0xFF92400E)),
+            ),
+            SizedBox(height: 6.h),
+            Wrap(
+              spacing: 6.w,
+              runSpacing: 6.h,
+              children: otherModels.map((m) {
+                final isSelected = _selectedPriorModelIds.contains(m.id);
+                return InkWell(
+                  onTap: () {
+                    setState(() {
+                      if (isSelected) {
+                        _selectedPriorModelIds.remove(m.id);
+                      } else {
+                        _selectedPriorModelIds.add(m.id);
+                      }
+                    });
+                  },
+                  borderRadius: BorderRadius.circular(6.r),
+                  child: Container(
+                    padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+                    decoration: BoxDecoration(
+                      color: isSelected ? const Color(0xFFBA916C) : Colors.white,
+                      borderRadius: BorderRadius.circular(6.r),
+                      border: Border.all(color: isSelected ? const Color(0xFF9E7752) : const Color(0xFFCBD5E1)),
+                    ),
+                    child: Text(
+                      '${isSelected ? "✓ " : ""}${m.name} (${m.subject.isNotEmpty ? m.subject : "المادة"})',
+                      style: TextStyle(
+                        fontSize: 11.sp,
+                        fontWeight: FontWeight.bold,
+                        color: isSelected ? Colors.white : const Color(0xFF1E293B),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
+        ],
       ),
     );
   }
