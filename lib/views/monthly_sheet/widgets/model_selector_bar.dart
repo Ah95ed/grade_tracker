@@ -5,6 +5,7 @@ import '../../../controllers/monthly_sheet_controller.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../common/confirm_dialog.dart';
 import 'add_model_dialog.dart';
+import 'add_student_dialog.dart';
 import 'edit_model_dialog.dart';
 
 /// Top section for monthly sheet matching Daragat Web App:
@@ -26,10 +27,18 @@ class ModelSelectorBar extends StatelessWidget {
         children: [
           // 1. Large Craft Camel Brown "+ جدول درجات جديد" Button
           InkWell(
-            onTap: () => showDialog(
-              context: context,
-              builder: (_) => const AddModelDialog(),
-            ),
+            onTap: () async {
+              final shouldOpenAddStudents = await showDialog<bool>(
+                context: context,
+                builder: (_) => const AddModelDialog(),
+              );
+              if (shouldOpenAddStudents == true && context.mounted) {
+                showDialog(
+                  context: context,
+                  builder: (_) => const AddStudentDialog(),
+                );
+              }
+            },
             borderRadius: BorderRadius.circular(16.r),
             child: Container(
               padding: EdgeInsets.symmetric(vertical: 12.h, horizontal: 20.w),

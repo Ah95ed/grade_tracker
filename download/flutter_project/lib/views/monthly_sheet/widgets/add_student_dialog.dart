@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 
 import '../../../controllers/monthly_sheet_controller.dart';
+import '../../../controllers/teacher_profile_controller.dart';
 import '../../../core/constants/academic_presets.dart';
 import '../../../models/student_row.dart';
 
@@ -34,15 +35,16 @@ class _AddStudentDialogState extends State<AddStudentDialog> {
   // Status & feedback
   String? _statusMessage;
   bool _isSuccessMessage = false;
+  bool _showGradeValidation = false;
 
   @override
   void initState() {
     super.initState();
+    // Grade field must remain empty initially and mandatory as requested
+    _selectedGrade = '';
+
     final model = context.read<MonthlySheetController>().currentModel;
     if (model != null) {
-      if (model.gradeLevel.isNotEmpty) {
-        _selectedGrade = model.gradeLevel;
-      }
       if (model.section.isNotEmpty) {
         _sectionController.text = model.section;
       } else if (model.assignedSections.isNotEmpty) {
@@ -81,7 +83,8 @@ class _AddStudentDialogState extends State<AddStudentDialog> {
     final effectiveGrade = _effectiveGrade;
     if (effectiveGrade.isEmpty) {
       setState(() {
-        _statusMessage = '⚠️ يرجى تحديد الصف أولاً';
+        _showGradeValidation = true;
+        _statusMessage = '⚠️ يرجى تحديد الصف أولاً قبل إضافة الطالب';
         _isSuccessMessage = false;
       });
       return;
@@ -91,6 +94,7 @@ class _AddStudentDialogState extends State<AddStudentDialog> {
     final newStudent = StudentRow(
       id: 'st_${DateTime.now().millisecondsSinceEpoch}_${name.hashCode}',
       name: name,
+      gradeLevel: effectiveGrade,
       section: _sectionController.text.trim().isNotEmpty ? _sectionController.text.trim() : 'أ',
       writtenRawScore: writtenScore,
     );
@@ -124,7 +128,8 @@ class _AddStudentDialogState extends State<AddStudentDialog> {
     final effectiveGrade = _effectiveGrade;
     if (effectiveGrade.isEmpty) {
       setState(() {
-        _statusMessage = '⚠️ يرجى تحديد الصف أولاً';
+        _showGradeValidation = true;
+        _statusMessage = '⚠️ يرجى تحديد الصف أولاً قبل استيراد الطلاب';
         _isSuccessMessage = false;
       });
       return;
@@ -151,6 +156,7 @@ class _AddStudentDialogState extends State<AddStudentDialog> {
       final st = StudentRow(
         id: 'st_${DateTime.now().millisecondsSinceEpoch}_$addedCount',
         name: name,
+        gradeLevel: effectiveGrade,
         section: sec,
         writtenRawScore: writtenScore,
       );
@@ -175,6 +181,7 @@ class _AddStudentDialogState extends State<AddStudentDialog> {
     final effectiveGrade = _effectiveGrade;
     if (effectiveGrade.isEmpty) {
       setState(() {
+        _showGradeValidation = true;
         _statusMessage = '⚠️ يرجى تحديد الصف أولاً قبل الاستيراد من ملف';
         _isSuccessMessage = false;
       });
@@ -210,6 +217,7 @@ class _AddStudentDialogState extends State<AddStudentDialog> {
           final st = StudentRow(
             id: 'st_${DateTime.now().millisecondsSinceEpoch}_$count',
             name: name,
+            gradeLevel: effectiveGrade,
             section: sec,
             writtenRawScore: score,
           );
@@ -233,12 +241,89 @@ class _AddStudentDialogState extends State<AddStudentDialog> {
   @override
   Widget build(BuildContext context) {
     final controller = context.watch<MonthlySheetController>();
+    final profile = context.watch<TeacherProfileController>().profile;
     final model = controller.currentModel;
     final availableSections = model?.assignedSections ?? ['أ', 'ب', 'ج', 'د', 'هـ'];
 
-    final List<String> allGrades = [
-      ...AcademicPresets.standardSchoolGrades,
-      ...AcademicPresets.standardUniversityStages,
+    // Collect all previously added grades from models and students
+    final Set<String> previousGrades = {};
+    for (final m in controller.models) {
+      if (m.gradeLevel.trim().isNotEmpty) {
+        previousGrades.add(m.gradeLevel.trim());
+      }
+      for (final s in m.students) {
+        if (s.gradeLevel.trim().isNotEmpty) {
+          previousGrades.add(s.gradeLevel.trim());
+        }
+      }
+    }
+
+    final standardGrades = AcademicPresets.getGrades(profile.isUniversity);
+    final combinedGrades = [
+      ...previousGrades,
+      ...standardGrades.where((g) => !previousGrades.contains(g)),
+    ];
+
+    final List<DropdownMenuItem<String>> gradeMenuItems = [
+      DropdownMenuItem<String>(
+        value: '',
+        enabled: false,
+        child: Text(
+          '-- 👇 اضغط هنا لاختيار الصف من قائمة الصفوف --',
+          style: TextStyle(
+            fontSize: 11.5.sp,
+            fontWeight: FontWeight.bold,
+            color: const Color(0xFF94A3B8),
+          ),
+        ),
+      ),
+      ...combinedGrades.map((g) {
+        final isPrevious = previousGrades.contains(g);
+        return DropdownMenuItem<String>(
+          value: g,
+          child: Row(
+            children: [
+              if (isPrevious) ...[
+                Icon(Icons.history_rounded, size: 14.r, color: const Color(0xFFBA916C)),
+                SizedBox(width: 5.w),
+              ],
+              Text(
+                g,
+                style: TextStyle(
+                  fontSize: 12.sp,
+                  fontWeight: FontWeight.bold,
+                  color: isPrevious ? const Color(0xFF1E293B) : const Color(0xFF334155),
+                ),
+              ),
+              if (isPrevious) ...[
+                SizedBox(width: 6.w),
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 5.w, vertical: 1.h),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFEF3C7),
+                    borderRadius: BorderRadius.circular(4.r),
+                  ),
+                  child: Text(
+                    'مضاف سابقاً',
+                    style: TextStyle(fontSize: 9.sp, fontWeight: FontWeight.bold, color: const Color(0xFF92400E)),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+      }),
+      DropdownMenuItem<String>(
+        value: '__CUSTOM__',
+        child: Text(
+          '✍️ كتابة صف دراسي آخر غير موجود بالقائمة...',
+          style: TextStyle(
+            fontSize: 11.5.sp,
+            fontWeight: FontWeight.w900,
+            color: const Color(0xFF2563EB),
+          ),
+        ),
+      ),
     ];
 
     return Directionality(
@@ -341,120 +426,124 @@ class _AddStudentDialogState extends State<AddStudentDialog> {
                           ],
                         ),
                         // Badge Alert
-                        _selectedGrade.isEmpty && !_isCustomGrade
-                            ? Container(
-                                padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 2.h),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFFEF3C7),
-                                  borderRadius: BorderRadius.circular(6.r),
-                                  border: Border.all(color: const Color(0xFFFCD34D)),
-                                ),
-                                child: Text(
-                                  '⚠️ يرجى تحديد الصف أولاً',
-                                  style: TextStyle(
-                                    fontSize: 10.5.sp,
-                                    fontWeight: FontWeight.w900,
-                                    color: const Color(0xFF92400E),
-                                  ),
-                                ),
-                              )
-                            : Container(
-                                padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 2.h),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFECFDF5),
-                                  borderRadius: BorderRadius.circular(6.r),
-                                  border: Border.all(color: const Color(0xFFA7F3D0)),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(Icons.check, size: 12.r, color: const Color(0xFF059669)),
-                                    SizedBox(width: 3.w),
-                                    Text(
-                                      'تم اختيار: $_effectiveGrade',
+                        Flexible(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: _effectiveGrade.isEmpty
+                                ? Container(
+                                    padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 2.h),
+                                    decoration: BoxDecoration(
+                                      color: _showGradeValidation ? const Color(0xFFFEF2F2) : const Color(0xFFFEF3C7),
+                                      borderRadius: BorderRadius.circular(6.r),
+                                      border: Border.all(
+                                        color: _showGradeValidation ? const Color(0xFFFECACA) : const Color(0xFFFCD34D),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      '⚠️ يرجى تحديد الصف أولاً',
                                       style: TextStyle(
                                         fontSize: 10.5.sp,
                                         fontWeight: FontWeight.w900,
-                                        color: const Color(0xFF065F46),
+                                        color: _showGradeValidation ? const Color(0xFFDC2626) : const Color(0xFF92400E),
                                       ),
                                     ),
-                                  ],
-                                ),
-                              ),
+                                  )
+                                : Container(
+                                    padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 2.h),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFECFDF5),
+                                      borderRadius: BorderRadius.circular(6.r),
+                                      border: Border.all(color: const Color(0xFFA7F3D0)),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.check, size: 12.r, color: const Color(0xFF059669)),
+                                        SizedBox(width: 3.w),
+                                        Text(
+                                          'تم اختيار: $_effectiveGrade',
+                                          style: TextStyle(
+                                            fontSize: 10.5.sp,
+                                            fontWeight: FontWeight.w900,
+                                            color: const Color(0xFF065F46),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                          ),
+                        ),
                       ],
                     ),
                     SizedBox(height: 6.h),
 
                     // Dropdown or Custom Text Input
-                    if (!_isCustomGrade)
+                    if (!_isCustomGrade) ...[
                       DropdownButtonFormField<String>(
-                        initialValue: _selectedGrade.isNotEmpty && allGrades.contains(_selectedGrade)
+                        initialValue: _selectedGrade.isNotEmpty && combinedGrades.contains(_selectedGrade)
                             ? _selectedGrade
                             : '',
                         isExpanded: true,
                         decoration: InputDecoration(
                           filled: true,
-                          fillColor: Colors.white,
+                          fillColor: (_showGradeValidation && _selectedGrade.isEmpty)
+                              ? const Color(0xFFFFF1F2)
+                              : Colors.white,
                           contentPadding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 7.h),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(10.r),
                             borderSide: BorderSide(
-                              color: _selectedGrade.isEmpty ? const Color(0xFFF59E0B) : const Color(0xFFBA916C),
-                              width: 1.2,
+                              color: (_showGradeValidation && _selectedGrade.isEmpty)
+                                  ? const Color(0xFFE11D48)
+                                  : (_selectedGrade.isEmpty ? const Color(0xFFF59E0B) : const Color(0xFFBA916C)),
+                              width: (_showGradeValidation && _selectedGrade.isEmpty) ? 1.6 : 1.2,
                             ),
                           ),
                           enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(10.r),
                             borderSide: BorderSide(
-                              color: _selectedGrade.isEmpty ? const Color(0xFFF59E0B) : const Color(0xFFCBD5E1),
-                              width: 1.2,
+                              color: (_showGradeValidation && _selectedGrade.isEmpty)
+                                  ? const Color(0xFFE11D48)
+                                  : (_selectedGrade.isEmpty ? const Color(0xFFF59E0B) : const Color(0xFFCBD5E1)),
+                              width: (_showGradeValidation && _selectedGrade.isEmpty) ? 1.6 : 1.2,
                             ),
                           ),
                         ),
-                        items: [
-                          DropdownMenuItem<String>(
-                            value: '',
-                            enabled: false,
-                            child: Text(
-                              '-- 👇 اضغط هنا لاختيار الصف من قائمة الصفوف --',
-                              style: TextStyle(
-                                fontSize: 11.5.sp,
-                                fontWeight: FontWeight.bold,
-                                color: const Color(0xFF94A3B8),
-                              ),
-                            ),
-                          ),
-                          ...allGrades.map((g) => DropdownMenuItem<String>(
-                                value: g,
-                                child: Text(g, style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.bold)),
-                              )),
-                          DropdownMenuItem<String>(
-                            value: '__CUSTOM__',
-                            child: Text(
-                              '✍️ كتابة صف دراسي آخر غير موجود بالقائمة...',
-                              style: TextStyle(
-                                fontSize: 11.5.sp,
-                                fontWeight: FontWeight.w900,
-                                color: const Color(0xFF2563EB),
-                              ),
-                            ),
-                          ),
-                        ],
+                        items: gradeMenuItems,
                         onChanged: (val) {
                           if (val == '__CUSTOM__') {
                             setState(() {
                               _isCustomGrade = true;
                               _selectedGrade = '';
+                              _showGradeValidation = false;
                             });
                           } else if (val != null && val.isNotEmpty) {
                             setState(() {
                               _selectedGrade = val;
+                              _showGradeValidation = false;
                               _statusMessage = null;
                             });
                           }
                         },
-                      )
-                    else
+                      ),
+                      if (_showGradeValidation && _selectedGrade.isEmpty) ...[
+                        SizedBox(height: 4.h),
+                        Row(
+                          children: [
+                            const Icon(Icons.error_outline_rounded, size: 14, color: Color(0xFFE11D48)),
+                            SizedBox(width: 4.w),
+                            Text(
+                              '⚠️ يرجى تحديد الصف أولاً من القائمة (حقل إجباري)',
+                              style: TextStyle(
+                                fontSize: 10.5.sp,
+                                fontWeight: FontWeight.bold,
+                                color: const Color(0xFFE11D48),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ] else ...[
                       Row(
                         children: [
                           Expanded(
@@ -465,19 +554,56 @@ class _AddStudentDialogState extends State<AddStudentDialog> {
                               decoration: InputDecoration(
                                 hintText: 'اكتب اسم الصف هنا (مثال: ثاني متوسط)...',
                                 filled: true,
-                                fillColor: Colors.white,
+                                fillColor: (_showGradeValidation && _customGradeController.text.trim().isEmpty)
+                                    ? const Color(0xFFFFF1F2)
+                                    : Colors.white,
                                 contentPadding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 7.h),
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10.r)),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10.r),
+                                  borderSide: BorderSide(
+                                    color: (_showGradeValidation && _customGradeController.text.trim().isEmpty)
+                                        ? const Color(0xFFE11D48)
+                                        : const Color(0xFFCBD5E1),
+                                  ),
+                                ),
                               ),
+                              onChanged: (_) {
+                                setState(() {
+                                  if (_customGradeController.text.trim().isNotEmpty) {
+                                    _showGradeValidation = false;
+                                  }
+                                });
+                              },
                             ),
                           ),
                           SizedBox(width: 6.w),
                           TextButton(
-                            onPressed: () => setState(() => _isCustomGrade = false),
+                            onPressed: () => setState(() {
+                              _isCustomGrade = false;
+                              _showGradeValidation = false;
+                            }),
                             child: Text('العودة للقائمة', style: TextStyle(fontSize: 11.sp, color: const Color(0xFF6D4C2F))),
                           ),
                         ],
                       ),
+                      if (_showGradeValidation && _customGradeController.text.trim().isEmpty) ...[
+                        SizedBox(height: 4.h),
+                        Row(
+                          children: [
+                            const Icon(Icons.error_outline_rounded, size: 14, color: Color(0xFFE11D48)),
+                            SizedBox(width: 4.w),
+                            Text(
+                              '⚠️ يرجى كتابة اسم الصف (حقل إجباري)',
+                              style: TextStyle(
+                                fontSize: 10.5.sp,
+                                fontWeight: FontWeight.bold,
+                                color: const Color(0xFFE11D48),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
                     SizedBox(height: 8.h),
 
                     // Section Selection
@@ -569,24 +695,27 @@ class _AddStudentDialogState extends State<AddStudentDialog> {
                                   : null,
                             ),
                             alignment: Alignment.center,
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.edit_note_rounded,
-                                  size: 16.r,
-                                  color: _activeTab == 0 ? const Color(0xFF8C6544) : const Color(0xFF6B5E51),
-                                ),
-                                SizedBox(width: 5.w),
-                                Text(
-                                  'إدخال يدوي أو لصق نص',
-                                  style: TextStyle(
-                                    fontSize: 12.sp,
-                                    fontWeight: _activeTab == 0 ? FontWeight.w900 : FontWeight.w700,
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.edit_note_rounded,
+                                    size: 16.r,
                                     color: _activeTab == 0 ? const Color(0xFF8C6544) : const Color(0xFF6B5E51),
                                   ),
-                                ),
-                              ],
+                                  SizedBox(width: 5.w),
+                                  Text(
+                                    'إدخال يدوي أو لصق نص',
+                                    style: TextStyle(
+                                      fontSize: 12.sp,
+                                      fontWeight: _activeTab == 0 ? FontWeight.w900 : FontWeight.w700,
+                                      color: _activeTab == 0 ? const Color(0xFF8C6544) : const Color(0xFF6B5E51),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -610,24 +739,27 @@ class _AddStudentDialogState extends State<AddStudentDialog> {
                                   : null,
                             ),
                             alignment: Alignment.center,
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.camera_alt_outlined,
-                                  size: 16.r,
-                                  color: _activeTab == 1 ? const Color(0xFF2B6CB0) : const Color(0xFF6B5E51),
-                                ),
-                                SizedBox(width: 5.w),
-                                Text(
-                                  'من ملف أو الكاميرا',
-                                  style: TextStyle(
-                                    fontSize: 12.sp,
-                                    fontWeight: _activeTab == 1 ? FontWeight.w900 : FontWeight.w700,
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.camera_alt_outlined,
+                                    size: 16.r,
                                     color: _activeTab == 1 ? const Color(0xFF2B6CB0) : const Color(0xFF6B5E51),
                                   ),
-                                ),
-                              ],
+                                  SizedBox(width: 5.w),
+                                  Text(
+                                    'من ملف أو الكاميرا',
+                                    style: TextStyle(
+                                      fontSize: 12.sp,
+                                      fontWeight: _activeTab == 1 ? FontWeight.w900 : FontWeight.w700,
+                                      color: _activeTab == 1 ? const Color(0xFF2B6CB0) : const Color(0xFF6B5E51),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -780,10 +912,14 @@ class _AddStudentDialogState extends State<AddStudentDialog> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'أو لصق كشف أسماء كامل (من Word أو Excel):',
-                    style: TextStyle(fontSize: 11.5.sp, fontWeight: FontWeight.w900, color: const Color(0xFF2F2822)),
+                  Expanded(
+                    child: Text(
+                      'أو لصق كشف أسماء كامل (من Word أو Excel):',
+                      style: TextStyle(fontSize: 11.5.sp, fontWeight: FontWeight.w900, color: const Color(0xFF2F2822)),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
+                  SizedBox(width: 8.w),
                   Text(
                     'اسم في كل سطر',
                     style: TextStyle(fontSize: 10.sp, color: const Color(0xFF7A6E61)),

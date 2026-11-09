@@ -9,6 +9,7 @@ import '../../../models/custom_column.dart';
 import '../../../core/utils/grade_calculator.dart';
 import '../../common/rating_badge.dart';
 import 'add_student_dialog.dart';
+import 'add_model_dialog.dart';
 import 'add_column_dialog.dart';
 import 'attendance_record_dialog.dart';
 import 'final_operation_dialog.dart';
@@ -138,9 +139,39 @@ class _StudentDataTableState extends State<StudentDataTable> {
       return Center(
         child: Padding(
           padding: EdgeInsets.symmetric(vertical: 40.h),
-          child: Text(
-            'لا يوجد أي جدول درجات حالياً. أنشئ جدولاً جديداً للبدء.',
-            style: TextStyle(fontSize: 14.sp, color: AppColors.textMuted),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'لا يوجد أي جدول درجات حالياً. أنشئ جدولاً جديداً للبدء.',
+                style: TextStyle(fontSize: 14.sp, color: AppColors.textMuted),
+              ),
+              SizedBox(height: 12.h),
+              ElevatedButton.icon(
+                onPressed: () async {
+                  final shouldOpenAddStudents = await showDialog<bool>(
+                    context: context,
+                    builder: (_) => const AddModelDialog(),
+                  );
+                  if (shouldOpenAddStudents == true && context.mounted) {
+                    showDialog(
+                      context: context,
+                      builder: (_) => const AddStudentDialog(),
+                    );
+                  }
+                },
+                icon: const Icon(Icons.add_rounded, color: Colors.white, size: 18),
+                label: const Text(
+                  'إنشاء جدول درجات جديد',
+                  style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.craftBrown,
+                  padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 10.h),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.r)),
+                ),
+              ),
+            ],
           ),
         ),
       );

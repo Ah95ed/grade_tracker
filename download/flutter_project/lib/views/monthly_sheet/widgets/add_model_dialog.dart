@@ -941,7 +941,8 @@ class _AddModelDialogState extends State<AddModelDialog> {
                         );
 
                         context.read<MonthlySheetController>().addModel(newModel);
-                        Navigator.of(context).pop();
+                        final bool shouldOpenAddStudents = newModel.students.isEmpty;
+                        Navigator.of(context).pop(shouldOpenAddStudents);
                       },
                       icon: const Icon(Icons.check_rounded, color: Colors.white, size: 16),
                       label: Text(

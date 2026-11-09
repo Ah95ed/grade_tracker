@@ -257,67 +257,272 @@ class _CreateTermDialogState extends State<CreateTermDialog> {
                       ],
                       SizedBox(height: 14.h),
 
-                      // Select Models
-                      _buildHeader('الجداول الشهرية المشمولة بالحساب:', isMandatory: false),
-                      SizedBox(height: 6.h),
-                      if (models.isEmpty)
-                        Container(
-                          padding: EdgeInsets.all(10.r),
-                          decoration: BoxDecoration(
-                            color: Colors.amber.shade50,
-                            borderRadius: BorderRadius.circular(10.r),
-                            border: Border.all(color: Colors.amber.shade200),
-                          ),
-                          child: Text(
-                            'تنبيه: لا توجد نماذج شهرية حالياً. يمكنك إنشاء الجداول الشهرية أولاً لحساب معدلاتها.',
-                            style: TextStyle(fontSize: 11.sp, color: Colors.amber.shade900),
-                          ),
-                        )
-                      else
-                        Wrap(
-                          spacing: 8.w,
-                          runSpacing: 6.h,
-                          children: models.map((m) {
-                            final isChecked = _selectedIds.contains(m.id);
-                            return FilterChip(
-                              label: Text(
-                                '${m.name}${m.gradeLevel.isNotEmpty ? " (${m.gradeLevel})" : ""}',
-                                style: TextStyle(
-                                  fontSize: 11.sp,
-                                  fontWeight: isChecked ? FontWeight.w800 : FontWeight.w600,
-                                  color: isChecked ? Colors.white : const Color(0xFF333333),
-                                ),
-                              ),
-                              selected: isChecked,
-                              selectedColor: const Color(0xFFB86848),
-                              checkmarkColor: Colors.white,
-                              backgroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8.r),
-                                side: BorderSide(
-                                  color: isChecked ? const Color(0xFF964B2F) : const Color(0xFFD8CEBD),
-                                ),
-                              ),
-                              onSelected: (selected) {
-                                setState(() {
-                                  if (selected) {
-                                    _selectedIds.add(m.id);
-                                  } else {
-                                    _selectedIds.remove(m.id);
-                                  }
-                                });
-                              },
-                            );
-                          }).toList(),
-                        ),
-                      SizedBox(height: 14.h),
-
-                      // Calc mode
+                      // 4. Calc mode
                       _buildHeader('طريقة الحساب الرياضي:', isMandatory: false),
                       SizedBox(height: 6.h),
                       _buildRadioOption('average', 'حساب المتوسط الحسابي (معدل الدرجات)'),
                       _buildRadioOption('sum', 'مجموع الدرجات المباشر'),
                       _buildRadioOption('single', 'اعتماد درجة جدول شهري واحد'),
+                      SizedBox(height: 16.h),
+
+                      // 5. Select Months / Models created in Sheet Table (placed at the bottom as requested)
+                      Container(
+                        padding: EdgeInsets.all(12.r),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFBF7F0),
+                          borderRadius: BorderRadius.circular(14.r),
+                          border: Border.all(
+                            color: (_showValidation && _selectedIds.isEmpty && models.isNotEmpty)
+                                ? const Color(0xFFE11D48)
+                                : const Color(0xFFD8CEBD),
+                            width: (_showValidation && _selectedIds.isEmpty && models.isNotEmpty) ? 1.5 : 1.0,
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.calendar_month_rounded, size: 18.r, color: const Color(0xFFB86848)),
+                                      SizedBox(width: 6.w),
+                                      Flexible(
+                                        child: Text(
+                                          'الأشهر المشمولة باحتساب المعدل:',
+                                          style: TextStyle(
+                                            fontSize: 12.5.sp,
+                                            fontWeight: FontWeight.w900,
+                                            color: const Color(0xFF2F2822),
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      SizedBox(width: 4.w),
+                                      Text('*', style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.bold, color: Colors.red.shade600)),
+                                    ],
+                                  ),
+                                ),
+                                SizedBox(width: 6.w),
+                                Container(
+                                  padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
+                                  decoration: BoxDecoration(
+                                    color: _selectedIds.isNotEmpty ? const Color(0xFFFEF3C7) : const Color(0xFFF1F5F9),
+                                    borderRadius: BorderRadius.circular(6.r),
+                                    border: Border.all(
+                                      color: _selectedIds.isNotEmpty ? const Color(0xFFFDE68A) : const Color(0xFFCBD5E1),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    '${_selectedIds.length} من ${models.length} أشهر',
+                                    style: TextStyle(
+                                      fontSize: 10.5.sp,
+                                      fontWeight: FontWeight.bold,
+                                      color: _selectedIds.isNotEmpty ? const Color(0xFF92400E) : const Color(0xFF64748B),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            SizedBox(height: 4.h),
+                            Text(
+                              'اختر الأشهر التي تم إضافتها في صفحة الجدول لاحتساب المعدل العام لطلابها:',
+                              style: TextStyle(fontSize: 11.sp, color: const Color(0xFF786A5B), fontWeight: FontWeight.w600),
+                            ),
+                            SizedBox(height: 8.h),
+
+                            // Quick Action Buttons: Select All / Clear
+                            if (models.isNotEmpty) ...[
+                              Row(
+                                children: [
+                                  InkWell(
+                                    onTap: () {
+                                      setState(() {
+                                        _selectedIds.clear();
+                                        _selectedIds.addAll(models.map((m) => m.id));
+                                      });
+                                    },
+                                    borderRadius: BorderRadius.circular(6.r),
+                                    child: Container(
+                                      padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(6.r),
+                                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.done_all_rounded, size: 14.r, color: const Color(0xFF059669)),
+                                          SizedBox(width: 4.w),
+                                          Text(
+                                            'تحديد الكل',
+                                            style: TextStyle(fontSize: 10.5.sp, fontWeight: FontWeight.bold, color: const Color(0xFF059669)),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(width: 6.w),
+                                  InkWell(
+                                    onTap: () {
+                                      setState(() {
+                                        _selectedIds.clear();
+                                      });
+                                    },
+                                    borderRadius: BorderRadius.circular(6.r),
+                                    child: Container(
+                                      padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(6.r),
+                                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.remove_circle_outline_rounded, size: 14.r, color: const Color(0xFFDC2626)),
+                                          SizedBox(width: 4.w),
+                                          Text(
+                                            'إلغاء التحديد',
+                                            style: TextStyle(fontSize: 10.5.sp, fontWeight: FontWeight.bold, color: const Color(0xFFDC2626)),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              SizedBox(height: 8.h),
+                            ],
+
+                            // Models List
+                            if (models.isEmpty)
+                              Container(
+                                padding: EdgeInsets.all(12.r),
+                                decoration: BoxDecoration(
+                                  color: Colors.amber.shade50,
+                                  borderRadius: BorderRadius.circular(10.r),
+                                  border: Border.all(color: Colors.amber.shade200),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.info_outline_rounded, color: Colors.amber.shade900, size: 18),
+                                    SizedBox(width: 8.w),
+                                    Expanded(
+                                      child: Text(
+                                        'لا توجد أي نماذج شهرية مضافة في صفحة الجدول بعد. يُرجى إنشاء الجداول الشهرية أولاً في صفحة (الجدول).',
+                                        style: TextStyle(fontSize: 11.sp, color: Colors.amber.shade900, fontWeight: FontWeight.w600),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            else
+                              ListView.separated(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                itemCount: models.length,
+                                separatorBuilder: (context, index) => SizedBox(height: 6.h),
+                                itemBuilder: (context, index) {
+                                  final m = models[index];
+                                  final isChecked = _selectedIds.contains(m.id);
+                                  return InkWell(
+                                    onTap: () {
+                                      setState(() {
+                                        if (isChecked) {
+                                          _selectedIds.remove(m.id);
+                                        } else {
+                                          _selectedIds.add(m.id);
+                                        }
+                                      });
+                                    },
+                                    borderRadius: BorderRadius.circular(10.r),
+                                    child: AnimatedContainer(
+                                      duration: const Duration(milliseconds: 150),
+                                      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.h),
+                                      decoration: BoxDecoration(
+                                        color: isChecked ? const Color(0xFFFDF6EE) : Colors.white,
+                                        borderRadius: BorderRadius.circular(10.r),
+                                        border: Border.all(
+                                          color: isChecked ? const Color(0xFFB86848) : const Color(0xFFE2E8F0),
+                                          width: isChecked ? 1.5 : 1.0,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Container(
+                                            width: 20.r,
+                                            height: 20.r,
+                                            decoration: BoxDecoration(
+                                              color: isChecked ? const Color(0xFFB86848) : Colors.white,
+                                              borderRadius: BorderRadius.circular(5.r),
+                                              border: Border.all(
+                                                color: isChecked ? const Color(0xFF944D30) : const Color(0xFF94A3B8),
+                                                width: 1.5,
+                                              ),
+                                            ),
+                                            child: isChecked
+                                                ? Icon(Icons.check_rounded, size: 14.r, color: Colors.white)
+                                                : null,
+                                          ),
+                                          SizedBox(width: 10.w),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  m.name,
+                                                  style: TextStyle(
+                                                    fontSize: 12.sp,
+                                                    fontWeight: isChecked ? FontWeight.w900 : FontWeight.bold,
+                                                    color: isChecked ? const Color(0xFF7A361D) : const Color(0xFF1E293B),
+                                                  ),
+                                                ),
+                                                SizedBox(height: 2.h),
+                                                Row(
+                                                  children: [
+                                                    Expanded(
+                                                      child: Text(
+                                                        '${m.subject.isNotEmpty ? "المادة: ${m.subject}" : ""}${m.subject.isNotEmpty && m.gradeLevel.isNotEmpty ? " • " : ""}${m.gradeLevel.isNotEmpty ? "الصف: ${m.gradeLevel}" : ""}',
+                                                        style: TextStyle(fontSize: 10.5.sp, color: const Color(0xFF64748B)),
+                                                        overflow: TextOverflow.ellipsis,
+                                                      ),
+                                                    ),
+                                                    SizedBox(width: 8.w),
+                                                    Text(
+                                                      '${m.students.length} طالب',
+                                                      style: TextStyle(
+                                                        fontSize: 10.5.sp,
+                                                        fontWeight: FontWeight.bold,
+                                                        color: const Color(0xFF059669),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+
+                            if (_showValidation && _selectedIds.isEmpty && models.isNotEmpty) ...[
+                              SizedBox(height: 6.h),
+                              Text(
+                                '⚠️ يرجى اختيار شهر واحد على الأقل لاحتساب المعدل لهذا الفصل',
+                                style: TextStyle(fontSize: 10.5.sp, color: Colors.red.shade700, fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -341,7 +546,7 @@ class _CreateTermDialogState extends State<CreateTermDialog> {
                     SizedBox(width: 8.w),
                     ElevatedButton.icon(
                       onPressed: () {
-                        if (!isNameValid || !isSubjectValid || !isGradeValid) {
+                        if (!isNameValid || !isSubjectValid || !isGradeValid || (models.isNotEmpty && _selectedIds.isEmpty)) {
                           setState(() => _showValidation = true);
                           return;
                         }

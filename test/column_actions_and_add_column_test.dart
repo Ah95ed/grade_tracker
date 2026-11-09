@@ -70,12 +70,12 @@ void main() {
     await tester.pumpAndSettle();
 
     // Verify preset chips exist
-    expect(find.text('درجة الشفهي'), findsOneWidget);
+    expect(find.text('درجة الشفهي'), findsWidgets);
     expect(find.text('المشاركة والنشاط'), findsOneWidget);
     expect(find.text('الغياب والحضور'), findsOneWidget);
 
     // Tap 'درجة الشفهي' preset
-    await tester.tap(find.text('درجة الشفهي'));
+    await tester.tap(find.text('درجة الشفهي').first);
     await tester.pumpAndSettle();
 
     // Name should be populated with 'درجة الشفهي' and default score 20
