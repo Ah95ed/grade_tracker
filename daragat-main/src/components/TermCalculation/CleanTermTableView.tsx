@@ -291,7 +291,10 @@ export const CleanTermTableView: React.FC<Props> = ({
                     </div>
                   </th>
                 ))}
-                <th className="py-1.5 px-2 min-w-[120px] text-center align-middle border border-[#D5C8B2] bg-[#FEF3C7] text-[#92400E]">
+                <th
+                  data-term-average-col="true"
+                  className="py-1.5 px-2 min-w-[120px] text-center align-middle border border-[#D5C8B2] bg-[#FEF3C7] text-[#92400E]"
+                >
                   <div className="flex items-center justify-center gap-1">
                     <span>معدل {term.name}</span>
                     <span className="text-[10px] font-bold text-[#B45309]">

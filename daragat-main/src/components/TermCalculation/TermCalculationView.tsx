@@ -37,6 +37,7 @@ import {
   BookOpen,
 } from 'lucide-react';
 import { CleanTermTableView } from './CleanTermTableView';
+import { AddTermModal } from './AddTermModal';
 import { ConfirmDeleteModal } from '../Common/ConfirmDeleteModal';
 import { ScoreRoundingModal } from '../MonthlySheet/ScoreRoundingModal';
 import { StudentFloatingCloud, ActiveStudentCloudInfo } from '../Common/StudentFloatingCloud';
@@ -419,50 +420,101 @@ export const TermCalculationView: React.FC<Props> = ({
     setIsEditingTermName(false);
   };
 
-  const handleCreateTerm = () => {
-    if (!newTermName.trim()) return;
-    const chosenGrade = newTermGrade || availableGradesFromModels[0] || undefined;
-    const chosenSubject = newTermSubject || availableSubjectsFromModels[0] || undefined;
-    const chosenTeacher = newTermTeacher.trim() || undefined;
+  const [defaultSuggestedTermName, setDefaultSuggestedTermName] = useState('الفصل الأول');
+  const [highlightAverageCol, setHighlightAverageCol] = useState(false);
+  const scrollTargetPendingRef = React.useRef(false);
 
-    // Automatically find all monthly models from "صفحة الجدول" that match this grade, subject, and teacher!
-    const matchingModelIds = monthlyModels
-      .filter((m) => {
-        const matchGrade = !chosenGrade || isGradeLevelMatch(m.gradeLevel || '', chosenGrade);
-        const matchSub = !chosenSubject || isSubjectMatch(m.subject, chosenSubject);
-        const matchTeacher =
-          !chosenTeacher ||
-          !m.teacherName ||
-          canonicalizeArabic(m.teacherName) === canonicalizeArabic(chosenTeacher);
-        return matchGrade && matchSub && matchTeacher;
-      })
-      .map((m) => m.id);
+  const scrollToAverageColumn = React.useCallback(() => {
+    scrollTargetPendingRef.current = true;
 
+    const executeScroll = () => {
+      const targetCol =
+        document.getElementById('term-calculated-average-col') ||
+        document.querySelector('[data-term-average-col="true"]');
+
+      if (targetCol) {
+        // 1. Horizontal scroll inside tableContainerRef so the average column is comfortably centered
+        if (tableContainerRef.current) {
+          const container = tableContainerRef.current;
+          const colRect = targetCol.getBoundingClientRect();
+          const containerRect = container.getBoundingClientRect();
+          const scrollDiff = (colRect.left + colRect.width / 2) - (containerRect.left + containerRect.width / 2);
+          container.scrollBy({
+            left: scrollDiff,
+            behavior: 'smooth',
+          });
+        } else {
+          targetCol.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        }
+
+        // 2. Vertical window scroll so the table header is clearly in view
+        const rect = targetCol.getBoundingClientRect();
+        const currentScrollY = window.pageYOffset || document.documentElement.scrollTop;
+        const targetY = currentScrollY + rect.top - 160;
+        window.scrollTo({
+          top: Math.max(0, targetY),
+          behavior: 'smooth',
+        });
+
+        // 3. Highlight column temporarily with glowing border and badge
+        setHighlightAverageCol(true);
+        setTimeout(() => {
+          setHighlightAverageCol(false);
+        }, 4500);
+        scrollTargetPendingRef.current = false;
+      }
+    };
+
+    setTimeout(executeScroll, 120);
+    setTimeout(executeScroll, 350);
+    setTimeout(executeScroll, 700);
+  }, []);
+
+  useEffect(() => {
+    if (scrollTargetPendingRef.current) {
+      scrollToAverageColumn();
+    }
+  }, [activeTermId, terms, scrollToAverageColumn]);
+
+  const handleCreateTermFromModal = (termData: {
+    name: string;
+    gradeLevel?: string;
+    subject?: string;
+    teacherName?: string;
+    assignedSections?: string[];
+    selectedModelIds: string[];
+  }) => {
+    const termId = 'term-' + Date.now();
     const newTerm: TermModel = {
-      id: 'term-' + Date.now(),
-      name: newTermName.trim(),
-      gradeLevel: chosenGrade,
-      subject: chosenSubject,
-      teacherName: chosenTeacher,
-      assignedSections: newTermSections.length > 0 ? newTermSections : undefined,
-      selectedModelIds: matchingModelIds, // Automatically fetch matching months from صفحة الجدول!
-      calculationMode: matchingModelIds.length > 1 ? 'average' : 'single',
+      id: termId,
+      name: termData.name.trim(),
+      gradeLevel: termData.gradeLevel,
+      subject: termData.subject,
+      teacherName: termData.teacherName,
+      assignedSections: termData.assignedSections,
+      selectedModelIds: termData.selectedModelIds,
+      calculationMode: termData.selectedModelIds.length > 1 ? 'average' : 'single',
       notes: '',
     };
     onAddTerm(newTerm);
-    if (chosenGrade) {
-      setSelectedGradeLevel(chosenGrade);
+    onSelectTerm(termId);
+    if (termData.gradeLevel) {
+      setSelectedGradeLevel(termData.gradeLevel);
     }
     setNewTermName('');
     setNewTermTeacher('');
     setNewTermSections([]);
     setIsAddingNewTerm(false);
+
+    // Scroll smoothly to the term average column!
+    scrollToAverageColumn();
   };
 
   const handleOpenAddTerm = () => {
     const nextNum = terms.length + 1;
     const suggested =
       nextNum === 1 ? 'الفصل الأول' : nextNum === 2 ? 'الفصل الثاني' : nextNum === 3 ? 'الفصل الثالث' : `الفصل ${nextNum}`;
+    setDefaultSuggestedTermName(suggested);
     setNewTermName(suggested);
     const initGrade = currentTerm?.gradeLevel || availableGradesFromModels[0] || '';
     const initSub = currentTerm?.subject || availableSubjectsFromModels[0] || '';
@@ -625,187 +677,20 @@ export const TermCalculationView: React.FC<Props> = ({
         </div>
 
         {/* Modal for Adding a New Term */}
-        {isAddingNewTerm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-150 text-right">
-            <div className="bg-[#FAF7EC] rounded-2xl shadow-2xl border border-[#D8CEBD] w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden my-auto animate-in zoom-in-95 duration-150">
-              <div className="px-5 py-3.5 bg-[#B86848] text-white flex items-center justify-between shrink-0 shadow-xs">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
-                    <Plus className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-bold">إضافة فصل دراسي جديد</h3>
-                    <p className="text-xs text-orange-100">
-                      احتساب معدل الدرجات لشهور هذا الفصل تلقائياً
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIsAddingNewTerm(false)}
-                  className="p-1.5 text-white/80 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  handleCreateTerm();
-                }}
-                className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1 overscroll-contain"
-              >
-                <div>
-                  <label className="block text-xs font-bold text-[#2F2822] mb-1.5">
-                    اسم الفصل الدراسي
-                  </label>
-                  <input
-                    type="text"
-                    value={newTermName}
-                    onChange={(e) => setNewTermName(e.target.value)}
-                    placeholder="مثال: الفصل الأول، أو السعي السنوي"
-                    className="w-full px-3.5 py-2.5 bg-white border border-[#D8CEBD] rounded-xl text-sm font-bold text-[#2F2822] focus:bg-white focus:ring-2 focus:ring-[#B86848] focus:outline-none"
-                    autoFocus
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-[#2F2822] mb-1.5 flex items-center gap-1">
-                      <GraduationCap className="w-3.5 h-3.5 text-[#B86848]" />
-                      <span>الصف الدراسي:</span>
-                    </label>
-                    <select
-                      value={newTermGrade}
-                      onChange={(e) => setNewTermGrade(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-[#D8CEBD] rounded-xl text-xs font-bold text-[#2F2822] focus:ring-2 focus:ring-[#B86848] focus:outline-none cursor-pointer"
-                    >
-                      {availableGradesFromModels.map((grade) => (
-                        <option key={grade} value={grade}>
-                          {grade}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-[#2F2822] mb-1.5 flex items-center gap-1">
-                      <BookOpen className="w-3.5 h-3.5 text-[#B86848]" />
-                      <span>المادة الدراسية:</span>
-                    </label>
-                    <select
-                      value={newTermSubject}
-                      onChange={(e) => setNewTermSubject(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-[#D8CEBD] rounded-xl text-xs font-bold text-[#2F2822] focus:ring-2 focus:ring-[#B86848] focus:outline-none cursor-pointer"
-                    >
-                      {availableSubjectsFromModels.map((subj) => (
-                        <option key={subj} value={subj}>
-                          {subj}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                {/* Teacher Name & Multi-teacher section assignment */}
-                <div>
-                  <label className="block text-xs font-bold text-[#2F2822] mb-1.5 flex items-center justify-between">
-                    <span className="flex items-center gap-1">
-                      <User className="w-3.5 h-3.5 text-[#B86848]" />
-                      <span>اسم أستاذ المادة:</span>
-                    </span>
-                    {matchingTeachersForNewTerm.length > 1 && (
-                      <span className="text-[10px] text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full font-bold">
-                        تعدد أساتذة لنفس الصف والمادة
-                      </span>
-                    )}
-                  </label>
-
-                  {matchingTeachersForNewTerm.length > 1 ? (
-                    <div className="space-y-2 mb-2">
-                      <div className="text-[11px] text-[#7A6E61] bg-amber-50 p-2 rounded-xl border border-amber-200">
-                        تم رصد أكثر من أستاذ لمادة <strong>{newTermSubject}</strong> للصف <strong>{newTermGrade}</strong>. اختر الأستاذ لحصر الفصل وشُعبه:
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {matchingTeachersForNewTerm.map((t) => {
-                          const isSelected =
-                            canonicalizeArabic(newTermTeacher) === canonicalizeArabic(t.teacherName);
-                          return (
-                            <button
-                              key={t.teacherName}
-                              type="button"
-                              onClick={() => {
-                                setNewTermTeacher(t.teacherName);
-                                setNewTermSections(t.sections);
-                              }}
-                              className={`p-2.5 rounded-xl border text-right transition-all cursor-pointer ${
-                                isSelected
-                                  ? 'bg-[#B86848]/15 border-[#B86848] text-[#2F2822] ring-2 ring-[#B86848]/30 font-bold'
-                                  : 'bg-white border-[#D8CEBD] text-[#554B3E] hover:bg-[#F3EDE2]'
-                              }`}
-                            >
-                              <div className="text-xs font-bold flex items-center justify-between">
-                                <span>{t.teacherName}</span>
-                                {isSelected && <Check className="w-3.5 h-3.5 text-[#B86848]" />}
-                              </div>
-                              <div className="text-[10px] text-[#8C7E6D] mt-0.5">
-                                {t.sections.length > 0
-                                  ? `شُعبه: ${t.sections.join('، ')}`
-                                  : 'جميع الشُعب'}
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  <input
-                    type="text"
-                    value={newTermTeacher}
-                    onChange={(e) => setNewTermTeacher(e.target.value)}
-                    placeholder="اسم أستاذ المادة (مثال: حسين محمد)..."
-                    className="w-full px-3 py-2 bg-white border border-[#D8CEBD] rounded-xl text-xs font-bold text-[#2F2822] focus:ring-2 focus:ring-[#B86848] focus:outline-none"
-                  />
-                  {newTermSections.length > 0 && (
-                    <div className="mt-1 text-[11px] text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 flex items-center gap-1.5">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                      <span>
-                        سيتم حصر هذا الفصل على شُعب هذا الأستاذ: <strong>{newTermSections.join('، ')}</strong> فقط.
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="p-2.5 rounded-xl bg-amber-50/90 border border-amber-200/90 text-[11px] text-amber-900 leading-relaxed flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-amber-700 shrink-0" />
-                  <span>
-                    سيتم تلقائياً جلب شهور ونماذج <strong>{newTermGrade || 'الصف المحدد'}</strong> لمادة <strong>{newTermSubject || 'المادة المحددة'}</strong> من صفحة الجدول واحتساب معدلها.
-                  </span>
-                </div>
-
-                <div className="pt-3 border-t border-[#E0D5C3] flex items-center justify-end gap-2.5 shrink-0 bg-[#FAF7EC]">
-                  <button
-                    type="button"
-                    onClick={() => setIsAddingNewTerm(false)}
-                    className="px-4 py-2 text-[#7A6E61] hover:bg-[#EBE3D3] rounded-xl text-xs font-bold transition-colors cursor-pointer"
-                  >
-                    إلغاء
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={!newTermName.trim()}
-                    className="px-5 py-2 bg-[#B86848] hover:bg-[#A05537] border border-[#944D30] disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>إنشاء الفصل</span>
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
+        <AddTermModal
+          isOpen={isAddingNewTerm}
+          onClose={() => setIsAddingNewTerm(false)}
+          onSubmit={handleCreateTermFromModal}
+          availableGrades={availableGradesFromModels}
+          availableSubjects={availableSubjectsFromModels}
+          monthlyModels={monthlyModels}
+          initialGrade={newTermGrade || availableGradesFromModels[0]}
+          initialSubject={newTermSubject || availableSubjectsFromModels[0]}
+          initialTeacher={newTermTeacher || profile.teacherName}
+          initialSections={newTermSections}
+          defaultName={defaultSuggestedTermName}
+          profile={profile}
+        />
       </div>
     );
   }
@@ -1553,7 +1438,20 @@ export const TermCalculationView: React.FC<Props> = ({
                 ))}
 
                 {/* The Calculated Term Grade Column - In print strictly ONLY "النهائي" */}
-                <th className={`py-2.5 px-3 min-w-[170px] print:min-w-0 bg-[#F1F5F9] border border-[#CBD5E1] text-[#1E293B] text-center font-bold align-top ${columnSlants['finalTermScore'] === 'vertical' ? 'min-w-[50px]' : ''}`}>
+                <th
+                  id="term-calculated-average-col"
+                  data-term-average-col="true"
+                  className={`py-2.5 px-3 min-w-[170px] print:min-w-0 border text-[#1E293B] text-center font-bold align-top transition-all duration-500 ${
+                    highlightAverageCol
+                      ? 'bg-amber-100 border-amber-500 ring-4 ring-amber-400 shadow-xl'
+                      : 'bg-[#F1F5F9] border-[#CBD5E1]'
+                  } ${columnSlants['finalTermScore'] === 'vertical' ? 'min-w-[50px]' : ''}`}
+                >
+                  {highlightAverageCol && (
+                    <div className="text-[10px] font-black text-amber-900 bg-amber-300/90 px-2 py-0.5 rounded-full inline-block animate-bounce mb-1 shadow-xs print:hidden">
+                      🎯 عمود معدل الفصل
+                    </div>
+                  )}
                   {/* Screen Title */}
                   <div className="flex items-center justify-center gap-1 print:hidden">
                     <Sparkles className="w-3.5 h-3.5 text-[#2B6CB0]" />
@@ -1561,8 +1459,8 @@ export const TermCalculationView: React.FC<Props> = ({
                     <SlantButton slant={columnSlants['finalTermScore']} onToggle={() => toggleColumnSlant('finalTermScore')} />
                   </div>
                   <div className="text-[10px] text-[#64748B] font-normal mt-0.5 print:hidden">
-                    {currentTerm.selectedModelIds.length === 2
-                      ? '(معدل الشهرين تلقائياً)'
+                    {(currentTerm.selectedModelIds || []).length > 1
+                      ? `(معدل ${(currentTerm.selectedModelIds || []).length} شهور تلقائياً)`
                       : '(الدرجة المعتمدة)'}
                   </div>
 
@@ -1750,7 +1648,14 @@ export const TermCalculationView: React.FC<Props> = ({
                       })}
 
                       {/* Calculated Final Term Grade */}
-                      <td className="py-2.5 px-4 text-center font-black border border-[#CBD5E1]">
+                      <td
+                        data-term-average-cell="true"
+                        className={`py-2.5 px-4 text-center font-black border transition-colors duration-500 ${
+                          highlightAverageCol
+                            ? 'bg-amber-50 border-amber-300 ring-1 ring-amber-400/60 font-black'
+                            : 'border-[#CBD5E1]'
+                        }`}
+                      >
                         {student.finalTermScore !== null ? (
                           <div className="flex flex-col items-center justify-center gap-0.5">
                             <span className="text-base font-black text-[#1E293B] px-3 py-0.5 bg-slate-100 rounded-lg inline-block min-w-[55px] border border-slate-200">
@@ -1837,187 +1742,20 @@ export const TermCalculationView: React.FC<Props> = ({
       />
 
       {/* Modal for Adding a New Term */}
-      {isAddingNewTerm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-150 text-right">
-          <div className="bg-[#FAF7EC] rounded-2xl shadow-2xl border border-[#D8CEBD] w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden my-auto animate-in zoom-in-95 duration-150">
-            <div className="px-5 py-3.5 bg-[#B86848] text-white flex items-center justify-between shrink-0 shadow-xs">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
-                  <Plus className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold">إضافة فصل دراسي جديد</h3>
-                  <p className="text-xs text-orange-100">
-                    احتساب معدل الدرجات لشهور هذا الفصل تلقائياً
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsAddingNewTerm(false)}
-                className="p-1.5 text-white/80 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleCreateTerm();
-              }}
-              className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1 overscroll-contain"
-            >
-              <div>
-                <label className="block text-xs font-bold text-[#2F2822] mb-1.5">
-                  اسم الفصل الدراسي:
-                </label>
-                <input
-                  type="text"
-                  value={newTermName}
-                  onChange={(e) => setNewTermName(e.target.value)}
-                  placeholder="مثال: الفصل الثاني، أو السعي السنوي"
-                  className="w-full px-3.5 py-2.5 bg-white border border-[#D8CEBD] rounded-xl text-sm font-bold text-[#2F2822] focus:bg-white focus:ring-2 focus:ring-[#B86848] focus:outline-none"
-                  autoFocus
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-[#2F2822] mb-1.5 flex items-center gap-1">
-                    <GraduationCap className="w-3.5 h-3.5 text-[#B86848]" />
-                    <span>الصف الدراسي:</span>
-                  </label>
-                  <select
-                    value={newTermGrade}
-                    onChange={(e) => setNewTermGrade(e.target.value)}
-                    className="w-full px-3 py-2.5 bg-white border border-[#D8CEBD] rounded-xl text-xs font-bold text-[#2F2822] focus:ring-2 focus:ring-[#B86848] focus:outline-none cursor-pointer"
-                  >
-                    {availableGradesFromModels.map((grade) => (
-                      <option key={grade} value={grade}>
-                        {grade}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-[#2F2822] mb-1.5 flex items-center gap-1">
-                    <BookOpen className="w-3.5 h-3.5 text-[#B86848]" />
-                    <span>المادة الدراسية:</span>
-                  </label>
-                  <select
-                    value={newTermSubject}
-                    onChange={(e) => setNewTermSubject(e.target.value)}
-                    className="w-full px-3 py-2.5 bg-white border border-[#D8CEBD] rounded-xl text-xs font-bold text-[#2F2822] focus:ring-2 focus:ring-[#B86848] focus:outline-none cursor-pointer"
-                  >
-                    {availableSubjectsFromModels.map((subj) => (
-                      <option key={subj} value={subj}>
-                        {subj}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Teacher Name & Multi-teacher section assignment */}
-              <div>
-                <label className="block text-xs font-bold text-[#2F2822] mb-1.5 flex items-center justify-between">
-                  <span className="flex items-center gap-1">
-                    <User className="w-3.5 h-3.5 text-[#B86848]" />
-                    <span>اسم أستاذ المادة:</span>
-                  </span>
-                  {matchingTeachersForNewTerm.length > 1 && (
-                    <span className="text-[10px] text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full font-bold">
-                      تعدد أساتذة لنفس الصف والمادة
-                    </span>
-                  )}
-                </label>
-
-                {matchingTeachersForNewTerm.length > 1 ? (
-                  <div className="space-y-2 mb-2">
-                    <div className="text-[11px] text-[#7A6E61] bg-amber-50 p-2 rounded-xl border border-amber-200">
-                      تم رصد أكثر من أستاذ لمادة <strong>{newTermSubject}</strong> للصف <strong>{newTermGrade}</strong>. اختر الأستاذ لعرض وحساب شُعبه:
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {matchingTeachersForNewTerm.map((t) => {
-                        const isSelected =
-                          canonicalizeArabic(newTermTeacher) === canonicalizeArabic(t.teacherName);
-                        return (
-                          <button
-                            key={t.teacherName}
-                            type="button"
-                            onClick={() => {
-                              setNewTermTeacher(t.teacherName);
-                              setNewTermSections(t.sections);
-                            }}
-                            className={`p-2.5 rounded-xl border text-right transition-all cursor-pointer ${
-                              isSelected
-                                ? 'bg-[#B86848]/15 border-[#B86848] text-[#2F2822] ring-2 ring-[#B86848]/30 font-bold'
-                                : 'bg-white border-[#D8CEBD] text-[#554B3E] hover:bg-[#F3EDE2]'
-                            }`}
-                          >
-                            <div className="text-xs font-bold flex items-center justify-between">
-                              <span>{t.teacherName}</span>
-                              {isSelected && <Check className="w-3.5 h-3.5 text-[#B86848]" />}
-                            </div>
-                            <div className="text-[10px] text-[#8C7E6D] mt-0.5">
-                              {t.sections.length > 0
-                                ? `شُعبه: ${t.sections.join('، ')}`
-                                : 'جميع الشُعب'}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : null}
-
-                <input
-                  type="text"
-                  value={newTermTeacher}
-                  onChange={(e) => setNewTermTeacher(e.target.value)}
-                  placeholder="اسم أستاذ المادة (مثال: حسين محمد)..."
-                  className="w-full px-3 py-2 bg-white border border-[#D8CEBD] rounded-xl text-xs font-bold text-[#2F2822] focus:ring-2 focus:ring-[#B86848] focus:outline-none"
-                />
-                {newTermSections.length > 0 && (
-                  <div className="mt-1 text-[11px] text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 flex items-center gap-1.5">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    <span>
-                      سيتم حصر هذا الفصل على شُعب هذا الأستاذ: <strong>{newTermSections.join('، ')}</strong> فقط.
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              <div className="p-2.5 rounded-xl bg-amber-50/90 border border-amber-200/90 text-[11px] text-amber-900 leading-relaxed flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-amber-700 shrink-0" />
-                <span>
-                  سيتم تلقائياً جلب شهور ونماذج <strong>{newTermGrade || 'الصف المحدد'}</strong> لمادة <strong>{newTermSubject || 'المادة المحددة'}</strong> من صفحة الجدول واحتساب معدلها.
-                </span>
-              </div>
-
-              <div className="pt-3 border-t border-[#E0D5C3] flex items-center justify-end gap-2.5 shrink-0 bg-[#FAF7EC]">
-                <button
-                  type="button"
-                  onClick={() => setIsAddingNewTerm(false)}
-                  className="px-4 py-2 text-[#7A6E61] hover:bg-[#EBE3D3] rounded-xl text-xs font-bold transition-colors cursor-pointer"
-                >
-                  إلغاء
-                </button>
-                <button
-                  type="submit"
-                  disabled={!newTermName.trim()}
-                  className="px-5 py-2 bg-[#B86848] hover:bg-[#A05537] border border-[#944D30] disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>إنشاء الفصل</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <AddTermModal
+        isOpen={isAddingNewTerm}
+        onClose={() => setIsAddingNewTerm(false)}
+        onSubmit={handleCreateTermFromModal}
+        availableGrades={availableGradesFromModels}
+        availableSubjects={availableSubjectsFromModels}
+        monthlyModels={monthlyModels}
+        initialGrade={newTermGrade || currentTerm?.gradeLevel || availableGradesFromModels[0]}
+        initialSubject={newTermSubject || currentTerm?.subject || availableSubjectsFromModels[0]}
+        initialTeacher={newTermTeacher || currentTerm?.teacherName || profile.teacherName}
+        initialSections={newTermSections.length > 0 ? newTermSections : currentTerm?.assignedSections}
+        defaultName={defaultSuggestedTermName}
+        profile={profile}
+      />
 
       {/* Modal for Editing Term Name & Scope */}
       {isEditingTermName && (

@@ -109,6 +109,47 @@ class CleanTableView extends StatelessWidget {
             ),
             SizedBox(width: 6.w),
 
+            // Numeral Mode Toggle (EN / AR)
+            InkWell(
+              onTap: () {
+                final nextMode = controller.numeralMode == 'AR' ? 'EN' : 'AR';
+                controller.setNumeralMode(nextMode);
+              },
+              borderRadius: BorderRadius.circular(8.r),
+              child: Container(
+                margin: EdgeInsets.symmetric(vertical: 8.h),
+                padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8.r),
+                  border: Border.all(color: const Color(0xFFD8CEBD)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      controller.numeralMode == 'AR' ? '١٢٣' : '123',
+                      style: TextStyle(
+                        fontSize: 11.sp,
+                        fontWeight: FontWeight.w900,
+                        color: const Color(0xFFB45309),
+                      ),
+                    ),
+                    SizedBox(width: 4.w),
+                    Text(
+                      controller.numeralMode,
+                      style: TextStyle(
+                        fontSize: 10.sp,
+                        fontWeight: FontWeight.bold,
+                        color: const Color(0xFF7A6A58),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            SizedBox(width: 6.w),
+
             // Print Action
             IconButton(
               icon: const Icon(Icons.print_rounded, color: Color(0xFF2B6CB0)),

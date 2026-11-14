@@ -3,6 +3,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
 import '../../../controllers/monthly_sheet_controller.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/arabic_helper.dart';
 import '../../../models/student_row.dart';
 import '../../../models/monthly_model.dart';
 import '../../../models/custom_column.dart';
@@ -13,6 +14,7 @@ import 'add_model_dialog.dart';
 import 'add_column_dialog.dart';
 import 'attendance_record_dialog.dart';
 import 'final_operation_dialog.dart';
+import 'grade_numeric_keypad.dart';
 import 'rename_columns_dialog.dart';
 
 /// Computed column widths for the interactive table
@@ -454,7 +456,7 @@ class _StudentDataTableState extends State<StudentDataTable> {
               ),
             ),
 
-            // 2. Student Name Column Header with Embedded Search Input
+            // 2. Student Name Column Header with Embedded Search Input & Alphabetical Sort
             _buildHeaderCell(
               width: widths.name,
               child: Column(
@@ -478,7 +480,7 @@ class _StudentDataTableState extends State<StudentDataTable> {
                                 ),
                               ),
                             ),
-                            SizedBox(width: 5.w),
+                            SizedBox(width: 4.w),
                             _buildRenameButton(
                               onTap: () => _promptRenameColumn(
                                 context,
@@ -492,9 +494,16 @@ class _StudentDataTableState extends State<StudentDataTable> {
                           ],
                         ),
                       ),
-                      _buildSlantButton(
-                        slant: model.getColumnSlant('studentName'),
-                        onToggle: () => controller.toggleColumnSlant('studentName'),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _buildSortButton(context, controller),
+                          SizedBox(width: 4.w),
+                          _buildSlantButton(
+                            slant: model.getColumnSlant('studentName'),
+                            onToggle: () => controller.toggleColumnSlant('studentName'),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -1695,7 +1704,16 @@ class _StudentDataTableState extends State<StudentDataTable> {
             child: _buildClickableScore(
               score: student.writtenRawScore,
               maxScore: model.writtenMaxScore,
-              onSave: (val) => controller.updateStudentScore(student.id, writtenScore: val),
+              numeralMode: controller.numeralMode,
+              onTap: () => _openGradeKeypad(
+                context: context,
+                controller: controller,
+                student: student,
+                columnName: model.getColumnLabel('writtenExam', 'الامتحان التحريري'),
+                maxScore: model.writtenMaxScore,
+                currentValue: student.writtenRawScore,
+                isWritten: true,
+              ),
             ),
           ),
 
@@ -1790,7 +1808,17 @@ class _StudentDataTableState extends State<StudentDataTable> {
               child: _buildClickableScore(
                 score: score,
                 maxScore: col.maxScore,
-                onSave: (val) => controller.updateStudentScore(student.id, colId: col.id, colScore: val),
+                numeralMode: controller.numeralMode,
+                onTap: () => _openGradeKeypad(
+                  context: context,
+                  controller: controller,
+                  student: student,
+                  columnName: col.name,
+                  maxScore: col.maxScore,
+                  currentValue: score,
+                  isWritten: false,
+                  colId: col.id,
+                ),
               ),
             );
           }),
@@ -1814,7 +1842,9 @@ class _StudentDataTableState extends State<StudentDataTable> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  finalScore != null ? finalScore.toStringAsFixed(1).replaceAll('.0', '') : '—',
+                  finalScore != null
+                      ? ArabicHelper.formatScore(finalScore, controller.numeralMode)
+                      : '—',
                   style: TextStyle(
                     fontSize: 16.sp,
                     fontWeight: FontWeight.w900,
@@ -1854,10 +1884,11 @@ class _StudentDataTableState extends State<StudentDataTable> {
   Widget _buildClickableScore({
     required double? score,
     required double maxScore,
-    required ValueChanged<double?> onSave,
+    required VoidCallback onTap,
+    String numeralMode = 'EN',
   }) {
     return InkWell(
-      onTap: () => _promptScoreEdit(score, maxScore, onSave),
+      onTap: onTap,
       borderRadius: BorderRadius.circular(8.r),
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 6.h),
@@ -1874,7 +1905,7 @@ class _StudentDataTableState extends State<StudentDataTable> {
           ],
         ),
         child: Text(
-          score != null ? score.toStringAsFixed(1).replaceAll('.0', '') : '—',
+          score != null ? ArabicHelper.formatScore(score, numeralMode) : '—',
           style: TextStyle(
             fontSize: 14.sp,
             fontWeight: FontWeight.w900,
@@ -1885,49 +1916,196 @@ class _StudentDataTableState extends State<StudentDataTable> {
     );
   }
 
-  void _promptScoreEdit(double? initialScore, double maxScore, ValueChanged<double?> onSave) {
-    final textController = TextEditingController(text: initialScore?.toString() ?? '');
-    showDialog(
-      context: context,
-      builder: (ctx) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.r)),
-          title: Text(
-            'رصد الدرجة (من ${maxScore.toInt()})',
-            style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w900),
-          ),
-          content: TextField(
-            controller: textController,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            autofocus: true,
-            style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.bold),
-            decoration: InputDecoration(
-              hintText: '0 - ${maxScore.toInt()}',
-              contentPadding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10.r)),
+  /// Sort button in the Student Name column header
+  Widget _buildSortButton(BuildContext context, MonthlySheetController controller) {
+    final sortMode = controller.sortMode;
+    Color bg;
+    Color border;
+    Color textCol;
+    String label;
+    IconData icon;
+
+    switch (sortMode) {
+      case StudentSortMode.asc:
+        bg = const Color(0xFFB86848);
+        border = const Color(0xFF944D30);
+        textCol = Colors.white;
+        label = 'أ ◄ ي';
+        icon = Icons.arrow_downward_rounded;
+        break;
+      case StudentSortMode.desc:
+        bg = const Color(0xFF2E485C);
+        border = const Color(0xFF1E3342);
+        textCol = Colors.white;
+        label = 'ي ◄ أ';
+        icon = Icons.arrow_upward_rounded;
+        break;
+      case StudentSortMode.none:
+        bg = Colors.white;
+        border = const Color(0xFFCBD5E1);
+        textCol = const Color(0xFF5A4F43);
+        label = 'فرز أ-ي';
+        icon = Icons.sort_by_alpha_rounded;
+        break;
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        InkWell(
+          onTap: controller.toggleStudentSort,
+          borderRadius: BorderRadius.circular(6.r),
+          child: Container(
+            padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 3.h),
+            decoration: BoxDecoration(
+              color: bg,
+              borderRadius: BorderRadius.circular(6.r),
+              border: Border.all(color: border),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 12.r, color: textCol),
+                SizedBox(width: 3.w),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 10.sp,
+                    fontWeight: FontWeight.bold,
+                    color: textCol,
+                  ),
+                ),
+              ],
             ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('إلغاء'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                final val = double.tryParse(textController.text.trim());
-                onSave(val);
-                Navigator.of(ctx).pop();
+        ),
+        if (sortMode != StudentSortMode.none) ...[
+          SizedBox(width: 3.w),
+          Tooltip(
+            message: 'تثبيت وحفظ هذا الترتيب الأبجدي نهائياً في الكشف',
+            child: InkWell(
+              onTap: () async {
+                await controller.sortStudentsPermanently();
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('تم حفظ وتثبيت ترتيب الأسماء أبجدياً (من أ إلى ي) في الجدول بنجاح!'),
+                      backgroundColor: Color(0xFF15803D),
+                      duration: Duration(seconds: 3),
+                    ),
+                  );
+                }
               },
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF5692BE)),
-              child: const Text(
-                'حفظ الدرجة',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              borderRadius: BorderRadius.circular(6.r),
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: 5.w, vertical: 3.h),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFDCFCE7),
+                  borderRadius: BorderRadius.circular(6.r),
+                  border: Border.all(color: const Color(0xFF86EFAC)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.check_circle_outline_rounded, size: 12.r, color: const Color(0xFF15803D)),
+                    SizedBox(width: 2.w),
+                    Text(
+                      'تثبيت',
+                      style: TextStyle(
+                        fontSize: 9.5.sp,
+                        fontWeight: FontWeight.w900,
+                        color: const Color(0xFF15803D),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ],
-        ),
-      ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// Opens the custom GradeNumericKeypad at the bottom of the screen
+  void _openGradeKeypad({
+    required BuildContext context,
+    required MonthlySheetController controller,
+    required StudentRow student,
+    required String columnName,
+    required double maxScore,
+    required double? currentValue,
+    required bool isWritten,
+    String? colId,
+  }) {
+    final students = controller.filteredStudents;
+    int currentIndex = students.indexWhere((s) => s.id == student.id);
+    if (currentIndex == -1) currentIndex = 0;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            final curStudent = (currentIndex >= 0 && currentIndex < students.length)
+                ? students[currentIndex]
+                : student;
+            final nextStudent = (currentIndex + 1 < students.length)
+                ? students[currentIndex + 1]
+                : null;
+            final prevStudent = (currentIndex - 1 >= 0)
+                ? students[currentIndex - 1]
+                : null;
+
+            final curScore = isWritten
+                ? curStudent.writtenRawScore
+                : (colId != null ? curStudent.scores[colId] : null);
+
+            return GradeNumericKeypad(
+              currentStudent: curStudent,
+              nextStudent: nextStudent,
+              prevStudent: prevStudent,
+              currentIndex: currentIndex,
+              totalStudents: students.length,
+              columnName: columnName,
+              maxScore: maxScore,
+              currentValue: curScore,
+              numeralMode: controller.numeralMode,
+              onNumeralModeChange: (mode) {
+                controller.setNumeralMode(mode);
+                setSheetState(() {});
+              },
+              onValueChange: (val) {
+                if (isWritten) {
+                  controller.updateStudentScore(curStudent.id, writtenScore: val);
+                } else if (colId != null) {
+                  controller.updateStudentScore(curStudent.id, colId: colId, colScore: val);
+                }
+                setSheetState(() {});
+              },
+              onNext: () {
+                if (currentIndex + 1 < students.length) {
+                  setSheetState(() {
+                    currentIndex++;
+                  });
+                } else {
+                  Navigator.of(ctx).pop();
+                }
+              },
+              onPrev: () {
+                if (currentIndex - 1 >= 0) {
+                  setSheetState(() {
+                    currentIndex--;
+                  });
+                }
+              },
+              onClose: () => Navigator.of(ctx).pop(),
+            );
+          },
+        );
+      },
     );
   }
 

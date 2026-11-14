@@ -136,6 +136,18 @@ export function loadModels(userUid?: string): MonthlyModel[] {
       }
     }
 
+    // If user has no data yet, check guest key
+    if (!raw && userUid && userUid !== 'guest') {
+      const guestKey = getScopedStorageKey(STORAGE_KEYS.MODELS, 'guest');
+      const guestRaw = localStorage.getItem(guestKey);
+      if (guestRaw) {
+        raw = guestRaw;
+        try {
+          localStorage.setItem(key, guestRaw);
+        } catch {}
+      }
+    }
+
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
@@ -186,6 +198,18 @@ export function loadTerms(userUid?: string): TermModel[] {
         try {
           localStorage.setItem(key, legacyRaw);
           localStorage.removeItem(STORAGE_KEYS.TERMS);
+        } catch {}
+      }
+    }
+
+    // If user has no terms yet, check guest key
+    if (!raw && userUid && userUid !== 'guest') {
+      const guestKey = getScopedStorageKey(STORAGE_KEYS.TERMS, 'guest');
+      const guestRaw = localStorage.getItem(guestKey);
+      if (guestRaw) {
+        raw = guestRaw;
+        try {
+          localStorage.setItem(key, guestRaw);
         } catch {}
       }
     }
@@ -261,6 +285,18 @@ export function loadProfile(userUid?: string): TeacherProfile {
         try {
           localStorage.setItem(key, legacyRaw);
           localStorage.removeItem(STORAGE_KEYS.PROFILE);
+        } catch {}
+      }
+    }
+
+    // If user has no profile yet, check guest key
+    if (!raw && userUid && userUid !== 'guest') {
+      const guestKey = getScopedStorageKey(STORAGE_KEYS.PROFILE, 'guest');
+      const guestRaw = localStorage.getItem(guestKey);
+      if (guestRaw) {
+        raw = guestRaw;
+        try {
+          localStorage.setItem(key, guestRaw);
         } catch {}
       }
     }

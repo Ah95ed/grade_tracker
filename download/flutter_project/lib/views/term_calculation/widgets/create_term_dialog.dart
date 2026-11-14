@@ -513,6 +513,37 @@ class _CreateTermDialogState extends State<CreateTermDialog> {
                                 },
                               ),
 
+                            // Helpful live calculation explanation banner matching web AddTermModal
+                            SizedBox(height: 8.h),
+                            Container(
+                              padding: EdgeInsets.all(8.r),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFFFBEB),
+                                borderRadius: BorderRadius.circular(8.r),
+                                border: Border.all(color: const Color(0xFFFDE68A)),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.auto_awesome_rounded, size: 16.r, color: const Color(0xFFB45309)),
+                                  SizedBox(width: 6.w),
+                                  Expanded(
+                                    child: Text(
+                                      _selectedIds.length > 1
+                                          ? 'سيتم احتساب المعدل الحسابي تلقائياً بين هذه الشهور المختارة (${_selectedIds.length} شهور) في عمود المعدل.'
+                                          : (_selectedIds.length == 1
+                                              ? 'تم اختيار شهر واحد فقط، وسيتم احتساب درجته تلقائياً في عمود المعدل.'
+                                              : 'لم يتم تحديد أي شهر بعد، حدد الأشهر التي تريد احتساب معدلها من القائمة أعلاه.'),
+                                      style: TextStyle(
+                                        fontSize: 10.5.sp,
+                                        fontWeight: FontWeight.bold,
+                                        color: const Color(0xFF92400E),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+
                             if (_showValidation && _selectedIds.isEmpty && models.isNotEmpty) ...[
                               SizedBox(height: 6.h),
                               Text(

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { auth } from './lib/firebase';
 import {
@@ -54,6 +54,8 @@ import {
   reconcileCurrentUserWithServer,
   upsertUserInRegistry,
   updateUserRoleOnline,
+  getAllUsers,
+  isAdminUser,
   SUPPORT_PHONE_NUMBER,
 } from './utils/auth';
 import { AuthScreen } from './components/Auth/AuthScreen';
@@ -89,8 +91,8 @@ export const isProfileComplete = (p: TeacherProfile | null): boolean => {
 export default function App() {
   const [currentUser, setCurrentUser] = useState<AppUser | null>(() => {
     const cur = getCurrentUser();
-    // تنظيف البيانات التجريبية المؤقتة فقط إذا كانت الجلسة الحالية تجريبية
-    if (cur && (cur.isTrial || cur.authProvider === 'trial' || cur.uid?.startsWith('trial-') || cur.email?.includes('@jok.nom'))) {
+    // تنظيف البيانات التجريبية المؤقتة فقط إذا كانت الجلسة زائر محلي بدون حساب حقيقي
+    if (cur && (cur.authProvider === 'trial' || cur.uid?.startsWith('trial-') || cur.email?.includes('@jok.nom'))) {
       purgeAllTrialData();
       return null;
     }
@@ -142,51 +144,124 @@ export default function App() {
   const [isRoundingModalOpen, setIsRoundingModalOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Initialize IndexedDB and migrate any existing data
+  // Guards against race conditions wiping local data before/during loading or on logout
+  const isDataLoadedRef = useRef<boolean>(false);
+  const isLoggingOutRef = useRef<boolean>(false);
+
+  // Centralized robust loader: Reads from IndexedDB first, then localStorage, then cloud backup
+  const loadUserData = useCallback(async (targetUid: string) => {
+    isDataLoadedRef.current = false;
+    try {
+      // 1. Try authoritative local snapshot from IndexedDB first
+      let [idbModels, idbTerms, idbProfile] = await Promise.all([
+        loadModelsFromIndexedDB(targetUid),
+        loadTermsFromIndexedDB(targetUid),
+        loadProfileFromIndexedDB(targetUid),
+      ]);
+
+      // 2. If IndexedDB returned empty, fallback to localStorage
+      if (!idbModels || idbModels.length === 0) {
+        const lsModels = loadModels(targetUid);
+        if (lsModels && lsModels.length > 0) {
+          idbModels = lsModels;
+          saveModelsToIndexedDB(lsModels, targetUid).catch(() => {});
+        }
+      }
+
+      if (!idbTerms || idbTerms.length === 0) {
+        const lsTerms = loadTerms(targetUid);
+        if (lsTerms && lsTerms.length > 0) {
+          idbTerms = lsTerms;
+          saveTermsToIndexedDB(lsTerms, targetUid).catch(() => {});
+        }
+      }
+
+      if (!idbProfile || isTestProfile(idbProfile)) {
+        const lsProfile = loadProfile(targetUid);
+        if (lsProfile && !isTestProfile(lsProfile)) {
+          idbProfile = lsProfile;
+          saveProfileToIndexedDB(lsProfile, targetUid).catch(() => {});
+        }
+      }
+
+      // 3. Fallback to Cloudflare D1 cloud backup if local storage is completely empty and online
+      if ((!idbModels || idbModels.length === 0) && navigator.onLine) {
+        try {
+          const headers = await getAuthHeaders();
+          const res = await fetch(`/api/data?uid=${encodeURIComponent(targetUid)}`, { headers });
+          if (res.ok) {
+            const d = await res.json().catch(() => null);
+            if (d && d.success && d.data) {
+              if (Array.isArray(d.data.models) && d.data.models.length > 0) {
+                idbModels = d.data.models;
+                saveModels(d.data.models, targetUid);
+                saveModelsToIndexedDB(d.data.models, targetUid).catch(() => {});
+              }
+              if (Array.isArray(d.data.terms) && d.data.terms.length > 0) {
+                idbTerms = d.data.terms;
+                saveTerms(d.data.terms, targetUid);
+                saveTermsToIndexedDB(d.data.terms, targetUid).catch(() => {});
+              }
+              if (d.data.profile && !isTestProfile(d.data.profile)) {
+                idbProfile = d.data.profile;
+                saveProfile(d.data.profile, targetUid);
+                saveProfileToIndexedDB(d.data.profile, targetUid).catch(() => {});
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('Cloud restore check skipped:', err);
+        }
+      }
+
+      const finalModels = idbModels || [];
+      const finalTerms = idbTerms || [];
+      const finalProfile = (idbProfile && !isTestProfile(idbProfile)) ? idbProfile : DEFAULT_TEACHER_PROFILE;
+
+      setModels(finalModels);
+      setTerms(finalTerms);
+      setProfile(finalProfile);
+      setActiveModelId(finalModels[0]?.id || '');
+      setActiveTermId(finalTerms[0]?.id || '');
+
+      if (!isProfileComplete(finalProfile) && !hasDismissedProfileModal) {
+        setIsProfileModalOpen(true);
+      }
+    } finally {
+      isDataLoadedRef.current = true;
+    }
+  }, [hasDismissedProfileModal]);
+
+  // Initialize IndexedDB and load data on app mount
   useEffect(() => {
     ensureIndexedDBInitialized().then(async () => {
       await syncAuthWithIndexedDB();
       const cur = getCurrentUser();
-      if (!cur) return;
-      setCurrentUser(cur);
+      if (cur) {
+        setCurrentUser(cur);
+        await loadUserData(cur.uid);
 
-      const idbModels = await loadModelsFromIndexedDB(cur.uid);
-      const idbTerms = await loadTermsFromIndexedDB(cur.uid);
-      const idbProfile = await loadProfileFromIndexedDB(cur.uid);
-      if (idbModels && idbModels.length > 0) setModels(idbModels);
-      if (idbTerms && idbTerms.length > 0) setTerms(idbTerms);
-      if (idbProfile) {
-        if (isTestProfile(idbProfile)) {
-          setProfile(DEFAULT_TEACHER_PROFILE);
-          if (!hasDismissedProfileModal && !cur.isTrial) setIsProfileModalOpen(true);
-        } else {
-          setProfile(idbProfile);
-          if (!isProfileComplete(idbProfile) && !hasDismissedProfileModal && !cur.isTrial) {
-            setIsProfileModalOpen(true);
-          }
+        // Re-evaluate cancelled account info in case IndexedDB had it
+        if (!cur.isAdmin && !cur.isTrial && (cur.subscriptionStatus === 'cancelled' || isAccountCancelled(cur.email))) {
+          setCancelledAccountInfo({
+            email: cur.email,
+            message: 'تم إلغاء حسابك من قِبل إدارة النظام.',
+          });
         }
-      } else if (!hasDismissedProfileModal && !cur.isTrial) {
-        setIsProfileModalOpen(true);
-      }
 
-      // Re-evaluate cancelled account info in case IndexedDB had it
-      if (cur && !cur.isAdmin && !cur.isTrial && (cur.subscriptionStatus === 'cancelled' || isAccountCancelled(cur.email))) {
-        setCancelledAccountInfo({
-          email: cur.email,
-          message: 'تم إلغاء حسابك من قِبل إدارة النظام.',
-        });
-      }
-
-      // مصالحة عند بدء التشغيل: إذا كان المستخدم مسجلاً دخوله والسيرفر لا يعرفه -> ننشئ سجله تلقائياً
-      if (cur && !cur.isTrial && !cur.isAdmin) {
-        reconcileCurrentUserWithServer().then((updated) => {
-          if (updated) {
-            setCurrentUser(updated);
-          }
-        }).catch(() => {});
+        // مصالحة عند بدء التشغيل: إذا كان المستخدم مسجلاً دخوله والسيرفر لا يعرفه -> ننشئ سجله تلقائياً
+        if (cur.authProvider !== 'trial' && !cur.uid?.startsWith('trial-') && !cur.email?.includes('@jok.nom') && !cur.isAdmin) {
+          reconcileCurrentUserWithServer().then((updated) => {
+            if (updated) {
+              setCurrentUser(updated);
+            }
+          }).catch(() => {});
+        }
+      } else {
+        await loadUserData('guest');
       }
     });
-  }, []);
+  }, [loadUserData]);
 
   // ترقية وتثبيت صِفة «أستاذ» ونوع «مدرسة» تلقائياً لأي مستخدم سابق أو غير محدد دون إظهار شاشة الاختيار
   useEffect(() => {
@@ -224,7 +299,7 @@ export default function App() {
     } catch {}
   }, [models]);
 
-  // Sync Google User profile (Avatar photoURL, displayName, email) from Firebase Auth
+  // Sync Google / Email User profile and session persistence from Firebase Auth
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (fbUser) => {
       if (fbUser) {
@@ -237,17 +312,56 @@ export default function App() {
         }
 
         setCurrentUser((prev) => {
-          if (!prev) return prev;
-          // Never overwrite or link a trial user
-          if (prev.isTrial || prev.authProvider === 'trial' || prev.uid?.startsWith('trial-') || prev.email?.includes('@jok.nom')) {
+          // في حال كانت حالة المستخدم فارغة (عند غلق المتصفح والعودة)، استعادة الجلسة فوراً
+          if (!prev) {
+            const localCur = getCurrentUser();
+            if (localCur && (localCur.uid === fbUser.uid || (localCur.email && localCur.email.toLowerCase() === cleanEmail))) {
+              loadUserData(localCur.uid);
+              return localCur;
+            }
+            const all: AppUser[] = getAllUsers();
+            const existing = all.find(
+              (u: AppUser) => (u && u.uid === fbUser.uid) || (u && u.email && u.email.trim().toLowerCase() === cleanEmail)
+            );
+            if (existing) {
+              saveCurrentUser(existing);
+              loadUserData(existing.uid);
+              return existing;
+            }
+            const emailStr = fbUser.email || '';
+            const isAdmin = isAdminUser(emailStr);
+            const restored: AppUser = {
+              uid: fbUser.uid,
+              email: emailStr,
+              displayName: fbUser.displayName || `أ. ${(emailStr || 'أستاذ').split('@')[0]}`,
+              photoURL: fbUser.photoURL || undefined,
+              authProvider: fbUser.providerData[0]?.providerId === 'password' ? 'email' : 'google',
+              createdAt: new Date().toISOString(),
+              lastActiveAt: new Date().toISOString(),
+              isTrial: !isAdmin,
+              isAdmin,
+              subscriptionType: isAdmin ? 'lifetime' : 'trial',
+              subscriptionStatus: isAdmin ? 'active' : 'pending',
+              userRole: 'teacher',
+              institutionType: 'school',
+            };
+            saveCurrentUser(restored);
+            upsertUserInRegistry(restored);
+            loadUserData(restored.uid);
+            return restored;
+          }
+
+          // Never overwrite or link an anonymous demo user
+          if (prev.authProvider === 'trial' || prev.uid?.startsWith('trial-') || prev.email?.includes('@jok.nom')) {
             return prev;
           }
           const prevEmail = (prev.email || '').trim().toLowerCase();
           const fbEmail = (fbUser.email || '').trim().toLowerCase();
-          // If matches current user or logged in via Google
+          // If matches current user or logged in via Google/Email
           if (
             prev.uid === fbUser.uid ||
             prev.authProvider === 'google' ||
+            prev.authProvider === 'email' ||
             (prevEmail && fbEmail && prevEmail === fbEmail)
           ) {
             const updated: AppUser = {
@@ -255,7 +369,7 @@ export default function App() {
               displayName: fbUser.displayName || prev.displayName,
               photoURL: fbUser.photoURL || prev.photoURL,
               email: fbUser.email || prev.email,
-              authProvider: 'google',
+              authProvider: prev.authProvider || (fbUser.providerData[0]?.providerId === 'password' ? 'email' : 'google'),
             };
             saveCurrentUser(updated);
             return updated;
@@ -291,7 +405,7 @@ export default function App() {
 
   // Hidden silent verification function with Cloudflare D1
   const runLiveD1Verification = async () => {
-    if (!currentUser || currentUser.isAdmin || currentUser.isTrial || currentUser.authProvider === 'trial' || currentUser.uid?.startsWith('trial-') || currentUser.email?.includes('@jok.nom')) return;
+    if (!currentUser || currentUser.isAdmin || currentUser.authProvider === 'trial' || currentUser.uid?.startsWith('trial-') || currentUser.email?.includes('@jok.nom')) return;
 
     try {
       const res = await verifyUserWithCloudflareD1(currentUser, lastOnlineVerifiedAtRef.current);
@@ -355,7 +469,7 @@ export default function App() {
 
   // Periodic and event-based verification (Hidden request on entry & activity)
   useEffect(() => {
-    if (!currentUser || currentUser.isAdmin || currentUser.isTrial || currentUser.authProvider === 'trial' || currentUser.uid?.startsWith('trial-') || currentUser.email?.includes('@jok.nom')) return;
+    if (!currentUser || currentUser.isAdmin || currentUser.authProvider === 'trial' || currentUser.uid?.startsWith('trial-') || currentUser.email?.includes('@jok.nom')) return;
 
     // Run silent check on entry
     runLiveD1Verification();
@@ -403,6 +517,9 @@ export default function App() {
 
   // Auto-save changes locally to localStorage and IndexedDB (zero network calls on keystroke/edits)
   useEffect(() => {
+    // CRITICAL: Never auto-save while initial data is still loading or during logout
+    if (!isDataLoadedRef.current || isLoggingOutRef.current) return;
+
     if (currentUser?.uid) {
       saveModels(models, currentUser.uid);
       saveModelsToIndexedDB(models, currentUser.uid);
@@ -419,6 +536,8 @@ export default function App() {
   }, [models, currentUser?.uid]);
 
   useEffect(() => {
+    if (!isDataLoadedRef.current || isLoggingOutRef.current) return;
+
     if (currentUser?.uid) {
       saveTerms(terms, currentUser.uid);
       saveTermsToIndexedDB(terms, currentUser.uid);
@@ -435,6 +554,8 @@ export default function App() {
   }, [terms, currentUser?.uid]);
 
   useEffect(() => {
+    if (!isDataLoadedRef.current || isLoggingOutRef.current) return;
+
     if (!isTestProfile(profile)) {
       saveProfile(profile, currentUser?.uid);
       saveProfileToIndexedDB(profile, currentUser?.uid);
@@ -640,6 +761,8 @@ export default function App() {
   };
 
   const handleLogout = async () => {
+    isLoggingOutRef.current = true;
+    isDataLoadedRef.current = false;
     try {
       await signOut(auth);
     } catch {
@@ -656,6 +779,9 @@ export default function App() {
     setActiveTermId('');
     setIsProfileModalOpen(false);
     showToast('تم تسجيل الخروج بنجاح وتأمين الجلسة ومسح البيانات من الشاشة.');
+    setTimeout(() => {
+      isLoggingOutRef.current = false;
+    }, 800);
   };
 
   const handleInitiateLogout = () => {
@@ -798,48 +924,7 @@ export default function App() {
           setCancelledAccountInfo(null);
           setCurrentUser(user);
           setHadExpiredNotice(false);
-          const uModels = loadModels(user.uid);
-          const uTerms = loadTerms(user.uid);
-          const prof = loadProfile(user.uid);
-          setModels(uModels);
-          setTerms(uTerms);
-          setProfile(prof);
-          setActiveModelId(uModels[0]?.id || '');
-          setActiveTermId(uTerms[0]?.id || '');
-
-          if (!isProfileComplete(prof)) {
-            setIsProfileModalOpen(true);
-          }
-
-          // If local data is empty for this user and online, securely restore cloud backup
-          if (uModels.length === 0 && navigator.onLine) {
-            getAuthHeaders().then((headers) => {
-              fetch(`/api/data?uid=${encodeURIComponent(user.uid)}`, { headers })
-                .then((res) => res.json())
-                .then((d) => {
-                  if (d && d.success && d.data) {
-                    if (Array.isArray(d.data.models) && d.data.models.length > 0) {
-                      setModels(d.data.models);
-                      saveModels(d.data.models, user.uid);
-                      saveModelsToIndexedDB(d.data.models, user.uid);
-                      setActiveModelId(d.data.models[0]?.id || '');
-                    }
-                    if (Array.isArray(d.data.terms) && d.data.terms.length > 0) {
-                      setTerms(d.data.terms);
-                      saveTerms(d.data.terms, user.uid);
-                      saveTermsToIndexedDB(d.data.terms, user.uid);
-                      setActiveTermId(d.data.terms[0]?.id || '');
-                    }
-                    if (d.data.profile && d.data.profile.teacherName) {
-                      setProfile(d.data.profile);
-                      saveProfile(d.data.profile, user.uid);
-                      saveProfileToIndexedDB(d.data.profile, user.uid);
-                    }
-                  }
-                })
-                .catch(() => {});
-            });
-          }
+          loadUserData(user.uid);
 
           if (user.subscriptionStatus === 'active') {
             showToast(`أهلاً بك ${user.displayName}! تم تسجيل الدخول بنجاح (حساب مفعل).`);

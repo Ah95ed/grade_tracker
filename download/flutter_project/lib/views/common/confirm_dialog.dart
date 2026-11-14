@@ -11,6 +11,7 @@ class ConfirmDialog extends StatelessWidget {
   final String message;
   final VoidCallback onConfirm;
   final bool isDestructive;
+  final String? confirmLabel;
 
   const ConfirmDialog({
     super.key,
@@ -18,10 +19,20 @@ class ConfirmDialog extends StatelessWidget {
     required this.message,
     required this.onConfirm,
     this.isDestructive = false,
+    this.confirmLabel,
   });
 
   @override
   Widget build(BuildContext context) {
+    String cancelText = 'إلغاء';
+    String confirmText = confirmLabel ?? 'تأكيد';
+    try {
+      cancelText = context.tr(AppKeys.cancel);
+      if (confirmLabel == null) {
+        confirmText = context.tr(AppKeys.confirm);
+      }
+    } catch (_) {}
+
     return AlertDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.r)),
       title: Text(
@@ -41,7 +52,7 @@ class ConfirmDialog extends StatelessWidget {
       ),
       actions: [
         CustomButton(
-          label: context.tr(AppKeys.cancel),
+          label: cancelText,
           isOutlined: true,
           textColor: AppColors.textSecondary,
           borderColor: AppColors.borderWarm,
@@ -49,7 +60,7 @@ class ConfirmDialog extends StatelessWidget {
         ),
         SizedBox(width: 8.w),
         CustomButton(
-          label: context.tr(AppKeys.confirm),
+          label: confirmText,
           backgroundColor: isDestructive ? AppColors.error : AppColors.monthlyBlue,
           onPressed: () {
             Navigator.of(context).pop();

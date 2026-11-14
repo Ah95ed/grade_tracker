@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, browserLocalPersistence, setPersistence } from 'firebase/auth';
 import rawConfig from '../../firebase-applet-config.json';
 
 const cfg: any = rawConfig || {};
@@ -76,6 +76,18 @@ try {
   }
 }
 
+// تثبيت بقاء جلسة تسجيل الدخول محلياً عبر المتصفح لمنع تسجيل الخروج التلقائي عند إغلاق التبويب أو المتصفح
+try {
+  if (authInstance && typeof browserLocalPersistence !== 'undefined') {
+    setPersistence(authInstance, browserLocalPersistence).catch((err) => {
+      console.warn('Firebase setPersistence warning:', err);
+    });
+  }
+} catch (e) {
+  console.warn('Persistence setup warning:', e);
+}
+
 export const auth = authInstance;
 export const googleAuthProvider = new GoogleAuthProvider();
+
 

@@ -55,7 +55,15 @@ class StorageService {
 
   TeacherProfile loadProfile({String? userUid}) {
     final key = userUid != null ? '${AppConstants.keyProfile}_$userUid' : AppConstants.keyProfile;
-    final raw = _prefs.getString(key) ?? _prefs.getString(AppConstants.keyProfile);
+    var raw = _prefs.getString(key);
+    // If no profile found for logged-in user, adopt guest profile if available
+    if (raw == null && userUid != null) {
+      final guestRaw = _prefs.getString(AppConstants.keyProfile);
+      if (guestRaw != null) {
+        raw = guestRaw;
+        _prefs.setString(key, guestRaw);
+      }
+    }
     if (raw != null) {
       try {
         final profile = TeacherProfile.fromJson(jsonDecode(raw) as Map<String, dynamic>);
@@ -73,7 +81,15 @@ class StorageService {
 
   List<MonthlyModel> loadModels({String? userUid}) {
     final key = userUid != null ? '${AppConstants.keyModels}_$userUid' : AppConstants.keyModels;
-    final raw = _prefs.getString(key) ?? _prefs.getString(AppConstants.keyModels);
+    var raw = _prefs.getString(key);
+    // If no models found for logged-in user, adopt guest models if available
+    if (raw == null && userUid != null) {
+      final guestRaw = _prefs.getString(AppConstants.keyModels);
+      if (guestRaw != null) {
+        raw = guestRaw;
+        _prefs.setString(key, guestRaw);
+      }
+    }
     if (raw != null) {
       try {
         final List<dynamic> list = jsonDecode(raw) as List<dynamic>;
@@ -92,7 +108,15 @@ class StorageService {
 
   List<TermModel> loadTerms({String? userUid}) {
     final key = userUid != null ? '${AppConstants.keyTerms}_$userUid' : AppConstants.keyTerms;
-    final raw = _prefs.getString(key) ?? _prefs.getString(AppConstants.keyTerms);
+    var raw = _prefs.getString(key);
+    // If no terms found for logged-in user, adopt guest terms if available
+    if (raw == null && userUid != null) {
+      final guestRaw = _prefs.getString(AppConstants.keyTerms);
+      if (guestRaw != null) {
+        raw = guestRaw;
+        _prefs.setString(key, guestRaw);
+      }
+    }
     if (raw != null) {
       try {
         final List<dynamic> list = jsonDecode(raw) as List<dynamic>;
@@ -101,6 +125,10 @@ class StorageService {
     }
     return [];
   }
+
+  // Numeral Mode ('EN' or 'AR')
+  Future<void> saveNumeralMode(String mode) async => await _prefs.setString('gradebook_numeral_mode', mode);
+  String loadNumeralMode() => _prefs.getString('gradebook_numeral_mode') ?? 'EN';
 
   // Language Locale Code
   Future<void> saveLocale(String code) async => await _prefs.setString(AppConstants.keyLocale, code);

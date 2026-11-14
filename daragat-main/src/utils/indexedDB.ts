@@ -167,6 +167,18 @@ export async function loadModelsFromIndexedDB(userUid?: string): Promise<Monthly
     if (userModels && userModels.length > 0) {
       return userModels as MonthlyModel[];
     }
+
+    // If user has no models yet, check if there are guest models from before login and adopt them
+    if (effectiveUid !== 'guest' && result && result.length > 0) {
+      const guestModels = result.filter(
+        (m: any) => m.userUid === 'guest' || !m.userUid
+      );
+      if (guestModels.length > 0) {
+        const migrated = guestModels as MonthlyModel[];
+        saveModelsToIndexedDB(migrated, effectiveUid).catch(() => {});
+        return migrated;
+      }
+    }
   } catch (err) {
     console.warn('Fallback: reading models from localStorage', err);
   }
@@ -229,6 +241,18 @@ export async function loadTermsFromIndexedDB(userUid?: string): Promise<TermMode
     if (userTerms && userTerms.length > 0) {
       return userTerms as TermModel[];
     }
+
+    // If user has no terms yet, check if there are guest terms from before login and adopt them
+    if (effectiveUid !== 'guest' && result && result.length > 0) {
+      const guestTerms = result.filter(
+        (t: any) => t.userUid === 'guest' || !t.userUid
+      );
+      if (guestTerms.length > 0) {
+        const migrated = guestTerms as TermModel[];
+        saveTermsToIndexedDB(migrated, effectiveUid).catch(() => {});
+        return migrated;
+      }
+    }
   } catch (err) {
     console.warn('Fallback: reading terms from localStorage', err);
   }
@@ -263,11 +287,26 @@ export async function loadProfileFromIndexedDB(userUid?: string): Promise<Teache
     const tx = db.transaction('profile', 'readonly');
     const store = tx.objectStore('profile');
 
-    const result = await new Promise<any>((resolve, reject) => {
+    let result = await new Promise<any>((resolve, reject) => {
       const req = store.get(`active_profile_${effectiveUid}`);
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
     });
+
+    // If user has no profile yet, check if guest had a profile
+    if (!result && effectiveUid !== 'guest') {
+      result = await new Promise<any>((resolve) => {
+        const req = store.get('active_profile_guest');
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => resolve(null);
+      });
+      if (result) {
+        const { id: _ignoreId, userUid: _ignoreUid, ...cleanGuest } = result;
+        if (!isTestProfile(cleanGuest as TeacherProfile)) {
+          saveProfileToIndexedDB(cleanGuest as TeacherProfile, effectiveUid).catch(() => {});
+        }
+      }
+    }
 
     if (result) {
       const { id, userUid: _, ...cleanProfile } = result;

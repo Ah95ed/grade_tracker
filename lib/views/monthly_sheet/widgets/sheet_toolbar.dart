@@ -11,6 +11,7 @@ import '../../../services/excel_export_service.dart';
 import 'add_student_dialog.dart';
 import 'edit_model_dialog.dart';
 import 'rename_columns_dialog.dart';
+import '../../common/confirm_dialog.dart';
 
 /// Top Table Header & Action Toolbar matching Daragat Web App exactly as in user image
 class SheetToolbar extends StatelessWidget {
@@ -226,6 +227,35 @@ class SheetToolbar extends StatelessWidget {
                           ),
                         ),
                       ),
+
+                      // Delete Table Button
+                      InkWell(
+                        onTap: () => _confirmDeleteTable(context, controller, model),
+                        borderRadius: BorderRadius.circular(8.r),
+                        child: Container(
+                          padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFEF2F2),
+                            borderRadius: BorderRadius.circular(8.r),
+                            border: Border.all(color: const Color(0xFFFECACA)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.delete_outline_rounded, size: 13.r, color: const Color(0xFFDC2626)),
+                              SizedBox(width: 3.w),
+                              Text(
+                                'حذف الجدول',
+                                style: TextStyle(
+                                  fontSize: 10.5.sp,
+                                  fontWeight: FontWeight.w800,
+                                  color: const Color(0xFFB91C1C),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ],
@@ -289,6 +319,20 @@ class SheetToolbar extends StatelessWidget {
                     runSpacing: 6.h,
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
+                      // Numeral Mode Toggle (EN / AR)
+                      _buildPillButton(
+                        icon: Icons.pin_rounded,
+                        label: controller.numeralMode == 'AR' ? 'الأرقام: عربية (١٢٣)' : 'الأرقام: إنجليزية (123)',
+                        color: Colors.white,
+                        borderColor: const Color(0xFFD8CEBD),
+                        textColor: const Color(0xFF7A6A58),
+                        iconColor: const Color(0xFFB45309),
+                        onTap: () {
+                          final nextMode = controller.numeralMode == 'AR' ? 'EN' : 'AR';
+                          controller.setNumeralMode(nextMode);
+                        },
+                      ),
+
                       // Fullscreen Clean Table Button
                       _buildPillButton(
                         icon: Icons.open_in_full_rounded,
@@ -410,6 +454,16 @@ class SheetToolbar extends StatelessWidget {
                           }
                         },
                       ),
+
+                      // Delete Table Icon Button
+                      _buildIconButton(
+                        icon: Icons.delete_forever_rounded,
+                        color: const Color(0xFFFEF2F2),
+                        borderColor: const Color(0xFFFECACA),
+                        iconColor: const Color(0xFFDC2626),
+                        tooltip: 'حذف جدول ${model.name}',
+                        onTap: () => _confirmDeleteTable(context, controller, model),
+                      ),
                     ],
                   ),
                 ],
@@ -417,6 +471,37 @@ class SheetToolbar extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// Prompts a confirmation dialog to delete the entire monthly table
+  void _confirmDeleteTable(
+    BuildContext context,
+    MonthlySheetController controller,
+    dynamic model,
+  ) {
+    showDialog(
+      context: context,
+      builder: (_) => ConfirmDialog(
+        title: 'تأكيد حذف جدول (${model.name})',
+        message:
+            'هل أنت متأكد من الاستمرار في حذف جدول (${model.name}) بالكامل؟ سيتم حذف جميع درجات وطلاب هذا الشهر ولا يمكن استرجاعها.',
+        confirmLabel: 'نعم، استمر في حذف الجدول',
+        isDestructive: true,
+        onConfirm: () async {
+          final modelName = model.name;
+          await controller.deleteModel(model.id);
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('تم حذف جدول ($modelName) بنجاح'),
+                backgroundColor: const Color(0xFFDC2626),
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
+        },
       ),
     );
   }

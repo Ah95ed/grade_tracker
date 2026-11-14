@@ -7,6 +7,10 @@ import '../models/attendance_record.dart';
 import '../models/final_score_operation.dart';
 import '../services/storage_service.dart';
 import '../core/utils/grade_calculator.dart';
+import '../core/utils/arabic_helper.dart';
+
+/// Student alphabetical sort mode
+enum StudentSortMode { none, asc, desc }
 
 /// MVC Controller for managing monthly grade sheets and student scoring
 class MonthlySheetController extends ChangeNotifier {
@@ -14,9 +18,12 @@ class MonthlySheetController extends ChangeNotifier {
   List<MonthlyModel> _models = [];
   String _activeModelId = '';
   String _searchQuery = '';
+  StudentSortMode _sortMode = StudentSortMode.none;
+  String _numeralMode = 'EN';
 
   MonthlySheetController(this._storageService) {
     _models = _storageService.loadModels();
+    _numeralMode = _storageService.loadNumeralMode();
     if (_models.isNotEmpty) {
       _activeModelId = _models.first.id;
     }
@@ -25,6 +32,8 @@ class MonthlySheetController extends ChangeNotifier {
   List<MonthlyModel> get models => _models;
   String get activeModelId => _activeModelId;
   String get searchQuery => _searchQuery;
+  StudentSortMode get sortMode => _sortMode;
+  String get numeralMode => _numeralMode;
 
   MonthlyModel? get currentModel {
     if (_models.isEmpty) return null;
@@ -80,10 +89,49 @@ class MonthlySheetController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void toggleStudentSort() {
+    switch (_sortMode) {
+      case StudentSortMode.none:
+        _sortMode = StudentSortMode.asc;
+        break;
+      case StudentSortMode.asc:
+        _sortMode = StudentSortMode.desc;
+        break;
+      case StudentSortMode.desc:
+        _sortMode = StudentSortMode.none;
+        break;
+    }
+    notifyListeners();
+  }
+
+  Future<void> sortStudentsPermanently() async {
+    final model = currentModel;
+    if (model == null || model.students.length <= 1) return;
+
+    final sorted = List<StudentRow>.from(model.students)..sort((a, b) {
+      if (_selectedSection == 'ALL' && a.section.trim() != b.section.trim()) {
+        final secCmp = a.section.trim().compareTo(b.section.trim());
+        if (secCmp != 0) return secCmp;
+      }
+      return ArabicHelper.compareArabic(a.name, b.name);
+    });
+
+    _sortMode = StudentSortMode.none;
+    await updateModel(model.copyWith(students: sorted));
+  }
+
+  Future<void> setNumeralMode(String mode) async {
+    if (_numeralMode != mode) {
+      _numeralMode = mode;
+      await _storageService.saveNumeralMode(mode);
+      notifyListeners();
+    }
+  }
+
   List<StudentRow> get filteredStudents {
     final model = currentModel;
     if (model == null) return [];
-    return model.students.where((s) {
+    final list = model.students.where((s) {
       final matchesSection =
           _selectedSection == 'ALL' || s.section.trim() == _selectedSection;
       if (!matchesSection) return false;
@@ -92,6 +140,26 @@ class MonthlySheetController extends ChangeNotifier {
       return s.name.toLowerCase().contains(query) ||
           s.section.toLowerCase().contains(query);
     }).toList();
+
+    if (_sortMode == StudentSortMode.asc) {
+      list.sort((a, b) {
+        if (_selectedSection == 'ALL' && a.section.trim() != b.section.trim()) {
+          final secCmp = a.section.trim().compareTo(b.section.trim());
+          if (secCmp != 0) return secCmp;
+        }
+        return ArabicHelper.compareArabic(a.name, b.name);
+      });
+    } else if (_sortMode == StudentSortMode.desc) {
+      list.sort((a, b) {
+        if (_selectedSection == 'ALL' && a.section.trim() != b.section.trim()) {
+          final secCmp = a.section.trim().compareTo(b.section.trim());
+          if (secCmp != 0) return -secCmp;
+        }
+        return -ArabicHelper.compareArabic(a.name, b.name);
+      });
+    }
+
+    return list;
   }
 
   void setActiveModel(String id) {
@@ -128,8 +196,8 @@ class MonthlySheetController extends ChangeNotifier {
 
   Future<void> deleteModel(String modelId) async {
     _models.removeWhere((m) => m.id == modelId);
-    if (_activeModelId == modelId && _models.isNotEmpty) {
-      _activeModelId = _models.first.id;
+    if (_activeModelId == modelId) {
+      _activeModelId = _models.isNotEmpty ? _models.first.id : '';
     }
     await _persist();
   }

@@ -182,6 +182,14 @@ export const AuthScreen: React.FC<Props> = ({
           return;
         }
       }
+      // If the user dismissed or closed the popup, silently reset state without error banner
+      if (
+        err?.code === 'auth/popup-closed-by-user' ||
+        err?.code === 'auth/cancelled-popup-request' ||
+        msg.includes('تم إغلاق نافذة تسجيل الدخول')
+      ) {
+        return;
+      }
       setErrorMessage(err.message || 'تعذر تسجيل الدخول بحساب Google');
     } finally {
       setIsLoading(false);

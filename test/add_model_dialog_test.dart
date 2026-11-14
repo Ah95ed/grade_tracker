@@ -131,6 +131,7 @@ void main() {
       assignedSections: const ['أ', 'ب'],
       createdAt: DateTime.now().toIso8601String(),
     );
+    await sheetCtrl.addModel(initialModel);
 
     await tester.pumpWidget(buildTestWidget(
       child: EditModelDialog(model: initialModel),
@@ -143,5 +144,21 @@ void main() {
     expect(find.text('الكيمياء'), findsOneWidget);
     expect(find.text('الثالث متوسط'), findsWidgets);
     expect(find.text('حفظ التعديلات'), findsOneWidget);
+    expect(find.text('حذف هذا الجدول'), findsOneWidget);
+
+    // Tap delete button in EditModelDialog
+    await tester.tap(find.text('حذف هذا الجدول'));
+    await tester.pumpAndSettle();
+
+    // Confirm dialog should appear
+    expect(find.textContaining('تأكيد حذف جدول'), findsOneWidget);
+    expect(find.text('نعم، استمر في حذف الجدول'), findsOneWidget);
+
+    // Confirm deletion
+    await tester.tap(find.text('نعم، استمر في حذف الجدول'));
+    await tester.pumpAndSettle();
+
+    // Model should now be deleted from controller
+    expect(sheetCtrl.models.any((m) => m.id == 'month_test'), isFalse);
   });
 }

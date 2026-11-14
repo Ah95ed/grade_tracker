@@ -59,6 +59,9 @@ import {
   CheckCircle2,
   XCircle,
   ArrowLeftRight,
+  ArrowDownAZ,
+  ArrowUpZA,
+  ArrowUpDown,
 } from 'lucide-react';
 import { InteractiveClassroomView } from './InteractiveClassroomView';
 import { CleanTableView } from './CleanTableView';
@@ -90,6 +93,7 @@ import {
   isSubjectMatch,
 } from '../../utils/gradeAndSectionMatcher';
 import { AppUser } from '../../utils/auth';
+import { GradeNumericKeypad, formatScoreDisplay } from './GradeNumericKeypad';
 
 interface Props {
   models: MonthlyModel[];
@@ -338,6 +342,44 @@ export const MonthlySheetView: React.FC<Props> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedGradeLevel, setSelectedGradeLevel] = useState(() => currentModel?.gradeLevel || 'ALL');
   const [selectedSection, setSelectedSection] = useState('ALL');
+  // Student alphabetical sorting mode ('none' | 'asc' | 'desc')
+  const [studentSortMode, setStudentSortMode] = useState<'none' | 'asc' | 'desc'>('none');
+  const [sortToastMessage, setSortToastMessage] = useState<string | null>(null);
+
+  const handleToggleStudentSort = () => {
+    setStudentSortMode((prev) => {
+      if (prev === 'none') return 'asc';
+      if (prev === 'asc') return 'desc';
+      return 'none';
+    });
+  };
+
+  const compareArabicNames = (nameA: string, nameB: string): number => {
+    const a = cleanSingleSpaces(nameA || '');
+    const b = cleanSingleSpaces(nameB || '');
+    return a.localeCompare(b, 'ar', { sensitivity: 'base', numeric: true });
+  };
+
+  const handlePermanentlySortStudents = () => {
+    if (!currentModel || !currentModel.students || currentModel.students.length <= 1) return;
+    const sorted = [...currentModel.students].sort((a, b) => {
+      if (a.section && b.section && !isSectionMatch(a.section, b.section)) {
+        const secCmp = (a.section || '').localeCompare(b.section || '', 'ar');
+        if (secCmp !== 0) return secCmp;
+      }
+      return compareArabicNames(a.name, b.name);
+    });
+
+    onUpdateModel({
+      ...currentModel,
+      students: sorted,
+      updatedAt: new Date().toISOString(),
+    });
+
+    setStudentSortMode('none');
+    setSortToastMessage('تم حفظ وتثبيت ترتيب الأسماء أبجدياً (من أ إلى ي) في الجدول بنجاح!');
+    setTimeout(() => setSortToastMessage(null), 3500);
+  };
 
   // Automatically scope selectedGradeLevel to the active model's designated gradeLevel
   useEffect(() => {
@@ -399,12 +441,12 @@ export const MonthlySheetView: React.FC<Props> = ({
     return getUniqueSections(relevantModelStudents);
   }, [modelAssignedSections, relevantModelStudents]);
 
-  // Filter students (strictly scoped to currentModel.gradeLevel AND teacher's assignedSections)
+  // Filter and sort students (strictly scoped to currentModel.gradeLevel AND teacher's assignedSections)
   // CRITICAL: Placed BEFORE early return to strictly follow React Rules of Hooks!
   const targetGradeLevel = currentModel?.gradeLevel || selectedGradeLevel;
   const filteredStudents = useMemo(() => {
     if (!currentModel) return [];
-    return (currentModel.students || []).filter((st) => {
+    const list = (currentModel.students || []).filter((st) => {
       // 1. Grade match
       const matchGrade = !targetGradeLevel || targetGradeLevel === 'ALL' || isGradeLevelMatch(st.gradeLevel, targetGradeLevel);
       if (!matchGrade) return false;
@@ -426,7 +468,29 @@ export const MonthlySheetView: React.FC<Props> = ({
 
       return true;
     });
-  }, [currentModel?.students, targetGradeLevel, modelAssignedSections, selectedSection, searchQuery]);
+
+    if (studentSortMode === 'asc') {
+      return [...list].sort((a, b) => {
+        if (selectedSection === 'ALL' && a.section && b.section && !isSectionMatch(a.section, b.section)) {
+          const secCmp = (a.section || '').localeCompare(b.section || '', 'ar');
+          if (secCmp !== 0) return secCmp;
+        }
+        return compareArabicNames(a.name, b.name);
+      });
+    }
+
+    if (studentSortMode === 'desc') {
+      return [...list].sort((a, b) => {
+        if (selectedSection === 'ALL' && a.section && b.section && !isSectionMatch(a.section, b.section)) {
+          const secCmp = (a.section || '').localeCompare(b.section || '', 'ar');
+          if (secCmp !== 0) return -secCmp;
+        }
+        return -compareArabicNames(a.name, b.name);
+      });
+    }
+
+    return list;
+  }, [currentModel?.students, targetGradeLevel, modelAssignedSections, selectedSection, searchQuery, studentSortMode]);
 
   // Grade being managed in GradeRenameMergeModal
   const [managingGrade, setManagingGrade] = useState<string | null>(null);
@@ -687,6 +751,50 @@ export const MonthlySheetView: React.FC<Props> = ({
     return list;
   }, [models, currentModel?.gradeLevel]);
 
+  // User's numeral system preference ('EN' for 1 2 3 vs 'AR' for ١ ٢ ٣)
+  const [numeralMode, setNumeralMode] = useState<'EN' | 'AR'>(() => {
+    try {
+      return (localStorage.getItem('gradebook_numeral_mode') as 'EN' | 'AR') || 'EN';
+    } catch {
+      return 'EN';
+    }
+  });
+
+  const handleNumeralModeChange = (mode: 'EN' | 'AR') => {
+    setNumeralMode(mode);
+    try {
+      localStorage.setItem('gradebook_numeral_mode', mode);
+    } catch {}
+  };
+
+  // Active Numeric Keypad Cell state for Mobile/Touch score entry
+  const [activeKeypadCell, setActiveKeypadCell] = useState<{
+    studentId: string;
+    columnType: 'written' | 'custom';
+    columnId?: string;
+    columnName: string;
+    maxScore: number;
+  } | null>(null);
+
+  const scrollToStudentCell = React.useCallback((studentId: string, colKey: string) => {
+    setTimeout(() => {
+      const targetEl =
+        document.getElementById(`score-input-${studentId}-${colKey}`) ||
+        document.getElementById(`student-row-${studentId}`);
+      if (targetEl) {
+        const rect = targetEl.getBoundingClientRect();
+        const currentScrollY = window.pageYOffset || document.documentElement.scrollTop;
+        // Position target row comfortably in upper view (~160px from viewport top, right below tabs)
+        const targetY = currentScrollY + rect.top - 160;
+        window.scrollTo({
+          top: Math.max(0, targetY),
+          behavior: 'smooth',
+        });
+        targetEl.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+      }
+    }, 60);
+  }, []);
+
   if (!currentModel) {
     return (
       <div className="space-y-4">
@@ -835,6 +943,83 @@ export const MonthlySheetView: React.FC<Props> = ({
   const writtenExamLabel = currentModel.columnLabels?.writtenExam?.trim() || 'درجة التحريري بالورقة من';
   const finalScoreLabel = currentModel.columnLabels?.finalScore?.trim() || 'الدرجة النهائية من';
   const ratingLabel = currentModel.columnLabels?.rating?.trim() || 'التقدير';
+
+  const handleOpenKeypadForWritten = (student: StudentRow) => {
+    setActiveKeypadCell({
+      studentId: student.id,
+      columnType: 'written',
+      columnName: writtenExamLabel || 'درجة التحريري بالورقة',
+      maxScore: currentModel.writtenMaxScore || 100,
+    });
+    scrollToStudentCell(student.id, 'written');
+  };
+
+  const handleOpenKeypadForCustom = (student: StudentRow, col: CustomColumn) => {
+    setActiveKeypadCell({
+      studentId: student.id,
+      columnType: 'custom',
+      columnId: col.id,
+      columnName: col.name,
+      maxScore: col.maxScore,
+    });
+    scrollToStudentCell(student.id, col.id);
+  };
+
+  const handleKeypadNext = () => {
+    if (!activeKeypadCell) return;
+    const currentIndex = filteredStudents.findIndex((s) => s.id === activeKeypadCell.studentId);
+    if (currentIndex !== -1 && currentIndex < filteredStudents.length - 1) {
+      const nextSt = filteredStudents[currentIndex + 1];
+      setActiveKeypadCell((prev) => (prev ? { ...prev, studentId: nextSt.id } : null));
+      const colKey = activeKeypadCell.columnType === 'written' ? 'written' : activeKeypadCell.columnId!;
+      scrollToStudentCell(nextSt.id, colKey);
+    }
+  };
+
+  const handleKeypadPrev = () => {
+    if (!activeKeypadCell) return;
+    const currentIndex = filteredStudents.findIndex((s) => s.id === activeKeypadCell.studentId);
+    if (currentIndex > 0) {
+      const prevSt = filteredStudents[currentIndex - 1];
+      setActiveKeypadCell((prev) => (prev ? { ...prev, studentId: prevSt.id } : null));
+      const colKey = activeKeypadCell.columnType === 'written' ? 'written' : activeKeypadCell.columnId!;
+      scrollToStudentCell(prevSt.id, colKey);
+    }
+  };
+
+  const handleKeypadValueChange = (newVal: number | null) => {
+    if (!activeKeypadCell) return;
+    if (activeKeypadCell.columnType === 'written') {
+      handleUpdateStudent(activeKeypadCell.studentId, { writtenRawScore: newVal });
+    } else if (activeKeypadCell.columnId) {
+      handleUpdateStudentCustomScore(
+        activeKeypadCell.studentId,
+        activeKeypadCell.columnId,
+        newVal === null ? '' : String(newVal)
+      );
+    }
+  };
+
+  const currentKeypadStudent = activeKeypadCell
+    ? filteredStudents.find((s) => s.id === activeKeypadCell.studentId) || null
+    : null;
+  const currentKeypadStudentIndex = currentKeypadStudent
+    ? filteredStudents.findIndex((s) => s.id === currentKeypadStudent.id)
+    : -1;
+  const nextKeypadStudent =
+    currentKeypadStudentIndex !== -1 && currentKeypadStudentIndex < filteredStudents.length - 1
+      ? filteredStudents[currentKeypadStudentIndex + 1]
+      : null;
+  const prevKeypadStudent =
+    currentKeypadStudentIndex > 0 ? filteredStudents[currentKeypadStudentIndex - 1] : null;
+
+  const currentKeypadValue = currentKeypadStudent
+    ? activeKeypadCell?.columnType === 'written'
+      ? currentKeypadStudent.writtenRawScore
+      : activeKeypadCell?.columnId
+      ? currentKeypadStudent.scores[activeKeypadCell.columnId]
+      : null
+    : null;
 
   const handleStartInlineEdit = (key: string, currentVal: string) => {
     setEditingColumnKey(key);
@@ -1911,7 +2096,7 @@ export const MonthlySheetView: React.FC<Props> = ({
   };
 
   return (
-    <div className="space-y-3.5">
+    <div className={`space-y-3.5 transition-all ${activeKeypadCell ? 'pb-80 sm:pb-72' : ''}`}>
       {viewMode === 'interactive' ? (
         <InteractiveClassroomView
           model={currentModel}
@@ -2359,6 +2544,23 @@ export const MonthlySheetView: React.FC<Props> = ({
           )}
         </div>
 
+        {/* Action / Sorting notification toast */}
+        {sortToastMessage && (
+          <div className="mb-2 p-2.5 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-bold flex items-center justify-between shadow-xs animate-in fade-in">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{sortToastMessage}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSortToastMessage(null)}
+              className="text-emerald-700 hover:text-emerald-900 p-0.5 rounded cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
         {/* Excel-style Table Grid with Paper & Craft Theme */}
         <div
           ref={tableContainerRef}
@@ -2385,7 +2587,7 @@ export const MonthlySheetView: React.FC<Props> = ({
                 </th>
 
                 {/* Student Name header */}
-                <th data-student-name-column="true" className={`py-2 px-3 min-w-[200px] align-top bg-[#EFE8D8] border border-[#D5C8B2] ${columnSlants['studentName'] === 'vertical' ? 'min-w-[70px]' : ''}`}>
+                <th data-student-name-column="true" className={`py-2 px-3 min-w-[220px] align-top bg-[#EFE8D8] border border-[#D5C8B2] ${columnSlants['studentName'] === 'vertical' ? 'min-w-[70px]' : ''}`}>
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
                       {editingColumnKey === 'studentName' ? (
@@ -2419,30 +2621,95 @@ export const MonthlySheetView: React.FC<Props> = ({
                           </button>
                         </div>
                       ) : (
-                        <div className="flex items-center gap-1 group/header">
-                          <span className={`craft-table-header px-2.5 py-0.5 rounded-lg font-bold text-[#2F2822] inline-block ${getSlantClasses(columnSlants['studentName'])}`}>{studentNameLabel}</span>
-                          <button
-                            type="button"
-                            onClick={() => handleStartInlineEdit('studentName', studentNameLabel)}
-                            className="opacity-40 hover:opacity-100 p-0.5 text-[#6B5E51] hover:text-[#BA916C] rounded transition-opacity cursor-pointer shrink-0 print:hidden"
-                            title="إعادة تسمية عمود اسم الطالب"
-                          >
-                            <Pencil className="w-3 h-3" />
-                          </button>
-                          <SlantButton slant={columnSlants['studentName']} onToggle={() => toggleColumnSlant('studentName')} />
+                        <div className="flex items-center justify-between w-full gap-1 group/header">
+                          <div className="flex items-center gap-1">
+                            <span className={`craft-table-header px-2.5 py-0.5 rounded-lg font-bold text-[#2F2822] inline-block ${getSlantClasses(columnSlants['studentName'])}`}>{studentNameLabel}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleStartInlineEdit('studentName', studentNameLabel)}
+                              className="opacity-40 hover:opacity-100 p-0.5 text-[#6B5E51] hover:text-[#BA916C] rounded transition-opacity cursor-pointer shrink-0 print:hidden"
+                              title="إعادة تسمية عمود اسم الطالب"
+                            >
+                              <Pencil className="w-3 h-3" />
+                            </button>
+                            <SlantButton slant={columnSlants['studentName']} onToggle={() => toggleColumnSlant('studentName')} />
+                          </div>
+
+                          {/* Quick Sorting Buttons in Student Name Header */}
+                          <div className="flex items-center gap-1 shrink-0 print:hidden">
+                            <button
+                              type="button"
+                              onClick={handleToggleStudentSort}
+                              className={`px-2 py-0.5 rounded-md text-[10px] font-black flex items-center gap-1 transition-all cursor-pointer shadow-2xs ${
+                                studentSortMode === 'asc'
+                                  ? 'bg-[#B86848] text-white ring-1 ring-[#944D30]'
+                                  : studentSortMode === 'desc'
+                                  ? 'bg-[#2E485C] text-white ring-1 ring-[#1E3342]'
+                                  : 'bg-[#E5DCC9] hover:bg-[#D8CEBD] text-[#4A3E31] border border-[#CBBFA8]'
+                              }`}
+                              title={
+                                studentSortMode === 'asc'
+                                  ? 'مفروز حالياً من أ إلى ي (انقر للفرز العكسي ي - أ)'
+                                  : studentSortMode === 'desc'
+                                  ? 'مفروز حالياً من ي إلى أ (انقر لإلغاء الفرز)'
+                                  : 'فرز الأسماء حسب التسلسل من حرف أ إلى حرف ي'
+                              }
+                            >
+                              {studentSortMode === 'asc' ? (
+                                <>
+                                  <ArrowDownAZ className="w-3.5 h-3.5" />
+                                  <span>أ ◄ ي</span>
+                                </>
+                              ) : studentSortMode === 'desc' ? (
+                                <>
+                                  <ArrowUpZA className="w-3.5 h-3.5" />
+                                  <span>ي ◄ أ</span>
+                                </>
+                              ) : (
+                                <>
+                                  <ArrowUpDown className="w-3 h-3 text-[#7A6E5F]" />
+                                  <span>فرز أ-ي</span>
+                                </>
+                              )}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={handlePermanentlySortStudents}
+                              className="px-1.5 py-0.5 bg-[#E5DCC9] hover:bg-[#D8CEBD] text-[#4A3E31] hover:text-[#B86848] rounded-md text-[10px] font-bold transition-colors cursor-pointer border border-[#CBBFA8] flex items-center gap-0.5"
+                              title="حفظ وتثبيت الترتيب الأبجدي (أ - ي) بشكل دائم في الجدول"
+                            >
+                              <Sparkles className="w-3 h-3 text-[#B86848]" />
+                              <span className="hidden xl:inline">تثبيت</span>
+                            </button>
+                          </div>
                         </div>
                       )}
                     </div>
+
                     {/* Embedded Search Input */}
-                    <div className="relative print:hidden">
-                      <Search className="w-3.5 h-3.5 text-[#64748B] absolute right-2.5 top-2 pointer-events-none" />
-                      <input
-                        type="text"
-                        placeholder="بحث بالاسم..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full pr-8 pl-2 py-1 bg-white border border-[#CBD5E1] rounded-lg text-xs font-normal focus:border-[#2B6CB0] focus:ring-1 focus:ring-[#2B6CB0] focus:outline-none placeholder:text-[#94A3B8]"
-                      />
+                    <div className="relative print:hidden flex items-center gap-1.5">
+                      <div className="relative flex-1">
+                        <Search className="w-3.5 h-3.5 text-[#64748B] absolute right-2.5 top-2 pointer-events-none" />
+                        <input
+                          type="text"
+                          placeholder="بحث بالاسم..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="w-full pr-8 pl-2 py-1 bg-white border border-[#CBD5E1] rounded-lg text-xs font-normal focus:border-[#2B6CB0] focus:ring-1 focus:ring-[#2B6CB0] focus:outline-none placeholder:text-[#94A3B8]"
+                        />
+                      </div>
+                      {studentSortMode !== 'none' && (
+                        <button
+                          type="button"
+                          onClick={() => setStudentSortMode('none')}
+                          className="px-1.5 py-1 text-[10px] font-bold text-[#8C3A2B] bg-[#FDF2F0] hover:bg-[#FBE5E1] border border-[#F3C2B8] rounded-lg transition-colors cursor-pointer shrink-0 flex items-center gap-0.5"
+                          title="إلغاء الفرز والعودة للترتيب الأصلي"
+                        >
+                          <RotateCcw className="w-2.5 h-2.5" />
+                          <span>إلغاء</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 </th>
@@ -3141,7 +3408,12 @@ export const MonthlySheetView: React.FC<Props> = ({
                   return (
                     <tr
                       key={student.id}
-                      className="even:bg-[#F8FAFC] odd:bg-white hover:bg-blue-50/40 transition-colors group"
+                      id={`student-row-${student.id}`}
+                      className={`even:bg-[#F8FAFC] odd:bg-white hover:bg-blue-50/40 transition-colors group ${
+                        activeKeypadCell?.studentId === student.id
+                          ? 'bg-amber-100/70 ring-2 ring-inset ring-amber-400 shadow-xs'
+                          : ''
+                      }`}
                     >
                       {/* Delete Student Row Button AT THE VERY BEGINNING OF THE ROW */}
                       <td className="py-1 px-1 text-center align-middle border border-[#CBD5E1] no-print print:hidden">
@@ -3253,28 +3525,36 @@ export const MonthlySheetView: React.FC<Props> = ({
                       <td className="py-1 px-2.5 text-center border border-[#CBD5E1]">
                         <div className="flex flex-col items-center justify-center gap-1">
                           <input
-                            type="number"
-                            step="any"
-                            min="0"
-                            max={currentModel.writtenMaxScore || 100}
-                            inputMode="decimal"
+                            id={`score-input-${student.id}-written`}
+                            type="text"
+                            inputMode="none"
                             data-score-cell="true"
-                            value={
-                              student.writtenRawScore === null ||
-                              student.writtenRawScore === undefined
-                                ? ''
-                                : student.writtenRawScore
-                            }
-                            onFocus={(e) => handleScoreCellFocus(e, student)}
+                            value={formatScoreDisplay(student.writtenRawScore, numeralMode)}
+                            onFocus={(e) => {
+                              handleScoreCellFocus(e, student);
+                              handleOpenKeypadForWritten(student);
+                            }}
+                            onClick={(e) => {
+                              handleScoreCellFocus(e, student);
+                              handleOpenKeypadForWritten(student);
+                            }}
                             onChange={(e) => {
-                              const rawVal = e.target.value.replace('،', '.');
+                              const rawVal = e.target.value
+                                .replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
+                                .replace('،', '.')
+                                .replace(',', '.');
                               const num = rawVal === '' ? null : Number(rawVal);
                               handleUpdateStudent(student.id, {
                                 writtenRawScore: isNaN(num as number) ? null : num,
                               });
                             }}
-                            placeholder={`/${currentModel.writtenMaxScore}`}
-                            className="w-16 px-1.5 py-1 text-center border rounded-lg text-sm font-bold transition-all bg-white border-[#CBD5E1] text-[#1E293B] hover:border-[#94A3B8] focus:border-[#2B6CB0] focus:ring-2 focus:ring-[#2B6CB0] focus:outline-none"
+                            placeholder={`/${formatScoreDisplay(currentModel.writtenMaxScore, numeralMode)}`}
+                            className={`w-16 px-1.5 py-1 text-center border rounded-lg text-sm font-bold transition-all bg-white cursor-pointer ${
+                              activeKeypadCell?.studentId === student.id &&
+                              activeKeypadCell?.columnType === 'written'
+                                ? 'border-amber-500 ring-2 ring-amber-500 bg-amber-50 shadow-md font-black text-amber-950 scale-105'
+                                : 'border-[#CBD5E1] text-[#1E293B] hover:border-[#94A3B8] focus:border-[#2B6CB0]'
+                            }`}
                           />
 
                           {/* Written score conversion display under the input number */}
@@ -3287,13 +3567,13 @@ export const MonthlySheetView: React.FC<Props> = ({
                                 title="انقر لتعديل قاعدة جبر وتقريب الكسور العشرية"
                               >
                                 {currentModel.roundingMode === 'none' ? (
-                                  <span>{writtenCalculated} (بدون تقريب)</span>
+                                  <span>{formatScoreDisplay(writtenCalculated, numeralMode)} (بدون تقريب)</span>
                                 ) : (
                                   <span>
-                                    <span className="font-black">{writtenCalculated}</span>
+                                    <span className="font-black">{formatScoreDisplay(writtenCalculated, numeralMode)}</span>
                                     {' '}تحتسب{' '}
                                     <span className="font-black text-emerald-800 bg-white/90 px-1 py-0.2 rounded border border-emerald-300">
-                                      {roundedWrittenScore}
+                                      {formatScoreDisplay(roundedWrittenScore, numeralMode)}
                                     </span>
                                   </span>
                                 )}
@@ -3305,7 +3585,7 @@ export const MonthlySheetView: React.FC<Props> = ({
                                   className="text-xs font-black text-[#2B6CB0] bg-[#EFF6FF] px-1.5 py-0.5 rounded-lg whitespace-nowrap"
                                   title={`الدرجة المحسوبة (من ${effectiveWrittenWeight})`}
                                 >
-                                  = {writtenCalculated}
+                                  = {formatScoreDisplay(writtenCalculated, numeralMode)}
                                 </span>
                               )
                             )
@@ -3433,23 +3713,35 @@ export const MonthlySheetView: React.FC<Props> = ({
                           >
                             <div className="flex items-center justify-center gap-1.5 whitespace-nowrap">
                               <input
-                                type="number"
-                                step="any"
-                                min="0"
-                                max={col.maxScore}
-                                inputMode="decimal"
+                                id={`score-input-${student.id}-${col.id}`}
+                                type="text"
+                                inputMode="none"
                                 data-score-cell="true"
-                                value={val === null || val === undefined ? '' : val}
-                                onFocus={(e) => handleScoreCellFocus(e, student)}
+                                value={formatScoreDisplay(val, numeralMode)}
+                                onFocus={(e) => {
+                                  handleScoreCellFocus(e, student);
+                                  handleOpenKeypadForCustom(student, col);
+                                }}
+                                onClick={(e) => {
+                                  handleScoreCellFocus(e, student);
+                                  handleOpenKeypadForCustom(student, col);
+                                }}
                                 onChange={(e) => {
-                                  const rawVal = e.target.value.replace('،', '.');
+                                  const rawVal = e.target.value
+                                    .replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
+                                    .replace('،', '.')
+                                    .replace(',', '.');
                                   handleUpdateStudentCustomScore(student.id, col.id, rawVal);
                                 }}
-                                placeholder={`/${col.maxScore}`}
-                                className={`w-14 px-1 py-1 text-center border rounded-lg text-sm font-black transition-all bg-white ${
-                                  isExceeded
+                                placeholder={`/${formatScoreDisplay(col.maxScore, numeralMode)}`}
+                                className={`w-14 px-1 py-1 text-center border rounded-lg text-sm font-black transition-all bg-white cursor-pointer ${
+                                  activeKeypadCell?.studentId === student.id &&
+                                  activeKeypadCell?.columnType === 'custom' &&
+                                  activeKeypadCell?.columnId === col.id
+                                    ? 'border-amber-500 ring-2 ring-amber-500 bg-amber-50 shadow-md font-black text-amber-950 scale-105'
+                                    : isExceeded
                                     ? 'border-red-300 text-red-600 bg-red-50'
-                                    : 'border-[#CBD5E1] text-[#1E293B] hover:border-[#94A3B8] focus:border-[#BA916C] focus:ring-2 focus:ring-[#BA916C] focus:outline-none'
+                                    : 'border-[#CBD5E1] text-[#1E293B] hover:border-[#94A3B8] focus:border-[#BA916C]'
                                 }`}
                               />
                               {displayPercentage && (
@@ -3484,14 +3776,14 @@ export const MonthlySheetView: React.FC<Props> = ({
                         {totalMonthly !== null ? (
                           <div className="flex flex-col items-center justify-center gap-0.5">
                             <span className="text-sm sm:text-base font-black text-[#1E293B] px-2.5 py-0.5 bg-slate-100 rounded-lg inline-block min-w-[45px] border border-slate-200">
-                              {totalMonthly}
+                              {formatScoreDisplay(totalMonthly, numeralMode)}
                             </span>
                             {breakdown.hasOperation && breakdown.baseScore !== null && breakdown.baseScore !== totalMonthly && (
                               <span
                                 className="text-[10px] text-blue-700 font-bold"
                                 title={`المجموع قبل العملية (${breakdown.operationLabel}): ${breakdown.baseScore}`}
                               >
-                                (الأصل: {breakdown.baseScore})
+                                (الأصل: {formatScoreDisplay(breakdown.baseScore, numeralMode)})
                               </span>
                             )}
                             {breakdown.isRounded && (
@@ -3499,7 +3791,7 @@ export const MonthlySheetView: React.FC<Props> = ({
                                 className="text-[10px] text-[#854D0E] font-bold"
                                 title={`الدرجة قبل جبر الكسور كانت ${breakdown.rawScore}`}
                               >
-                                (أصله: {breakdown.rawScore})
+                                (أصله: {formatScoreDisplay(breakdown.rawScore, numeralMode)})
                               </span>
                             )}
                           </div>
@@ -4374,6 +4666,25 @@ export const MonthlySheetView: React.FC<Props> = ({
           </div>
         </div>
       )}
+
+      {/* Custom Bottom Numeric Keypad for Mobile/Touch Grade Entry */}
+      <GradeNumericKeypad
+        isOpen={activeKeypadCell !== null}
+        onClose={() => setActiveKeypadCell(null)}
+        currentStudent={currentKeypadStudent}
+        nextStudent={nextKeypadStudent}
+        prevStudent={prevKeypadStudent}
+        currentIndex={currentKeypadStudentIndex}
+        totalStudents={filteredStudents.length}
+        columnName={activeKeypadCell?.columnName || ''}
+        maxScore={activeKeypadCell?.maxScore || 100}
+        currentValue={currentKeypadValue}
+        onValueChange={handleKeypadValueChange}
+        onNext={handleKeypadNext}
+        onPrev={handleKeypadPrev}
+        numeralMode={numeralMode}
+        onNumeralModeChange={handleNumeralModeChange}
+      />
 
       {/* Clean Fullscreen Table View (تمرير أفقي صافي بدون أي أزرار - يلتزم بالصف والشعبة المختارة) */}
       {isCleanTableView && (

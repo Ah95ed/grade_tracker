@@ -767,8 +767,8 @@ export function upsertUserInRegistry(user: AppUser): void {
     }
     saveAllUsers(all);
 
-    // Sync user registration to Cloudflare D1 backend (only for permanent non-trial users)
-    if (!user.isTrial && user.authProvider !== 'trial' && !user.uid?.startsWith('trial-') && !user.email?.includes('@jok.nom')) {
+    // Sync user registration to Cloudflare D1 backend (for all real registered users)
+    if (user.authProvider !== 'trial' && !user.uid?.startsWith('trial-') && !user.email?.includes('@jok.nom')) {
       getAuthHeaders().then((headers) => {
         fetch('/api/users', {
           method: 'POST',
@@ -1824,7 +1824,7 @@ export function saveCurrentUser(user: AppUser | null): void {
     if (user) {
       user.isAdmin = isAdminUser(user.email);
       localStorage.setItem(AUTH_KEYS.CURRENT_USER, JSON.stringify(user));
-      if (!user.isTrial && user.authProvider !== 'trial' && !user.uid?.startsWith('trial-') && !user.email?.includes('@jok.nom')) {
+      if (user.authProvider !== 'trial' && !user.uid?.startsWith('trial-') && !user.email?.includes('@jok.nom')) {
         upsertUserInRegistry(user);
       }
     } else {
@@ -1848,26 +1848,26 @@ export function purgeAllTrialData(): void {
   try {
     if (typeof window === 'undefined') return;
 
-    // 1. Remove current user if trial
+    // 1. Remove current user ONLY if it is an anonymous demo session without an account
     let isCurrentTrial = false;
     const rawCur = localStorage.getItem(AUTH_KEYS.CURRENT_USER);
     if (rawCur) {
       try {
         const u = JSON.parse(rawCur);
-        if (u.isTrial || u.authProvider === 'trial' || u.uid?.startsWith('trial-') || u.email?.includes('@jok.nom')) {
+        if (u.authProvider === 'trial' || u.uid?.startsWith('trial-') || u.email?.includes('@jok.nom')) {
           isCurrentTrial = true;
           localStorage.removeItem(AUTH_KEYS.CURRENT_USER);
         }
       } catch {}
     }
 
-    // 2. Clear all trial users from ALL_USERS in localStorage & IndexedDB
+    // 2. Clear ONLY anonymous demo users from ALL_USERS in localStorage & IndexedDB
     const rawAll = localStorage.getItem(AUTH_KEYS.ALL_USERS);
     if (rawAll) {
       try {
         const users: AppUser[] = JSON.parse(rawAll);
         const nonTrial = (Array.isArray(users) ? users : []).filter(
-          (u) => !u.isTrial && u.authProvider !== 'trial' && !u.uid?.startsWith('trial-') && !u.email?.includes('@jok.nom')
+          (u) => u.authProvider !== 'trial' && !u.uid?.startsWith('trial-') && !u.email?.includes('@jok.nom')
         );
         localStorage.setItem(AUTH_KEYS.ALL_USERS, JSON.stringify(nonTrial));
         saveUsersToIndexedDB(nonTrial).catch(() => {});
@@ -2184,7 +2184,7 @@ export async function resendVerificationEmail(email: string): Promise<void> {
  */
 export async function reconcileCurrentUserWithServer(): Promise<AppUser | null> {
   const cur = getCurrentUser();
-  if (!cur || cur.isTrial || cur.authProvider === 'trial' || cur.uid?.startsWith('trial-') || cur.email?.includes('@jok.nom')) {
+  if (!cur || cur.authProvider === 'trial' || cur.uid?.startsWith('trial-') || cur.email?.includes('@jok.nom')) {
     return null;
   }
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
@@ -2461,6 +2461,14 @@ export async function loginWithGoogle(): Promise<AppUser> {
     return await finalizeFirebaseLogin(result.user, 'google');
   } catch (error: any) {
     if (error?.message && String(error.message).startsWith('CANCELLED_ACCOUNT:')) throw error;
+
+    // When the user intentionally closes or cancels the popup, do not log console.error
+    if (error?.code === 'auth/popup-closed-by-user' || error?.code === 'auth/cancelled-popup-request') {
+      const closedErr = new Error('تم إغلاق نافذة تسجيل الدخول قبل إكمال العملية. يمكنك المحاولة مجدداً.');
+      (closedErr as any).code = error.code;
+      throw closedErr;
+    }
+
     console.error('Google Sign-in failed:', error?.code || error);
     if (error?.code === 'auth/unauthorized-domain') {
       const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
@@ -2471,9 +2479,6 @@ export async function loginWithGoogle(): Promise<AppUser> {
     }
     if (error?.code === 'auth/popup-blocked') {
       throw new Error('تم حظر النافذة المنبثقة من قِبل المتصفح. يرجى السماح بالنوافذ المنبثقة للموقع.');
-    }
-    if (error?.code === 'auth/popup-closed-by-user') {
-      throw new Error('تم إغلاق نافذة تسجيل الدخول قبل إكمال العملية. يمكنك المحاولة مجدداً.');
     }
     if (error?.code === 'auth/network-request-failed') {
       throw new Error('تعذر الاتصال بالإنترنت. تحقق من الاتصال وحاول مجدداً.');

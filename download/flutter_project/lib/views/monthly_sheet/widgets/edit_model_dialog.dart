@@ -6,6 +6,7 @@ import '../../../controllers/teacher_profile_controller.dart';
 import '../../../core/constants/academic_presets.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../models/monthly_model.dart';
+import '../../common/confirm_dialog.dart';
 
 /// Dialog to edit an existing Monthly Model Assessment
 /// Matching React EditModelModal.tsx
@@ -358,53 +359,126 @@ class _EditModelDialogState extends State<EditModelDialog> {
 
               // Footer
               Container(
-                padding: EdgeInsets.symmetric(horizontal: 18.w, vertical: 12.h),
+                padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 10.h),
                 decoration: BoxDecoration(
                   color: const Color(0xFFF8F4EA),
                   border: const Border(top: BorderSide(color: Color(0xFFE0D5C3))),
                   borderRadius: BorderRadius.vertical(bottom: Radius.circular(20.r)),
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
+                child: Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 8.w,
+                  runSpacing: 8.h,
                   children: [
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: Text('إلغاء', style: TextStyle(fontSize: 12.sp, color: const Color(0xFF7A6E61))),
-                    ),
-                    SizedBox(width: 8.w),
-                    ElevatedButton.icon(
+                    TextButton.icon(
                       onPressed: () {
-                        final name = _nameController.text.trim();
-                        if (name.isEmpty) return;
+                        showDialog(
+                          context: context,
+                          builder: (_) => ConfirmDialog(
+                            title: 'تأكيد حذف جدول (${widget.model.name})',
+                            message:
+                                'هل أنت متأكد من الاستمرار في حذف جدول (${widget.model.name}) بالكامل؟ سيتم حذف جميع درجات وطلاب هذا الشهر ولا يمكن استرجاعها.',
+                            confirmLabel: 'نعم، استمر في حذف الجدول',
+                            isDestructive: true,
+                            onConfirm: () async {
+                              final modelName = widget.model.name;
+                              final scaffoldMessenger =
+                                  ScaffoldMessenger.maybeOf(context);
+                              final sheetController =
+                                  context.read<MonthlySheetController>();
 
-                        final maxScore = double.tryParse(_maxScoreController.text.trim()) ?? widget.model.totalMaxScore;
-                        final subject = _subjectController.text.trim();
-                        final grade = _gradeController.text.trim();
-                        final teacher = _teacherNameController.text.trim();
+                              if (context.mounted &&
+                                  Navigator.of(context).canPop()) {
+                                Navigator.of(context).pop();
+                              }
 
-                        final updated = widget.model.copyWith(
-                          name: name,
-                          totalMaxScore: maxScore,
-                          subject: subject,
-                          gradeLevel: grade,
-                          teacherName: teacher,
-                          assignedSections: List<String>.from(_selectedSections),
-                          updatedAt: DateTime.now().toIso8601String(),
+                              await sheetController.deleteModel(widget.model.id);
+
+                              try {
+                                scaffoldMessenger?.showSnackBar(
+                                  SnackBar(
+                                    content:
+                                        Text('تم حذف جدول ($modelName) بنجاح'),
+                                    backgroundColor: const Color(0xFFDC2626),
+                                    duration: const Duration(seconds: 3),
+                                  ),
+                                );
+                              } catch (_) {}
+                            },
+                          ),
                         );
-
-                        context.read<MonthlySheetController>().updateModel(updated);
-                        Navigator.of(context).pop();
                       },
-                      icon: const Icon(Icons.check_rounded, color: Colors.white, size: 16),
+                      icon: Icon(Icons.delete_outline_rounded,
+                          color: Colors.red.shade700, size: 15.r),
                       label: Text(
-                        'حفظ التعديلات',
-                        style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.bold, color: Colors.white),
+                        'حذف هذا الجدول',
+                        style: TextStyle(
+                          fontSize: 11.sp,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.red.shade700,
+                        ),
                       ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.craftBrown,
-                        padding: EdgeInsets.symmetric(horizontal: 18.w, vertical: 10.h),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.r)),
+                      style: TextButton.styleFrom(
+                        padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
                       ),
+                    ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          child: Text('إلغاء',
+                              style: TextStyle(
+                                  fontSize: 11.5.sp, color: const Color(0xFF7A6E61))),
+                        ),
+                        SizedBox(width: 6.w),
+                        ElevatedButton.icon(
+                          onPressed: () {
+                            final name = _nameController.text.trim();
+                            if (name.isEmpty) return;
+
+                            final maxScore = double.tryParse(
+                                    _maxScoreController.text.trim()) ??
+                                widget.model.totalMaxScore;
+                            final subject = _subjectController.text.trim();
+                            final grade = _gradeController.text.trim();
+                            final teacher = _teacherNameController.text.trim();
+
+                            final updated = widget.model.copyWith(
+                              name: name,
+                              totalMaxScore: maxScore,
+                              subject: subject,
+                              gradeLevel: grade,
+                              teacherName: teacher,
+                              assignedSections:
+                                  List<String>.from(_selectedSections),
+                              updatedAt: DateTime.now().toIso8601String(),
+                            );
+
+                            context
+                                .read<MonthlySheetController>()
+                                .updateModel(updated);
+                            Navigator.of(context).pop();
+                          },
+                          icon: const Icon(Icons.check_rounded,
+                              color: Colors.white, size: 15),
+                          label: Text(
+                            'حفظ التعديلات',
+                            style: TextStyle(
+                                fontSize: 11.5.sp,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.craftBrown,
+                            padding: EdgeInsets.symmetric(
+                                horizontal: 14.w, vertical: 8.h),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10.r)),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),

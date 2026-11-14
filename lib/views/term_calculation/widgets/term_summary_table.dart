@@ -6,6 +6,7 @@ import '../../../controllers/term_controller.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../../../core/localization/translation_keys.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/arabic_helper.dart';
 import '../../../models/student_term_summary.dart';
 import '../../common/rating_badge.dart';
 
@@ -146,7 +147,7 @@ class _TermSummaryTableState extends State<TermSummaryTable> {
                         columnSpacing: 20.w,
                         headingRowColor: WidgetStateProperty.all(AppColors.craftBadgeBg), // #E8D7C2 craft-table-header
                         columns: _buildColumns(context, modelNames),
-                        rows: summaries.map((s) => _buildRow(context, s, modelNames)).toList(),
+                        rows: summaries.map((s) => _buildRow(context, s, modelNames, sheetController.numeralMode)).toList(),
                       ),
                     ),
                   ),
@@ -248,7 +249,7 @@ class _TermSummaryTableState extends State<TermSummaryTable> {
     return cols;
   }
 
-  DataRow _buildRow(BuildContext context, StudentTermSummary summary, List<String> modelNames) {
+  DataRow _buildRow(BuildContext context, StudentTermSummary summary, List<String> modelNames, String numeralMode) {
     final List<DataCell> cells = [
       DataCell(
         ConstrainedBox(
@@ -281,7 +282,7 @@ class _TermSummaryTableState extends State<TermSummaryTable> {
               border: Border.all(color: const Color(0xFFD5C8B2)),
             ),
             child: Text(
-              score != null ? score.toString() : '-',
+              score != null ? ArabicHelper.formatScore(score, numeralMode) : '-',
               style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.bold, color: AppColors.inkDark),
             ),
           ),
@@ -292,7 +293,7 @@ class _TermSummaryTableState extends State<TermSummaryTable> {
     cells.add(
       DataCell(
         Text(
-          summary.finalTermScore != null ? summary.finalTermScore.toString() : '-',
+          summary.finalTermScore != null ? ArabicHelper.formatScore(summary.finalTermScore, numeralMode) : '-',
           style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w900, color: AppColors.termRust),
         ),
       ),

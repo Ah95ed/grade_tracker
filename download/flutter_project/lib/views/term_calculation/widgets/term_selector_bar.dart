@@ -93,6 +93,7 @@ class TermSelectorBar extends StatelessWidget {
                         children: [
                           InkWell(
                             onTap: () => termController.setActiveTerm(term.id),
+                            onLongPress: () => _confirmDeleteTerm(context, termController, term),
                             borderRadius: BorderRadius.circular(12.r),
                             child: AnimatedContainer(
                               duration: const Duration(milliseconds: 150),
@@ -126,31 +127,28 @@ class TermSelectorBar extends StatelessWidget {
                           ),
 
                           // Delete Badge on active term
-                          if (isActive && terms.length > 1)
+                          if (isActive)
                             Positioned(
-                              top: -6.h,
-                              left: -6.w,
-                              child: InkWell(
-                                onTap: () => showDialog(
-                                  context: context,
-                                  builder: (_) => ConfirmDialog(
-                                    title: 'حذف الفصل',
-                                    message: 'هل أنت متأكد من حذف فصل ${term.name}؟',
-                                    isDestructive: true,
-                                    onConfirm: () => termController.deleteTerm(term.id),
+                              top: -7.h,
+                              left: -7.w,
+                              child: Tooltip(
+                                message: 'حذف فصل ${term.name}',
+                                child: InkWell(
+                                  onTap: () => _confirmDeleteTerm(context, termController, term),
+                                  borderRadius: BorderRadius.circular(12.r),
+                                  child: Container(
+                                    width: 22.r,
+                                    height: 22.r,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: const Color(0xFFDC2626),
+                                      border: Border.all(color: Colors.white, width: 1.5),
+                                      boxShadow: const [
+                                        BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 1)),
+                                      ],
+                                    ),
+                                    child: Icon(Icons.close_rounded, size: 13.r, color: Colors.white),
                                   ),
-                                ),
-                                child: Container(
-                                  width: 20.r,
-                                  height: 20.r,
-                                  decoration: const BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: Color(0xFFDC2626),
-                                    boxShadow: [
-                                      BoxShadow(color: Colors.black26, blurRadius: 3),
-                                    ],
-                                  ),
-                                  child: Icon(Icons.close_rounded, size: 12.r, color: Colors.white),
                                 ),
                               ),
                             ),
@@ -265,6 +263,36 @@ class TermSelectorBar extends StatelessWidget {
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  void _confirmDeleteTerm(
+    BuildContext context,
+    TermController controller,
+    dynamic term,
+  ) {
+    showDialog(
+      context: context,
+      builder: (_) => ConfirmDialog(
+        title: 'تأكيد حذف فصل (${term.name})',
+        message:
+            'هل أنت متأكد من حذف فصل (${term.name})؟ سيتم حذف جميع إعدادات واحتسابات هذا الفصل.',
+        confirmLabel: 'نعم، احذف الفصل',
+        isDestructive: true,
+        onConfirm: () async {
+          final termName = term.name;
+          controller.deleteTerm(term.id);
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('تم حذف فصل ($termName) بنجاح'),
+                backgroundColor: const Color(0xFFDC2626),
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
+        },
       ),
     );
   }

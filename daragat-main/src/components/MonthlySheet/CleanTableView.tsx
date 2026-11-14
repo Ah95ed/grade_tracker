@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { ArrowRight, Layers } from 'lucide-react';
+import { ArrowRight, Layers, ArrowDownAZ, ArrowUpZA, ArrowUpDown } from 'lucide-react';
 import {
   MonthlyModel,
   StudentRow,
@@ -22,6 +22,7 @@ import {
   isSectionMatch,
 } from '../../utils/gradeAndSectionMatcher';
 import { AttendanceRecordModal } from './AttendanceRecordModal';
+import { formatScoreDisplay } from './GradeNumericKeypad';
 
 interface Props {
   model: MonthlyModel;
@@ -62,6 +63,7 @@ export const CleanTableView: React.FC<Props> = ({
     student: StudentRow;
     column: CustomColumn;
   } | null>(null);
+  const [sortMode, setSortMode] = useState<'none' | 'asc' | 'desc'>('none');
 
   const handleSaveStudentAttendance = (studentId: string, columnId: string, records: AttendanceRecord[]) => {
     const targetStudent = model.students.find((s) => s.id === studentId);
@@ -166,7 +168,7 @@ export const CleanTableView: React.FC<Props> = ({
   // Filter students by selected Grade and Section (matching the active table view and assignedSections)
   const effectiveGrade = model.gradeLevel || selectedGradeLevel;
   const students = useMemo(() => {
-    return allStudents.filter((st) => {
+    const list = allStudents.filter((st) => {
       const matchGrade = !effectiveGrade || effectiveGrade === 'ALL' || isGradeLevelMatch(st.gradeLevel || '', effectiveGrade);
       if (model.assignedSections && model.assignedSections.length > 0) {
         if (!model.assignedSections.some((sec) => isSectionMatch(st.section || '', sec))) {
@@ -176,7 +178,29 @@ export const CleanTableView: React.FC<Props> = ({
       const matchSection = isSectionMatch(st.section || '', selectedSection);
       return matchGrade && matchSection;
     });
-  }, [allStudents, effectiveGrade, model.assignedSections, selectedSection]);
+
+    if (sortMode === 'asc') {
+      return [...list].sort((a, b) => {
+        if (selectedSection === 'ALL' && a.section && b.section && !isSectionMatch(a.section, b.section)) {
+          const secCmp = (a.section || '').localeCompare(b.section || '', 'ar');
+          if (secCmp !== 0) return secCmp;
+        }
+        return (a.name || '').localeCompare(b.name || '', 'ar', { sensitivity: 'base', numeric: true });
+      });
+    }
+
+    if (sortMode === 'desc') {
+      return [...list].sort((a, b) => {
+        if (selectedSection === 'ALL' && a.section && b.section && !isSectionMatch(a.section, b.section)) {
+          const secCmp = (a.section || '').localeCompare(b.section || '', 'ar');
+          if (secCmp !== 0) return -secCmp;
+        }
+        return -(a.name || '').localeCompare(b.name || '', 'ar', { sensitivity: 'base', numeric: true });
+      });
+    }
+
+    return list;
+  }, [allStudents, effectiveGrade, model.assignedSections, selectedSection, sortMode]);
 
   // Available sections for the currently selected grade (for quick switching inside fullscreen)
   const availableSectionsForGrade = useMemo(() => {
@@ -202,20 +226,33 @@ export const CleanTableView: React.FC<Props> = ({
   const finalScoreLabel = columnLabels?.finalScore || 'النهائي';
   const ratingLabel = columnLabels?.rating || 'التقدير';
 
+  const numeralMode: 'EN' | 'AR' = (() => {
+    try {
+      return (localStorage.getItem('gradebook_numeral_mode') as 'EN' | 'AR') || 'EN';
+    } catch {
+      return 'EN';
+    }
+  })();
+
   const handleScoreChange = (studentId: string, field: 'written' | string, value: string) => {
     if (!onUpdateStudent) return;
     const student = allStudents.find((s) => s.id === studentId);
     if (!student) return;
 
+    const normalized = value
+      .replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
+      .replace('،', '.')
+      .replace(',', '.');
+
     if (field === 'written') {
-      const num = value.trim() === '' ? null : Number(value);
-      onUpdateStudent(studentId, { writtenRawScore: num });
+      const num = normalized.trim() === '' ? null : Number(normalized);
+      onUpdateStudent(studentId, { writtenRawScore: isNaN(num as number) ? null : num });
     } else {
-      const num = value.trim() === '' ? null : Number(value);
+      const num = normalized.trim() === '' ? null : Number(normalized);
       onUpdateStudent(studentId, {
         scores: {
           ...student.scores,
-          [field]: num,
+          [field]: isNaN(num as number) ? null : num,
         },
       });
     }
@@ -327,7 +364,44 @@ export const CleanTableView: React.FC<Props> = ({
 
                 {/* Student Name */}
                 <th className="py-1.5 px-3 min-w-[200px] text-right align-middle border border-[#D5C8B2] bg-[#EFE8D8]">
-                  {studentNameLabel}
+                  <div className="flex items-center justify-between gap-1">
+                    <span>{studentNameLabel}</span>
+                    <button
+                      type="button"
+                      onClick={() => setSortMode((prev) => (prev === 'none' ? 'asc' : prev === 'asc' ? 'desc' : 'none'))}
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer border ${
+                        sortMode === 'asc'
+                          ? 'bg-[#B86848] text-white border-[#944D30]'
+                          : sortMode === 'desc'
+                          ? 'bg-[#2E485C] text-white border-[#1E3342]'
+                          : 'bg-white hover:bg-slate-100 text-[#5A4F43] border-[#CBD5E1]'
+                      }`}
+                      title={
+                        sortMode === 'asc'
+                          ? 'مفروز من أ إلى ي (انقر للفرز العكسي ي - أ)'
+                          : sortMode === 'desc'
+                          ? 'مفروز من ي إلى أ (انقر لإلغاء الفرز)'
+                          : 'فرز الأسماء حسب التسلسل من أ إلى ي'
+                      }
+                    >
+                      {sortMode === 'asc' ? (
+                        <>
+                          <ArrowDownAZ className="w-3 h-3" />
+                          <span>أ ◄ ي</span>
+                        </>
+                      ) : sortMode === 'desc' ? (
+                        <>
+                          <ArrowUpZA className="w-3 h-3" />
+                          <span>ي ◄ أ</span>
+                        </>
+                      ) : (
+                        <>
+                          <ArrowUpDown className="w-3 h-3 opacity-60" />
+                          <span>فرز أ-ي</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </th>
 
                 {/* Grade */}
@@ -476,16 +550,8 @@ export const CleanTableView: React.FC<Props> = ({
                       <td className="py-1 px-2 text-center border border-[#D5C8B2] bg-[#F8FAFC]">
                         <div className="flex items-center justify-center gap-1">
                           <input
-                            type="number"
-                            min="0"
-                            max={model.writtenMaxScore || 100}
-                            inputMode="decimal"
-                            value={
-                              student.writtenRawScore === null ||
-                              student.writtenRawScore === undefined
-                                ? ''
-                                : student.writtenRawScore
-                            }
+                            type="text"
+                            value={formatScoreDisplay(student.writtenRawScore, numeralMode)}
                             onFocus={(e) => handleScoreCellFocus(e, student)}
                             onClick={(e) => handleScoreCellFocus(e, student)}
                             onChange={(e) =>
@@ -543,11 +609,8 @@ export const CleanTableView: React.FC<Props> = ({
                             className="py-1 px-2 text-center border border-[#D5C8B2]"
                           >
                             <input
-                              type="number"
-                              min="0"
-                              max={col.maxScore}
-                              inputMode="decimal"
-                              value={val === null || val === undefined ? '' : val}
+                              type="text"
+                              value={formatScoreDisplay(val, numeralMode)}
                               onFocus={(e) => handleScoreCellFocus(e, student)}
                               onClick={(e) => handleScoreCellFocus(e, student)}
                               onChange={(e) =>

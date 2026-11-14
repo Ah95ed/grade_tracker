@@ -68,9 +68,11 @@ class GradeTrackerApp extends StatelessWidget {
         // Mobile (< 600px): 390 x 844
         // Tablet (600px - 1024px): 768 x 1024
         // Desktop / Windows (>= 1024px): 1440 x 900
-        final Size designSize = width >= 1024
+        final Size designSize = (width.isFinite && width >= 1024)
             ? const Size(1440, 900)
-            : (width >= 600 ? const Size(768, 1024) : const Size(390, 844));
+            : ((width.isFinite && width >= 600)
+                ? const Size(768, 1024)
+                : const Size(390, 844));
 
         return ScreenUtilInit(
           designSize: designSize,
@@ -79,7 +81,9 @@ class GradeTrackerApp extends StatelessWidget {
           fontSizeResolver: (fontSize, instance) {
             // Strictly clamp text scaling between 0.85 and 1.25
             // Prevents fonts from blowing up on Desktop/Windows monitors
-            final scale = instance.scaleText.clamp(0.85, 1.25);
+            final scale = (instance.scaleText.isFinite && instance.scaleText > 0)
+                ? instance.scaleText.clamp(0.85, 1.25)
+                : 1.0;
             return fontSize * scale;
           },
           builder: (context, child) {
