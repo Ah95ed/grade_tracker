@@ -277,5 +277,71 @@ class GradebookApiService {
     return null;
   }
 
+  /// Admin: Fetch list of all registered users from Cloudflare D1
+  Future<List<Map<String, dynamic>>> fetchAllUsers({String? token, String? adminEmail}) async {
+    try {
+      final uri = Uri.parse('$baseUrl${ApiEndpoints.usersEndpoint}');
+      final res = await _client.get(
+        uri,
+        headers: ApiEndpoints.getHeaders(token: token, userEmail: adminEmail, isAdmin: true),
+      ).timeout(ApiEndpoints.requestTimeout);
+      if (res.statusCode == 200) {
+        final decoded = jsonDecode(res.body) as Map<String, dynamic>;
+        if (decoded['users'] is List) {
+          return (decoded['users'] as List).cast<Map<String, dynamic>>();
+        }
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  /// Admin: Update user subscription type and status
+  Future<bool> updateUserSubscription({
+    required String uid,
+    required String email,
+    required String subscriptionType,
+    required String subscriptionStatus,
+    String? expiresAt,
+    String? token,
+    String? adminEmail,
+  }) async {
+    try {
+      final uri = Uri.parse('$baseUrl${ApiEndpoints.usersEndpoint}');
+      final res = await _client.patch(
+        uri,
+        headers: ApiEndpoints.getHeaders(token: token, userEmail: adminEmail, isAdmin: true),
+        body: jsonEncode({
+          'uid': uid,
+          'email': email,
+          'subscriptionType': subscriptionType,
+          'subscriptionStatus': subscriptionStatus,
+          'expiresAt': ?expiresAt,
+        }),
+      ).timeout(ApiEndpoints.requestTimeout);
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Admin: Delete user from registry
+  Future<bool> deleteUserByAdmin({
+    required String uid,
+    required String email,
+    String? token,
+    String? adminEmail,
+  }) async {
+    try {
+      final uri = Uri.parse('$baseUrl${ApiEndpoints.usersEndpoint}?uid=${Uri.encodeComponent(uid)}&email=${Uri.encodeComponent(email)}');
+      final res = await _client.delete(
+        uri,
+        headers: ApiEndpoints.getHeaders(token: token, userEmail: adminEmail, isAdmin: true),
+      ).timeout(ApiEndpoints.requestTimeout);
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
   void dispose() => _client.close();
 }

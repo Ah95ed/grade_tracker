@@ -6,7 +6,6 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
-
 import 'firebase_options.dart';
 import 'core/constants/app_constants.dart';
 import 'core/localization/app_localizations.dart';
@@ -71,8 +70,8 @@ class GradeTrackerApp extends StatelessWidget {
         final Size designSize = (width.isFinite && width >= 1024)
             ? const Size(1440, 900)
             : ((width.isFinite && width >= 600)
-                ? const Size(768, 1024)
-                : const Size(390, 844));
+                  ? const Size(768, 1024)
+                  : const Size(390, 844));
 
         return ScreenUtilInit(
           designSize: designSize,
@@ -81,7 +80,8 @@ class GradeTrackerApp extends StatelessWidget {
           fontSizeResolver: (fontSize, instance) {
             // Strictly clamp text scaling between 0.85 and 1.25
             // Prevents fonts from blowing up on Desktop/Windows monitors
-            final scale = (instance.scaleText.isFinite && instance.scaleText > 0)
+            final scale =
+                (instance.scaleText.isFinite && instance.scaleText > 0)
                 ? instance.scaleText.clamp(0.85, 1.25)
                 : 1.0;
             return fontSize * scale;
@@ -102,10 +102,12 @@ class GradeTrackerApp extends StatelessWidget {
               ],
               home: Consumer<AuthController>(
                 builder: (context, auth, _) {
-                  return auth.isAuthenticated
-                      ? const HomeScreen()
-                      : const AuthScreen();
-                },
+                    return auth.isAuthenticated
+                        ? const HomeScreen()
+                        : const AuthScreen();
+                  },
+                  // return const HomeScreen();
+                // },
               ),
             );
           },

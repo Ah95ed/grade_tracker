@@ -233,9 +233,13 @@ class _TermSummaryTableState extends State<TermSummaryTable> {
 
     cols.addAll([
       DataColumn(
-        label: Text(
-          'المعدل النهائي',
-          style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w900, color: AppColors.termRustDark),
+        label: Semantics(
+          identifier: 'data-term-average-col',
+          child: Text(
+            'المعدل النهائي',
+            key: const ValueKey('data-term-average-col'),
+            style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w900, color: AppColors.termRustDark),
+          ),
         ),
       ),
       DataColumn(
@@ -292,9 +296,13 @@ class _TermSummaryTableState extends State<TermSummaryTable> {
 
     cells.add(
       DataCell(
-        Text(
-          summary.finalTermScore != null ? ArabicHelper.formatScore(summary.finalTermScore, numeralMode) : '-',
-          style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w900, color: AppColors.termRust),
+        Semantics(
+          identifier: 'data-term-average-col',
+          child: Text(
+            summary.finalTermScore != null ? ArabicHelper.formatScore(summary.finalTermScore, numeralMode) : '-',
+            key: ValueKey('data-term-average-col-${summary.studentName}'),
+            style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w900, color: AppColors.termRust),
+          ),
         ),
       ),
     );

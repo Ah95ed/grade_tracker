@@ -17,6 +17,7 @@ import 'privacy_policy_dialog.dart';
 import 'delete_account_dialog.dart';
 import 'import_backup_dialog.dart';
 import 'drawer_user_header.dart';
+import '../../admin/admin_dashboard_dialog.dart';
 
 /// Modal bottom sheet providing all system tools, database options, and settings
 class HomeDrawerMenu extends StatelessWidget {
@@ -42,6 +43,21 @@ class HomeDrawerMenu extends StatelessWidget {
             children: [
               DrawerUserHeader(auth: authCtrl),
               Divider(height: 16.h, color: AppColors.borderLight),
+              if (user?.isAdmin == true)
+                _buildTile(
+                  icon: Icons.admin_panel_settings_rounded,
+                  color: const Color(0xFFD97706),
+                  title: 'لوحة تحكم إدارة النظام والمشتركين',
+                  trailing: Container(
+                    padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
+                    decoration: BoxDecoration(color: const Color(0xFFFEF3C7), borderRadius: BorderRadius.circular(6.r)),
+                    child: Text('Admin', style: TextStyle(fontSize: 9.sp, fontWeight: FontWeight.bold, color: const Color(0xFFB45309))),
+                  ),
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    showDialog(context: context, builder: (_) => const AdminDashboardDialog());
+                  },
+                ),
               _buildTile(
                 icon: Icons.settings_rounded,
                 color: const Color(0xFF557A95),
