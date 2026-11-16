@@ -63,20 +63,20 @@ export const ADMIN_EMAILS_DEFAULT = [
   'm11287137@gmail.com',
 ];
 export const PRIMARY_ADMIN_EMAIL =
-  ((import.meta.env.VITE_ADMIN_EMAIL as string | undefined)?.trim()) ||
-  ((import.meta.env.ADMIN_EMAIL as string | undefined)?.trim()) ||
+  ((env.VITE_ADMIN_EMAIL as string | undefined)?.trim()) ||
+  ((env.ADMIN_EMAIL as string | undefined)?.trim()) ||
   'asmaomar5566@gmail.com';
 
 export const SUPPORT_PHONE_NUMBER =
-  ((import.meta.env.VITE_SUPPORT_PHONE as string | undefined)?.trim()) ||
-  ((import.meta.env.SUPPORT_PHONE as string | undefined)?.trim()) ||
+  ((env.VITE_SUPPORT_PHONE as string | undefined)?.trim()) ||
+  ((env.SUPPORT_PHONE as string | undefined)?.trim()) ||
   '07706118982';
 
 export const SUPPORT_PHONE_INTERNATIONAL = '+9647706118982';
 
 export const SUPPORT_WHATSAPP_NUMBER =
-  ((import.meta.env.VITE_SUPPORT_WHATSAPP as string | undefined)?.trim()) ||
-  ((import.meta.env.SUPPORT_WHATSAPP as string | undefined)?.trim()) ||
+  ((env.VITE_SUPPORT_WHATSAPP as string | undefined)?.trim()) ||
+  ((env.SUPPORT_WHATSAPP as string | undefined)?.trim()) ||
   '9647706118982';
 
 const AUTH_KEYS = {
@@ -1447,8 +1447,8 @@ export async function verifyUserWithCloudflareD1(
     return { status: 'active', user };
   }
 
-  // الحساب التجريبي محلي بالكامل (بدون جلسة Firebase) ولا يُتحقق منه من السيرفر
-  if (user.isTrial || user.authProvider === 'trial') {
+  // الحساب التجريبي محلي بالكامل (بدون جلسة Firebase أو حساب مسجل) ولا يُتحقق منه من السيرفر
+  if (user.authProvider === 'trial' || user.uid?.startsWith('trial-') || user.email?.includes('@jok.nom')) {
     return { status: 'active', user };
   }
 

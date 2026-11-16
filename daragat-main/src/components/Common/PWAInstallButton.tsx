@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { DownloadCloud, Share, PlusSquare, X, Smartphone } from 'lucide-react';
 import { usePWAInstall } from '../../hooks/usePWAInstall';
-import { AppLogo } from '../common/AppLogo';
+import { AppLogo } from './AppLogo';
 
 interface Props {
   variant?: 'icon' | 'menu-item';

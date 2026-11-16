@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AppLogo } from '../common/AppLogo';
+import { AppLogo } from '../Common/AppLogo';
 import {
   ShieldCheck,
   Lock,

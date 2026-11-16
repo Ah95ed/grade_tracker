@@ -242,7 +242,7 @@ export default function App() {
         await loadUserData(cur.uid);
 
         // Re-evaluate cancelled account info in case IndexedDB had it
-        if (!cur.isAdmin && !cur.isTrial && (cur.subscriptionStatus === 'cancelled' || isAccountCancelled(cur.email))) {
+        if (!cur.isAdmin && (cur.subscriptionStatus === 'cancelled' || isAccountCancelled(cur.email))) {
           setCancelledAccountInfo({
             email: cur.email,
             message: 'تم إلغاء حسابك من قِبل إدارة النظام.',
@@ -386,15 +386,15 @@ export default function App() {
   const [cancelledAccountInfo, setCancelledAccountInfo] = useState<{ email?: string; message?: string } | null>(() => {
     try {
       const cur = getCurrentUser();
-      // Admins and trial users are NEVER blocked by cancellation
-      if (cur && (cur.isAdmin || cur.isTrial || cur.authProvider === 'trial' || cur.uid?.startsWith('trial-') || cur.email?.includes('@jok.nom'))) return null;
+      // Admins and local anonymous sessions are not blocked by cancellation
+      if (cur && (cur.isAdmin || cur.authProvider === 'trial' || cur.uid?.startsWith('trial-') || cur.email?.includes('@jok.nom'))) return null;
 
       const raw = localStorage.getItem('gradebook_active_cancelled_user');
       if (raw) {
         const p = JSON.parse(raw);
         if (p && p.email && isAccountCancelled(p.email)) return p;
       }
-      if (cur && !cur.isAdmin && !cur.isTrial && (cur.subscriptionStatus === 'cancelled' || (cur.email && isAccountCancelled(cur.email)))) {
+      if (cur && !cur.isAdmin && (cur.subscriptionStatus === 'cancelled' || (cur.email && isAccountCancelled(cur.email)))) {
         return { email: cur.email, message: 'تم إلغاء حسابك من قِبل إدارة النظام.' };
       }
     } catch (e) {

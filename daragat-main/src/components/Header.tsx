@@ -8,7 +8,7 @@ import { SyncStatusBadge } from './Common/SyncStatusBadge';
 import { PWAInstallButton } from './Common/PWAInstallButton';
 import { PWAInstallModal } from './Common/PWAInstallModal';
 import { usePWAInstall } from '../hooks/usePWAInstall';
-import { AppLogo } from './common/AppLogo';
+import { AppLogo } from './Common/AppLogo';
 import {
   GraduationCap,
   Table,

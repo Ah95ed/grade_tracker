@@ -4,8 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "NODE_DISABLE_COMPILE_CACHE=1 vite",
-    "build": "NODE_DISABLE_COMPILE_CACHE=1 vite build",
+    "dev": "vite",
+    "build": "vite build",
     "preview": "vite preview",
     "generate:icons": "node scripts/generate-icons.js",
     "lint": "tsc --noEmit",

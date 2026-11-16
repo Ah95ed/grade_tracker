@@ -393,7 +393,10 @@ export const CleanTermTableView: React.FC<Props> = ({
                           </td>
                         );
                       })}
-                      <td className="py-1 px-2 text-center font-black border border-[#D5C8B2] bg-[#FFFBEB]">
+                      <td
+                        data-term-average-col="true"
+                        className="py-1 px-2 text-center font-black border border-[#D5C8B2] bg-[#FFFBEB]"
+                      >
                         {student.finalTermScore !== null ? (
                           <span className="inline-block min-w-[36px] px-1.5 py-0.5 text-xs sm:text-sm font-black text-[#92400E] bg-amber-100/90 rounded border border-amber-300">
                             {student.finalTermScore}

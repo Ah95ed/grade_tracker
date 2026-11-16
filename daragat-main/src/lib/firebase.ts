@@ -7,40 +7,52 @@ const cfg: any = rawConfig || {};
 // Fallback client API key for applet development and preview
 const DEFAULT_API_KEY = 'AIzaSyCt83OG0NioLFOMK2qHwoJHcu40cJnB5gw';
 
+const getEnvVar = (key: string): string | undefined => {
+  try {
+    if (typeof import.meta !== 'undefined' && (import.meta as any)?.env) {
+      return (import.meta as any).env[key];
+    }
+    if (typeof process !== 'undefined' && process.env) {
+      return process.env[key];
+    }
+  } catch {}
+  return undefined;
+};
+
 // قراءة المتغيرات من Cloudflare Environment Variables أولاً (سواء مع بادئة VITE_ أو بدونها)، ثم من ملف الإعدادات
 const apiKey =
-  ((import.meta.env.VITE_FIREBASE_API_KEY as string | undefined)?.trim()) ||
-  ((import.meta.env.FIREBASE_API_KEY as string | undefined)?.trim()) ||
+  getEnvVar('VITE_FIREBASE_API_KEY')?.trim() ||
+  getEnvVar('FIREBASE_API_KEY')?.trim() ||
   cfg.apiKey ||
   DEFAULT_API_KEY;
 
 const authDomain =
-  ((import.meta.env.VITE_FIREBASE_AUTH_DOMAIN as string | undefined)?.trim()) ||
-  ((import.meta.env.FIREBASE_AUTH_DOMAIN as string | undefined)?.trim()) ||
+  getEnvVar('VITE_FIREBASE_AUTH_DOMAIN')?.trim() ||
+  getEnvVar('FIREBASE_AUTH_DOMAIN')?.trim() ||
   cfg.authDomain ||
   'gen-lang-client-0369327125.firebaseapp.com';
 
 const projectId =
-  ((import.meta.env.VITE_FIREBASE_PROJECT_ID as string | undefined)?.trim()) ||
-  ((import.meta.env.FIREBASE_PROJECT_ID as string | undefined)?.trim()) ||
+  getEnvVar('VITE_FIREBASE_PROJECT_ID')?.trim() ||
+  getEnvVar('FIREBASE_PROJECT_ID')?.trim() ||
   cfg.projectId ||
   'gen-lang-client-0369327125';
 
 const storageBucket =
-  ((import.meta.env.VITE_FIREBASE_STORAGE_BUCKET as string | undefined)?.trim()) ||
-  ((import.meta.env.FIREBASE_STORAGE_BUCKET as string | undefined)?.trim()) ||
+  getEnvVar('VITE_FIREBASE_STORAGE_BUCKET')?.trim() ||
+  getEnvVar('FIREBASE_STORAGE_BUCKET')?.trim() ||
   cfg.storageBucket ||
   'gen-lang-client-0369327125.firebasestorage.app';
 
 const messagingSenderId =
-  ((import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID as string | undefined)?.trim()) ||
-  ((import.meta.env.FIREBASE_MESSAGING_SENDER_ID as string | undefined)?.trim()) ||
+  getEnvVar('VITE_FIREBASE_MESSAGING_SENDER_ID')?.trim() ||
+  getEnvVar('FIREBASE_MESSAGING_SENDER_ID')?.trim() ||
   cfg.messagingSenderId ||
   '1059409489946';
 
 const appId =
-  ((import.meta.env.VITE_FIREBASE_APP_ID as string | undefined)?.trim()) ||
-  ((import.meta.env.FIREBASE_APP_ID as string | undefined)?.trim()) ||
+  getEnvVar('VITE_FIREBASE_APP_ID')?.trim() ||
+  getEnvVar('FIREBASE_APP_ID')?.trim() ||
   cfg.appId ||
   '1:1059409489946:web:d251a04020251d32b8a1a3';
 

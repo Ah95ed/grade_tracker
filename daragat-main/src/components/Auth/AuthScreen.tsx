@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { AppLogo } from '../common/AppLogo';
+import { AppLogo } from '../Common/AppLogo';
 import {
   LogIn,
   UserPlus,
