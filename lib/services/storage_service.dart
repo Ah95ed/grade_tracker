@@ -10,6 +10,8 @@ import '../models/teacher_profile.dart';
 class StorageService {
   final SharedPreferences _prefs;
 
+  SharedPreferences get rawPrefs => _prefs;
+
   StorageService(this._prefs);
 
   static Future<StorageService> init() async {

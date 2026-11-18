@@ -6,6 +6,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
+
 import 'firebase_options.dart';
 import 'core/constants/app_constants.dart';
 import 'core/localization/app_localizations.dart';
@@ -17,6 +18,8 @@ import 'controllers/monthly_sheet_controller.dart';
 import 'controllers/term_controller.dart';
 import 'controllers/report_cards_controller.dart';
 import 'controllers/auth_controller.dart';
+import 'controllers/teacher_personal_controller.dart';
+import 'services/teacher_notification_service.dart';
 import 'views/home/home_screen.dart';
 import 'views/auth/auth_screen.dart';
 
@@ -24,6 +27,7 @@ import 'views/auth/auth_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final storageService = await StorageService.init();
+  await TeacherNotificationService.initialize();
 
   try {
     await Firebase.initializeApp(
@@ -46,6 +50,9 @@ void main() async {
         ChangeNotifierProvider(create: (_) => TermController(storageService)),
         ChangeNotifierProvider(create: (_) => ReportCardsController()),
         ChangeNotifierProvider(create: (_) => AuthController(storageService)),
+        ChangeNotifierProvider(
+          create: (_) => TeacherPersonalController(storageService.rawPrefs),
+        ),
       ],
       child: const GradeTrackerApp(),
     ),
@@ -102,11 +109,11 @@ class GradeTrackerApp extends StatelessWidget {
               ],
               home: Consumer<AuthController>(
                 builder: (context, auth, _) {
-                    return auth.isAuthenticated
-                        ? const HomeScreen()
-                        : const AuthScreen();
-                  },
-                  // return const HomeScreen();
+                  return auth.isAuthenticated
+                      ? const HomeScreen()
+                      : const AuthScreen();
+                },
+                // return const HomeScreen();
                 // },
               ),
             );

@@ -37,6 +37,10 @@ dependencies:
   printing: ^5.13.2
   file_picker: ^13.3.2
   material_ui: ^1.11.1
+  speech_to_text: ^7.5.0
+  flutter_local_notifications: ^23.0.3
+  timezone: ^0.11.2
+  excel: ^4.0.6
 
 dev_dependencies:
   flutter_test:

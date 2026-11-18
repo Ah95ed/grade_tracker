@@ -11,6 +11,8 @@ import '../../../services/excel_export_service.dart';
 import 'add_student_dialog.dart';
 import 'edit_model_dialog.dart';
 import 'rename_columns_dialog.dart';
+import 'batch_import_modal.dart';
+import '../../../features/monthly_sheets/widgets/voice_grade_input_dialog.dart';
 import '../../common/confirm_dialog.dart';
 
 /// Top Table Header & Action Toolbar matching Daragat Web App exactly as in user image
@@ -391,6 +393,60 @@ class SheetToolbar extends StatelessWidget {
                           builder: (_) => const AddStudentDialog(),
                         ),
                       ),
+
+                      // Batch Import (Excel / CSV) Button (Section 6)
+                      _buildIconButton(
+                        icon: Icons.file_upload_rounded,
+                        color: const Color(0xFFEFF6FF),
+                        borderColor: const Color(0xFFBFDBFE),
+                        iconColor: const Color(0xFF2563EB),
+                        tooltip: 'الاستيراد الدفعي للطلاب والدرجات من Excel / CSV',
+                        onTap: () => showDialog(
+                          context: context,
+                          builder: (_) => const BatchImportModal(),
+                        ),
+                      ),
+
+                      // Voice Grade Entry Button (Section 3)
+                      if (model.students.isNotEmpty)
+                        _buildIconButton(
+                          icon: Icons.mic_rounded,
+                          color: const Color(0xFFF0FDF4),
+                          borderColor: const Color(0xFF86EFAC),
+                          iconColor: const Color(0xFF16A34A),
+                          tooltip: 'الإدخال الصوتي للدرجات',
+                          onTap: () {
+                            int studentIdx = 0;
+                            void openVoiceDialog(int idx) {
+                              if (idx < 0 || idx >= model.students.length) return;
+                              studentIdx = idx;
+                              showDialog(
+                                context: context,
+                                builder: (_) => VoiceGradeInputDialog(
+                                  student: model.students[studentIdx],
+                                  columnName: 'الامتحان التحريري',
+                                  maxScore: model.writtenMaxScore,
+                                  onGradeConfirmed: (grade) {
+                                    controller.updateStudentScore(model.students[studentIdx].id, writtenScore: grade);
+                                  },
+                                  onNextStudent: () {
+                                    Navigator.pop(context);
+                                    if (studentIdx + 1 < model.students.length) {
+                                      openVoiceDialog(studentIdx + 1);
+                                    }
+                                  },
+                                  onPrevStudent: () {
+                                    Navigator.pop(context);
+                                    if (studentIdx - 1 >= 0) {
+                                      openVoiceDialog(studentIdx - 1);
+                                    }
+                                  },
+                                ),
+                              );
+                            }
+                            openVoiceDialog(0);
+                          },
+                        ),
 
                       // Merge / Manage Grade Icon Button
                       _buildIconButton(

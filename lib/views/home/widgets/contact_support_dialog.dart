@@ -1,18 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../../controllers/auth_controller.dart';
+import '../../../core/constants/app_constants.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../../../core/localization/translation_keys.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../models/app_user.dart';
 
 /// Modal dialog for Customer & Technical Support via WhatsApp, Phone, and Email
 class ContactSupportDialog extends StatelessWidget {
   const ContactSupportDialog({super.key});
 
-  static const String _phone = '+9647706118992';
-  static const String _rawPhone = '9647706118992';
-  static const String _email = 'asmaomar5566@gmail.com';
+  static const String _phone = AppConstants.supportPhone;
+  static const String _rawPhone = AppConstants.supportWhatsAppDigits;
+  static const String _email = AppConstants.supportEmail;
 
   Future<void> _launch(String url) async {
     final uri = Uri.parse(url);
@@ -96,11 +100,15 @@ class ContactSupportDialog extends StatelessWidget {
                   _buildCard(
                     context,
                     title: context.tr(AppKeys.chatWhatsapp),
-                    value: 'واتس آب: $_phone',
+                    value: 'واتس آب: ${AppConstants.supportPhoneLocal} ($_phone)',
                     icon: Icons.chat_rounded,
                     color: const Color(0xFF16A34A),
                     bgColor: const Color(0xFFF0FDF4),
-                    onAction: () => _launch('https://wa.me/$_rawPhone?text=${Uri.encodeComponent("السلام عليكم، أود الاستفسار حول تطبيق راصد الدرجات")}'),
+                    onAction: () {
+                      final user = context.read<AuthController>().currentUser;
+                      final msg = buildWhatsAppActivationMessage(user);
+                      _launch('https://wa.me/$_rawPhone?text=${Uri.encodeComponent(msg)}');
+                    },
                     onCopy: () => _copy(context, _phone),
                   ),
                   SizedBox(height: 10.h),
@@ -111,7 +119,7 @@ class ContactSupportDialog extends StatelessWidget {
                     icon: Icons.mail_outline_rounded,
                     color: const Color(0xFF2563EB),
                     bgColor: const Color(0xFFEFF6FF),
-                    onAction: () => _launch('mailto:$_email?subject=${Uri.encodeComponent("استفسار حول تطبيق راصد الدرجات")}'),
+                    onAction: () => _launch('mailto:$_email?subject=${Uri.encodeComponent("استفسار حول تطبيق ${AppConstants.appName}")}'),
                     onCopy: () => _copy(context, _email),
                   ),
                 ],

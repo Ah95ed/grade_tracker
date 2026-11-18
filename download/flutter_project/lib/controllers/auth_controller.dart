@@ -93,7 +93,7 @@ class AuthController extends ChangeNotifier {
         final now = DateTime.now().toIso8601String();
         final user = AppUser(
           uid: localId, email: cleanEmail, displayName: serverInfo?['user']?['displayName'] as String? ?? dispName,
-          subscriptionType: serverInfo?['user']?['subscriptionType'] as String? ?? 'monthly',
+          subscriptionType: serverInfo?['user']?['subscriptionType'] as String? ?? 'yearly',
           subscriptionStatus: status, createdAt: serverInfo?['user']?['createdAt'] as String? ?? now,
           expiresAt: serverInfo?['user']?['expiresAt'] as String?, lastActiveAt: now,
           token: idToken, refreshToken: refreshToken, tokenExpiresAt: tokenExpiresAt,
@@ -141,12 +141,15 @@ class AuthController extends ChangeNotifier {
         final tokenExpiresAt = DateTime.now().millisecondsSinceEpoch + (expSec * 1000);
         final localId = data['localId'] as String? ?? 'usr_${DateTime.now().millisecondsSinceEpoch}';
         try { await _apiService.registerUserWithCloudflare(uid: localId, email: cleanEmail, displayName: name, authProvider: 'email', token: idToken); } catch (_) {}
-        final now = DateTime.now().toIso8601String();
+        final nowDt = DateTime.now();
+        final now = nowDt.toIso8601String();
         final user = AppUser(
-          uid: localId, email: cleanEmail, displayName: name, subscriptionType: 'monthly',
-          subscriptionStatus: 'active', createdAt: now, lastActiveAt: now,
+          uid: localId, email: cleanEmail, displayName: name, subscriptionType: 'yearly',
+          subscriptionStatus: 'pending', createdAt: now,
+          expiresAt: nowDt.add(trialDuration).toIso8601String(),
+          lastActiveAt: now,
           token: idToken, refreshToken: refreshToken, tokenExpiresAt: tokenExpiresAt,
-          authProvider: 'email', isAdmin: cleanEmail == 'asmaomar5566@gmail.com',
+          authProvider: 'email', isAdmin: cleanEmail == 'asmaomar5566@gmail.com' || cleanEmail == 'm11287137@gmail.com',
         );
         _currentUser = user;
         await _storageService.saveCurrentUser(user);
@@ -276,10 +279,10 @@ class AuthController extends ChangeNotifier {
       try { await _apiService.registerUserWithCloudflare(uid: cleanUid, email: gEmail, displayName: gName ?? '', authProvider: 'google', token: fbToken); } catch (_) {}
       Map<String, dynamic>? serverInfo;
       try { serverInfo = await _apiService.fetchUserData(uid: cleanUid, email: gEmail, token: fbToken); } catch (_) {}
-      final status = serverInfo?['user']?['subscriptionStatus'] as String? ?? 'active';
+      final status = serverInfo?['user']?['subscriptionStatus'] as String? ?? 'pending';
       final user = AppUser(
         uid: cleanUid, email: gEmail, displayName: serverInfo?['user']?['displayName'] as String? ?? gName ?? '',
-        subscriptionType: serverInfo?['user']?['subscriptionType'] as String? ?? 'monthly', subscriptionStatus: status,
+        subscriptionType: serverInfo?['user']?['subscriptionType'] as String? ?? 'yearly', subscriptionStatus: status,
         createdAt: serverInfo?['user']?['createdAt'] as String? ?? now, expiresAt: serverInfo?['user']?['expiresAt'] as String?,
         lastActiveAt: now, authProvider: 'google',
         token: fbToken, refreshToken: refreshToken, tokenExpiresAt: tokenExpiresAt,
@@ -299,13 +302,62 @@ class AuthController extends ChangeNotifier {
     }
   }
 
+  /// True when the current user's subscription or 48h trial is expired (offline-safe)
+  bool get isSubscriptionExpiredNow {
+    if (_currentUser == null) return false;
+    return isSubscriptionExpired(_currentUser!, DateTime.now());
+  }
+
+  /// Updates lastActiveAt monotonically forward (supports anti-clock-rollback check)
+  Future<void> touchLastActiveAt({DateTime? now}) async {
+    if (_currentUser == null) return;
+    final current = now ?? DateTime.now();
+    final prev = _currentUser!.lastActiveAtDateTime;
+    // Never move lastActiveAt backwards so rollback detection stays effective
+    if (prev != null && current.isBefore(prev)) return;
+    _currentUser = _currentUser!.copyWith(lastActiveAt: current.toIso8601String());
+    await _storageService.saveCurrentUser(_currentUser!);
+  }
+
+  /// Checks live subscription status from server when online (Section 1.3)
+  Future<bool> checkLiveSubscription() async {
+    if (_currentUser == null) return false;
+    if (_currentUser!.isAdmin) return true;
+    try {
+      final token = await ensureValidToken();
+      final serverInfo = await _apiService.fetchUserData(
+        uid: _currentUser!.uid,
+        email: _currentUser!.email,
+        token: token,
+      );
+      final serverUser = serverInfo?['user'];
+      if (serverUser is Map<String, dynamic>) {
+        final updated = _currentUser!.copyWith(
+          subscriptionType: serverUser['subscriptionType'] as String? ?? _currentUser!.subscriptionType,
+          subscriptionStatus: serverUser['subscriptionStatus'] as String? ?? _currentUser!.subscriptionStatus,
+          expiresAt: serverUser['expiresAt'] as String? ?? _currentUser!.expiresAt,
+          isAdmin: serverUser['isAdmin'] == true || serverUser['isAdmin'] == 1 || _currentUser!.isAdmin,
+          lastActiveAt: DateTime.now().toIso8601String(),
+        );
+        _currentUser = updated;
+        await _storageService.saveCurrentUser(updated);
+        _isOnline = true;
+        notifyListeners();
+        return !isSubscriptionExpired(updated, DateTime.now());
+      }
+    } catch (_) {
+      // Offline fallback uses local expiresAt + 6-step check
+    }
+    return !isSubscriptionExpiredNow;
+  }
+
   Future<void> startFreeTrial() async {
     final rnd = DateTime.now().millisecondsSinceEpoch % 100000;
     final now = DateTime.now();
     final trialUser = AppUser(
       uid: 'trial-$rnd', email: 'demo_$rnd@daragat.local', displayName: 'مستخدم تجريبي ($rnd)',
-      isTrial: true, subscriptionType: 'trial', subscriptionStatus: 'active',
-      createdAt: now.toIso8601String(), expiresAt: now.add(const Duration(minutes: 5)).toIso8601String(),
+      isTrial: true, subscriptionType: 'yearly', subscriptionStatus: 'pending',
+      createdAt: now.toIso8601String(), expiresAt: now.add(trialDuration).toIso8601String(),
       lastActiveAt: now.toIso8601String(), authProvider: 'trial',
     );
     _currentUser = trialUser;

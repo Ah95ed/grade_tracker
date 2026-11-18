@@ -6,6 +6,7 @@ import '../../../controllers/monthly_sheet_controller.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../common/confirm_dialog.dart';
 import 'create_term_dialog.dart';
+import '../../../features/term_calculation/widgets/term_student_cards_modal.dart';
 
 /// Term Selector and Monthly Models Checkbox bar matching Daragat Web App
 class TermSelectorBar extends StatelessWidget {
@@ -24,43 +25,86 @@ class TermSelectorBar extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // 1. Full-width "+ إضافة فصل جديد" Terracotta Button
-          InkWell(
-            onTap: () => showDialog(
-              context: context,
-              builder: (_) => const CreateTermDialog(),
-            ),
-            borderRadius: BorderRadius.circular(16.r),
-            child: Container(
-              padding: EdgeInsets.symmetric(vertical: 12.h, horizontal: 20.w),
-              decoration: BoxDecoration(
-                color: AppColors.termRust, // #B86848
-                borderRadius: BorderRadius.circular(16.r),
-                border: Border.all(color: const Color(0xFF944D30), width: 1.5),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.termRust.withValues(alpha: 0.28),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
+          // 1. Full-width "+ إضافة فصل جديد" & "كروت نتائج الفصل" Row
+          Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: InkWell(
+                  onTap: () => showDialog(
+                    context: context,
+                    builder: (_) => const CreateTermDialog(),
                   ),
-                ],
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.add_rounded, size: 20.r, color: Colors.white),
-                  SizedBox(width: 8.w),
-                  Text(
-                    'إضافة فصل جديد',
-                    style: TextStyle(
-                      fontSize: 14.sp,
-                      fontWeight: FontWeight.w900,
-                      color: Colors.white,
+                  borderRadius: BorderRadius.circular(16.r),
+                  child: Container(
+                    padding: EdgeInsets.symmetric(vertical: 12.h, horizontal: 16.w),
+                    decoration: BoxDecoration(
+                      color: AppColors.termRust, // #B86848
+                      borderRadius: BorderRadius.circular(16.r),
+                      border: Border.all(color: const Color(0xFF944D30), width: 1.5),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.termRust.withValues(alpha: 0.28),
+                          blurRadius: 6,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.add_rounded, size: 20.r, color: Colors.white),
+                        SizedBox(width: 6.w),
+                        Text(
+                          'إضافة فصل جديد',
+                          style: TextStyle(
+                            fontSize: 13.5.sp,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
+                ),
               ),
-            ),
+              if (activeTerm != null) ...[
+                SizedBox(width: 8.w),
+                Expanded(
+                  flex: 1,
+                  child: InkWell(
+                    onTap: () => showDialog(
+                      context: context,
+                      builder: (_) => const TermStudentCardsModal(),
+                    ),
+                    borderRadius: BorderRadius.circular(16.r),
+                    child: Container(
+                      padding: EdgeInsets.symmetric(vertical: 12.h, horizontal: 10.w),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFAF7EC),
+                        borderRadius: BorderRadius.circular(16.r),
+                        border: Border.all(color: const Color(0xFFB86848), width: 1.5),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.badge_outlined, size: 18.r, color: const Color(0xFFB86848)),
+                          SizedBox(width: 4.w),
+                          Text(
+                            'كروت النتائج',
+                            style: TextStyle(
+                              fontSize: 12.sp,
+                              fontWeight: FontWeight.bold,
+                              color: const Color(0xFFB86848),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
           SizedBox(height: 10.h),
 

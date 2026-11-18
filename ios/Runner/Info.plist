@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Grade Tracker</string>
+	<string>رصد الدرجات للطلاب</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -24,6 +24,10 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>يحتاج تطبيق رصد الدرجات للوصول إلى الميكروفون لتمكين ميزة الإدخال الصوتي السريع لدرجات الطلاب.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>يستخدم التطبيق التعرف الصوتي لتحويل الكلمات والدرجات المنطوقة باللغة العربية إلى أرقام مسجلة في كشف الدرجات.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>

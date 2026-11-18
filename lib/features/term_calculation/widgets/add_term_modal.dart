@@ -44,7 +44,9 @@ class _AddTermModalState extends State<AddTermModal> {
   final _teacherController = TextEditingController();
 
   final String _calcMode = 'average';
+  String _sourceType = 'models'; // 'models', 'terms', 'mixed'
   final Set<String> _selectedModelIds = {};
+  final Set<String> _selectedTermIds = {};
   List<String> _selectedSections = [];
   bool _showAllMonths = false;
   bool _showValidation = false;
@@ -195,6 +197,7 @@ class _AddTermModalState extends State<AddTermModal> {
     final teacher = _teacherController.text.trim();
 
     final matchingTeachers = _getMatchingTeachers(models, grade, subject);
+    final availableTerms = context.watch<TermController>().terms;
     final availableMonths = _getAvailableMonths(models, grade, subject, teacher);
 
     final availableSubjects = models
@@ -474,7 +477,119 @@ class _AddTermModalState extends State<AddTermModal> {
                       ],
                       SizedBox(height: 14.h),
 
+                      // 6. Source Type Selector (Section 4.4: كشوف الشهور / فصول سابقة / كلاهما)
+                      _buildHeader('مصدر بيانات الفصل الدراسي:', isMandatory: false),
+                      SizedBox(height: 6.h),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildChip(
+                              label: 'كشوف الشهور',
+                              isSelected: _sourceType == 'models',
+                              onTap: () => setState(() => _sourceType = 'models'),
+                            ),
+                          ),
+                          SizedBox(width: 6.w),
+                          Expanded(
+                            child: _buildChip(
+                              label: 'فصول سابقة (سعي سنوي)',
+                              isSelected: _sourceType == 'terms',
+                              onTap: () => setState(() => _sourceType = 'terms'),
+                            ),
+                          ),
+                          SizedBox(width: 6.w),
+                          Expanded(
+                            child: _buildChip(
+                              label: 'كلاهما (تجميعي)',
+                              isSelected: _sourceType == 'mixed',
+                              onTap: () => setState(() => _sourceType = 'mixed'),
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 14.h),
+
+                      // Previous Terms Selection (if terms or mixed)
+                      if (_sourceType == 'terms' || _sourceType == 'mixed') ...[
+                        Container(
+                          padding: EdgeInsets.all(12.r),
+                          margin: EdgeInsets.only(bottom: 14.h),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF0FDF4),
+                            borderRadius: BorderRadius.circular(14.r),
+                            border: Border.all(color: const Color(0xFFBBF7D0)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Icon(Icons.layers_rounded, size: 18.r, color: const Color(0xFF16A34A)),
+                                      SizedBox(width: 6.w),
+                                      Text(
+                                        'الفصول السابقة المعتمدة في التجميع:',
+                                        style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w900, color: const Color(0xFF14532D)),
+                                      ),
+                                    ],
+                                  ),
+                                  Text(
+                                    '${_selectedTermIds.length} من ${availableTerms.length} فصول',
+                                    style: TextStyle(fontSize: 10.5.sp, fontWeight: FontWeight.bold, color: const Color(0xFF16A34A)),
+                                  ),
+                                ],
+                              ),
+                              SizedBox(height: 8.h),
+                              if (availableTerms.isEmpty)
+                                Text(
+                                  'لا توجد فصول دراسية سابقة مضافة حتى الآن.',
+                                  style: TextStyle(fontSize: 11.sp, color: const Color(0xFF15803D)),
+                                )
+                              else
+                                Wrap(
+                                  spacing: 6.w,
+                                  runSpacing: 6.h,
+                                  children: availableTerms.map((t) {
+                                    final isSel = _selectedTermIds.contains(t.id);
+                                    return InkWell(
+                                      onTap: () {
+                                        setState(() {
+                                          if (isSel) {
+                                            _selectedTermIds.remove(t.id);
+                                          } else {
+                                            _selectedTermIds.add(t.id);
+                                          }
+                                        });
+                                      },
+                                      borderRadius: BorderRadius.circular(8.r),
+                                      child: Container(
+                                        padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 5.h),
+                                        decoration: BoxDecoration(
+                                          color: isSel ? const Color(0xFF16A34A) : Colors.white,
+                                          borderRadius: BorderRadius.circular(8.r),
+                                          border: Border.all(color: isSel ? const Color(0xFF15803D) : const Color(0xFFCBD5E1)),
+                                        ),
+                                        child: Text(
+                                          t.name,
+                                          style: TextStyle(
+                                            fontSize: 11.sp,
+                                            fontWeight: isSel ? FontWeight.bold : FontWeight.w500,
+                                            color: isSel ? Colors.white : const Color(0xFF1E293B),
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  }).toList(),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+
                       // 7. Months Selection Container
+                      if (_sourceType != 'terms')
                       Container(
                         padding: EdgeInsets.all(12.r),
                         decoration: BoxDecoration(
@@ -831,8 +946,10 @@ class _AddTermModalState extends State<AddTermModal> {
                           gradeLevel: g,
                           teacherName: t,
                           assignedSections: _selectedSections,
-                          selectedModelIds: _selectedModelIds.toList(),
-                          calculationMode: _selectedModelIds.length > 1 ? _calcMode : 'single',
+                          selectedModelIds: _sourceType == 'terms' ? const [] : _selectedModelIds.toList(),
+                          selectedTermIds: _sourceType == 'models' ? const [] : _selectedTermIds.toList(),
+                          sourceType: _sourceType,
+                          calculationMode: (_selectedModelIds.length + _selectedTermIds.length) > 1 ? _calcMode : 'single',
                         );
 
                         if (widget.onSubmit != null) {

@@ -331,6 +331,29 @@ class _AdminDashboardDialogState extends State<AdminDashboardDialog> {
                                             email,
                                             style: TextStyle(fontSize: 11.sp, color: const Color(0xFF64748B)),
                                           ),
+                                          SizedBox(height: 6.h),
+                                          Wrap(
+                                            spacing: 6.w,
+                                            runSpacing: 4.h,
+                                            children: [
+                                              _quickActionChip(
+                                                label: 'تفعيل سنوي (سنة)',
+                                                color: const Color(0xFF16A34A),
+                                                filled: true,
+                                                onTap: () => _updateSubscription(u, 'yearly', 'active', days: 365),
+                                              ),
+                                              _quickActionChip(
+                                                label: 'تفعيل دائم (مدى الحياة)',
+                                                color: const Color(0xFF7C3AED),
+                                                onTap: () => _updateSubscription(u, 'lifetime', 'active'),
+                                              ),
+                                              _quickActionChip(
+                                                label: 'شهري (30 يوم)',
+                                                color: const Color(0xFF2563EB),
+                                                onTap: () => _updateSubscription(u, 'monthly', 'active', days: 30),
+                                              ),
+                                            ],
+                                          ),
                                         ],
                                       ),
                                     ),
@@ -338,14 +361,14 @@ class _AdminDashboardDialogState extends State<AdminDashboardDialog> {
                                       icon: const Icon(Icons.more_vert_rounded),
                                       onSelected: (action) {
                                         switch (action) {
-                                          case 'activate_month':
-                                            _updateSubscription(u, 'monthly', 'active', days: 30);
-                                            break;
                                           case 'activate_year':
                                             _updateSubscription(u, 'yearly', 'active', days: 365);
                                             break;
                                           case 'activate_lifetime':
                                             _updateSubscription(u, 'lifetime', 'active');
+                                            break;
+                                          case 'activate_month':
+                                            _updateSubscription(u, 'monthly', 'active', days: 30);
                                             break;
                                           case 'freeze':
                                             _updateSubscription(u, subType, 'cancelled');
@@ -360,16 +383,16 @@ class _AdminDashboardDialogState extends State<AdminDashboardDialog> {
                                       },
                                       itemBuilder: (_) => [
                                         const PopupMenuItem(
-                                          value: 'activate_month',
-                                          child: Text('تفعيل لمدة شهر (30 يوم)'),
-                                        ),
-                                        const PopupMenuItem(
                                           value: 'activate_year',
-                                          child: Text('تفعيل سنوي (365 يوم)'),
+                                          child: Text('تفعيل سنوي (سنة - 365 يوم) ⭐', style: TextStyle(fontWeight: FontWeight.bold)),
                                         ),
                                         const PopupMenuItem(
                                           value: 'activate_lifetime',
                                           child: Text('تفعيل دائم (مدى الحياة)'),
+                                        ),
+                                        const PopupMenuItem(
+                                          value: 'activate_month',
+                                          child: Text('تفعيل شهري (30 يوم)'),
                                         ),
                                         if (status != 'cancelled')
                                           const PopupMenuItem(
@@ -477,6 +500,34 @@ class _AdminDashboardDialogState extends State<AdminDashboardDialog> {
         border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
       child: Text(type, style: TextStyle(fontSize: 9.sp, color: const Color(0xFF64748B))),
+    );
+  }
+
+  Widget _quickActionChip({
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+    bool filled = false,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(6.r),
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
+        decoration: BoxDecoration(
+          color: filled ? color : color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(6.r),
+          border: Border.all(color: color.withValues(alpha: filled ? 1.0 : 0.4)),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 9.5.sp,
+            fontWeight: FontWeight.bold,
+            color: filled ? Colors.white : color,
+          ),
+        ),
+      ),
     );
   }
 }

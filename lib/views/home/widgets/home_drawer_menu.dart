@@ -18,6 +18,9 @@ import 'delete_account_dialog.dart';
 import 'import_backup_dialog.dart';
 import 'drawer_user_header.dart';
 import '../../admin/admin_dashboard_dialog.dart';
+import '../../teacher_personal/teacher_personal_workspace_dialog.dart';
+import '../../monthly_sheet/widgets/batch_import_modal.dart';
+import '../../../features/term_calculation/widgets/term_student_cards_modal.dart';
 
 /// Modal bottom sheet providing all system tools, database options, and settings
 class HomeDrawerMenu extends StatelessWidget {
@@ -84,6 +87,39 @@ class HomeDrawerMenu extends StatelessWidget {
                 onTap: () {
                   Navigator.of(context).pop();
                   localeCtrl.toggleLanguage();
+                },
+              ),
+              _buildSectionHeader('المساحة الشخصية وأدوات التدريس'),
+              _buildTile(
+                icon: Icons.person_pin_rounded,
+                color: const Color(0xFF4338CA),
+                title: 'المساحة الشخصية للمعلم',
+                trailing: Container(
+                  padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
+                  decoration: BoxDecoration(color: const Color(0xFFEEF2FF), borderRadius: BorderRadius.circular(6.r)),
+                  child: Text('جدول • مذكرات • تنبيهات', style: TextStyle(fontSize: 8.5.sp, fontWeight: FontWeight.bold, color: const Color(0xFF4338CA))),
+                ),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  showDialog(context: context, builder: (_) => const TeacherPersonalWorkspaceDialog());
+                },
+              ),
+              _buildTile(
+                icon: Icons.file_upload_outlined,
+                color: const Color(0xFF2563EB),
+                title: 'الاستيراد الدفعي للطلاب (Excel / CSV)',
+                onTap: () {
+                  Navigator.of(context).pop();
+                  showDialog(context: context, builder: (_) => const BatchImportModal());
+                },
+              ),
+              _buildTile(
+                icon: Icons.workspace_premium_outlined,
+                color: const Color(0xFFB86848),
+                title: 'كروت وبطاقات نتائج الفصل',
+                onTap: () {
+                  Navigator.of(context).pop();
+                  showDialog(context: context, builder: (_) => const TermStudentCardsModal());
                 },
               ),
               _buildSectionHeader(context.tr(AppKeys.backupAndDatabase)),
