@@ -16,6 +16,7 @@ class TeacherInfo {
 /// Standalone Modal Dialog for creating a new Term (فصل دراسي)
 /// Fulfills all 17 requirements of Phase 6 matching React AddTermModal.tsx
 class AddTermModal extends StatefulWidget {
+  final TermModel? termToEdit;
   final String? initialGrade;
   final String? initialSubject;
   final String? initialTeacher;
@@ -25,6 +26,7 @@ class AddTermModal extends StatefulWidget {
 
   const AddTermModal({
     super.key,
+    this.termToEdit,
     this.initialGrade,
     this.initialSubject,
     this.initialTeacher,
@@ -61,55 +63,67 @@ class _AddTermModalState extends State<AddTermModal> {
       final models = context.read<MonthlySheetController>().models;
       final existingTerms = context.read<TermController>().terms;
 
-      // 1. Suggest Term Name
-      if (widget.defaultName != null && widget.defaultName!.isNotEmpty) {
-        _nameController.text = widget.defaultName!;
+      // 1. Prefill or Suggest Term Name
+      if (widget.termToEdit != null) {
+        final term = widget.termToEdit!;
+        _nameController.text = term.name;
+        _subjectController.text = term.subject;
+        _gradeController.text = term.gradeLevel;
+        _teacherController.text = term.teacherName;
+        _selectedSections = List.from(term.assignedSections);
+        _selectedModelIds.addAll(term.selectedModelIds);
+        _selectedTermIds.addAll(term.selectedTermIds);
+        _sourceType = term.sourceType;
       } else {
-        final nextNum = existingTerms.length + 1;
-        if (profile.isUniversity) {
-          _nameController.text = nextNum == 1
-              ? 'الكورس الأول'
-              : (nextNum == 2 ? 'الكورس الثاني' : 'السعي السنوي');
+        if (widget.defaultName != null && widget.defaultName!.isNotEmpty) {
+          _nameController.text = widget.defaultName!;
         } else {
-          _nameController.text = nextNum == 1
-              ? 'الفصل الأول'
-              : (nextNum == 2 ? 'الفصل الثاني' : 'الفصل $nextNum');
+          final nextNum = existingTerms.length + 1;
+          if (profile.isUniversity) {
+            _nameController.text = nextNum == 1
+                ? 'الكورس الأول'
+                : (nextNum == 2 ? 'الكورس الثاني' : 'السعي السنوي');
+          } else {
+            _nameController.text = nextNum == 1
+                ? 'الفصل الأول'
+                : (nextNum == 2 ? 'الفصل الثاني' : 'الفصل $nextNum');
+          }
         }
-      }
 
-      // 2. Prefill Subject
-      final initSub = widget.initialSubject ??
-          (profile.subject.isNotEmpty
-              ? profile.subject
-              : (models.isNotEmpty ? models.last.subject : ''));
-      _subjectController.text = initSub;
+        // 2. Prefill Subject
+        final initSub = widget.initialSubject ??
+            (profile.subject.isNotEmpty
+                ? profile.subject
+                : (models.isNotEmpty ? models.last.subject : ''));
+        _subjectController.text = initSub;
 
-      // 3. Prefill Grade
-      final initGrade = widget.initialGrade ??
-          (models.isNotEmpty && models.last.gradeLevel.isNotEmpty
-              ? models.last.gradeLevel
-              : '');
-      _gradeController.text = initGrade;
+        // 3. Prefill Grade
+        final initGrade = widget.initialGrade ??
+            (models.isNotEmpty && models.last.gradeLevel.isNotEmpty
+                ? models.last.gradeLevel
+                : '');
+        _gradeController.text = initGrade;
 
-      // 4. Prefill Teacher
-      final initTeacher = widget.initialTeacher ??
-          (profile.teacherName.isNotEmpty ? profile.teacherName : '');
-      _teacherController.text = initTeacher;
+        // 4. Prefill Teacher
+        final initTeacher = widget.initialTeacher ??
+            (profile.teacherName.isNotEmpty ? profile.teacherName : '');
+        _teacherController.text = initTeacher;
 
-      if (widget.initialSections != null && widget.initialSections!.isNotEmpty) {
-        _selectedSections = List.from(widget.initialSections!);
-      }
-
-      // 7. Auto pre-select matching months
-      for (final m in models) {
-        if (_isMonthMatching(m, initGrade, initSub, initTeacher)) {
-          _selectedModelIds.add(m.id);
+        if (widget.initialSections != null && widget.initialSections!.isNotEmpty) {
+          _selectedSections = List.from(widget.initialSections!);
         }
-      }
-      if (_selectedModelIds.isEmpty && models.isNotEmpty) {
-        // If no strict match, pre-select all for convenience
+
+        // 7. Auto pre-select matching months
         for (final m in models) {
-          _selectedModelIds.add(m.id);
+          if (_isMonthMatching(m, initGrade, initSub, initTeacher)) {
+            _selectedModelIds.add(m.id);
+          }
+        }
+        if (_selectedModelIds.isEmpty && models.isNotEmpty) {
+          // If no strict match, pre-select all for convenience
+          for (final m in models) {
+            _selectedModelIds.add(m.id);
+          }
         }
       }
     }
@@ -254,7 +268,9 @@ class _AddTermModalState extends State<AddTermModal> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            isUniversity ? 'إضافة كورس / فصل دراسي جديد' : 'إضافة فصل دراسي جديد',
+                            widget.termToEdit != null
+                                ? 'تعديل بيانات الفصل الدراسي'
+                                : (isUniversity ? 'إضافة كورس / فصل دراسي جديد' : 'إضافة فصل دراسي جديد'),
                             style: TextStyle(
                               fontSize: 14.5.sp,
                               fontWeight: FontWeight.w900,
@@ -939,8 +955,13 @@ class _AddTermModalState extends State<AddTermModal> {
                         final g = _gradeController.text.trim();
                         final t = _teacherController.text.trim();
 
-                        final newTerm = TermModel(
-                          id: 'term_${DateTime.now().millisecondsSinceEpoch}',
+                        final isEditing = widget.termToEdit != null;
+                        final termId = isEditing
+                            ? widget.termToEdit!.id
+                            : 'term_${DateTime.now().millisecondsSinceEpoch}';
+
+                        final savedTerm = TermModel(
+                          id: termId,
                           name: name,
                           subject: sub,
                           gradeLevel: g,
@@ -953,15 +974,17 @@ class _AddTermModalState extends State<AddTermModal> {
                         );
 
                         if (widget.onSubmit != null) {
-                          widget.onSubmit!(newTerm);
+                          widget.onSubmit!(savedTerm);
+                        } else if (isEditing) {
+                          context.read<TermController>().updateTerm(savedTerm);
                         } else {
-                          context.read<TermController>().addTerm(newTerm);
+                          context.read<TermController>().addTerm(savedTerm);
                         }
                         Navigator.of(context).pop();
                       },
                       icon: const Icon(Icons.check_rounded, color: Colors.white, size: 16),
                       label: Text(
-                        'حفظ وإنشاء الفصل',
+                        widget.termToEdit != null ? 'حفظ تعديلات الفصل' : 'حفظ وإنشاء الفصل',
                         style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.bold, color: Colors.white),
                       ),
                       style: ElevatedButton.styleFrom(

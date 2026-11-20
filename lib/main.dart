@@ -6,7 +6,6 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
-
 import 'firebase_options.dart';
 import 'core/constants/app_constants.dart';
 import 'core/localization/app_localizations.dart';
@@ -109,12 +108,12 @@ class GradeTrackerApp extends StatelessWidget {
               ],
               home: Consumer<AuthController>(
                 builder: (context, auth, _) {
-                  return auth.isAuthenticated
-                      ? const HomeScreen()
-                      : const AuthScreen();
-                },
-                // return const HomeScreen();
+                //   return auth.isAuthenticated
+                //       ? const HomeScreen()
+                //       : const AuthScreen();
                 // },
+                return const HomeScreen();
+                },
               ),
             );
           },
