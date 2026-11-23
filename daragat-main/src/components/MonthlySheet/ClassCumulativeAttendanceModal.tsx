@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { MonthlyModel, StudentRow } from '../../types';
 import { X, Calendar, Search, Printer, FileSpreadsheet, CheckCircle2, Clock, XCircle } from 'lucide-react';
 import { isGradeLevelMatch, isSectionMatch } from '../../utils/gradeAndSectionMatcher';
+import { triggerPrint } from '../../utils/printHelper';
 
 interface Props {
   isOpen: boolean;
@@ -110,15 +111,15 @@ export const ClassCumulativeAttendanceModal: React.FC<Props> = ({
   );
 
   const handlePrint = () => {
-    window.print();
+    triggerPrint();
   };
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4 animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4 animate-in fade-in duration-150 single-card-modal-backdrop"
       dir="rtl"
     >
-      <div className="bg-[#FAF7EC] rounded-2xl shadow-2xl border border-[#D8CEBD] w-full max-w-3xl max-h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150 font-['Cairo',sans-serif]">
+      <div className="bg-[#FAF7EC] rounded-2xl shadow-2xl border border-[#D8CEBD] w-full max-w-3xl max-h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150 font-['Cairo',sans-serif] single-card-modal-content print:max-h-none print:overflow-visible print:shadow-none print:border-none">
         {/* Header */}
         <div className="px-5 py-4 bg-gradient-to-l from-[#2D5A43] to-[#3E7D5D] text-white flex items-center justify-between shrink-0 shadow-xs">
           <div className="flex items-center gap-2.5">
@@ -141,14 +142,14 @@ export const ClassCumulativeAttendanceModal: React.FC<Props> = ({
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 text-white/80 hover:text-white rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+            className="p-1.5 text-white/80 hover:text-white rounded-lg hover:bg-white/10 transition-colors cursor-pointer no-print"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Toolbar: Search & Print */}
-        <div className="p-3 bg-white border-b border-[#D8CEBD] flex items-center justify-between gap-3 shrink-0 flex-wrap">
+        <div className="p-3 bg-white border-b border-[#D8CEBD] flex items-center justify-between gap-3 shrink-0 flex-wrap no-print">
           <div className="relative flex-1 min-w-[200px]">
             <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
             <input
@@ -171,8 +172,8 @@ export const ClassCumulativeAttendanceModal: React.FC<Props> = ({
         </div>
 
         {/* Table Body */}
-        <div className="p-4 overflow-y-auto flex-1">
-          <div className="border border-[#D8CEBD] rounded-xl overflow-hidden bg-white shadow-2xs">
+        <div className="p-4 overflow-y-auto flex-1 print:overflow-visible print:max-h-none print:p-0">
+          <div className="border border-[#D8CEBD] rounded-xl overflow-hidden print:overflow-visible bg-white shadow-2xs">
             <table className="w-full text-right text-xs">
               <thead className="bg-[#EFE8D8] text-[#2F2822] font-black border-b border-[#D8CEBD]">
                 <tr>

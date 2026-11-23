@@ -20,7 +20,9 @@ import {
   isTestProfile,
   DEFAULT_TEACHER_PROFILE,
   harmonizeStudentIds,
+  normalizeLegacyDefaultAcademicYear,
 } from './utils/storage';
+import { getCurrentAcademicYear } from './utils/dateUtils';
 import {
   saveModelsToIndexedDB,
   saveTermsToIndexedDB,
@@ -56,6 +58,7 @@ import {
   updateUserRoleOnline,
   getAllUsers,
   isAdminUser,
+  saveCachedIdToken,
   SUPPORT_PHONE_NUMBER,
 } from './utils/auth';
 import { AuthScreen } from './components/Auth/AuthScreen';
@@ -72,7 +75,27 @@ import { ReportCardsView } from './components/ReportCards/ReportCardsView';
 import { TeacherSettingsModal } from './components/TeacherSettingsModal';
 import { ScoreRoundingModal } from './components/MonthlySheet/ScoreRoundingModal';
 import { PrivacyPolicyView } from './components/PrivacyPolicy/PrivacyPolicyView';
+import { IosPrintHelperModal } from './components/Common/IosPrintHelperModal';
+import { subscribeIosPrintHelper, PrintPlatformStatus, getIOSPrintStatus } from './utils/printHelper';
+import {
+  TeacherPersonalFloatingButton,
+  TeacherPersonalModal,
+  TeacherAlertBanner,
+  TeacherPersonalTab,
+} from './components/TeacherPersonal/TeacherPersonalModal';
+import { TeacherPersonalData, TeacherAlert } from './types/teacherPersonal';
+import {
+  loadTeacherPersonalData,
+  saveTeacherPersonalData,
+  evaluateDueAlertKey,
+  playAlertChime,
+} from './utils/teacherPersonalStorage';
 import { ShieldCheck, Cloud, CheckCircle2, RefreshCw } from 'lucide-react';
+import {
+  NumeralMode,
+  NUMERAL_MODE_STORAGE_KEY,
+  getSavedNumeralMode,
+} from './utils/numeralFormat';
 
 // Check if teacher and school profile has been completed (First-time entrance setup)
 export const isProfileComplete = (p: TeacherProfile | null): boolean => {
@@ -139,10 +162,126 @@ export default function App() {
   // Teacher profile modal state: only open if user is logged in, profile incomplete, and not dismissed
   const [hasDismissedProfileModal, setHasDismissedProfileModal] = useState<boolean>(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
+  const [highlightProfileSubject, setHighlightProfileSubject] = useState<boolean>(false);
+  const [reopenCreateModelNonce, setReopenCreateModelNonce] = useState<number>(0);
+  const returnToCreateModelRef = useRef<boolean>(false);
   const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
   const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
   const [isRoundingModalOpen, setIsRoundingModalOpen] = useState(false);
+  const [iosPrintHelperStatus, setIosPrintHelperStatus] = useState<PrintPlatformStatus | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [numeralMode, setNumeralMode] = useState<NumeralMode>(() => getSavedNumeralMode());
+
+  const handleNumeralModeChange = useCallback((mode: NumeralMode) => {
+    setNumeralMode(mode);
+    try {
+      localStorage.setItem(NUMERAL_MODE_STORAGE_KEY, mode);
+    } catch {}
+  }, []);
+
+  // Personal teacher workspace (weekly schedule, notes, alerts) scoped per user
+  const [personalData, setPersonalData] = useState<TeacherPersonalData>(() =>
+    loadTeacherPersonalData(initialCurUser?.uid)
+  );
+  const [isPersonalModalOpen, setIsPersonalModalOpen] = useState(false);
+  const [personalModalTab, setPersonalModalTab] = useState<TeacherPersonalTab>('schedule');
+  const [ringingAlerts, setRingingAlerts] = useState<TeacherAlert[]>([]);
+
+  useEffect(() => {
+    setPersonalData(loadTeacherPersonalData(currentUser?.uid));
+    setRingingAlerts([]);
+  }, [currentUser?.uid]);
+
+  const handleUpdatePersonalData = useCallback(
+    (next: TeacherPersonalData) => {
+      setPersonalData(next);
+      saveTeacherPersonalData(next, currentUser?.uid);
+    },
+    [currentUser?.uid]
+  );
+
+  // Check teacher personal alerts every 15 seconds when logged in
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const checkDueAlerts = () => {
+      const now = new Date();
+      let didTriggerAny = false;
+      const newlyTriggered: TeacherAlert[] = [];
+      let playSound = false;
+
+      const updatedAlerts = personalData.alerts.map((alert) => {
+        const occKey = evaluateDueAlertKey(alert, now);
+        if (!occKey) return alert;
+
+        didTriggerAny = true;
+        if (alert.soundEnabled) playSound = true;
+        newlyTriggered.push(alert);
+
+        return {
+          ...alert,
+          lastTriggeredKey: occKey,
+          snoozeUntil: undefined,
+        };
+      });
+
+      if (didTriggerAny) {
+        const nextData: TeacherPersonalData = {
+          ...personalData,
+          alerts: updatedAlerts,
+        };
+        setPersonalData(nextData);
+        saveTeacherPersonalData(nextData, currentUser.uid);
+
+        if (playSound) {
+          playAlertChime();
+        }
+
+        setRingingAlerts((prev) => {
+          const existingIds = new Set(prev.map((a) => a.id));
+          const uniqueNew = newlyTriggered.filter((a) => !existingIds.has(a.id));
+          return [...uniqueNew, ...prev];
+        });
+
+        if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+          newlyTriggered.forEach((a) => {
+            try {
+              new Notification(`تنبيه المعلم: ${a.title}`, {
+                body: a.note || `الموعد: ${a.time}`,
+                icon: '/icon.svg',
+              });
+            } catch {}
+          });
+        }
+      }
+    };
+
+    checkDueAlerts();
+    const timer = window.setInterval(checkDueAlerts, 15000);
+    return () => window.clearInterval(timer);
+  }, [currentUser, personalData]);
+
+  const handleDismissRingingAlert = (alertId: string) => {
+    setRingingAlerts((prev) => prev.filter((a) => a.id !== alertId));
+  };
+
+  const handleSnoozeRingingAlert = (alertId: string, minutes = 10) => {
+    const snoozeDate = new Date(Date.now() + minutes * 60 * 1000).toISOString();
+    const nextData: TeacherPersonalData = {
+      ...personalData,
+      alerts: personalData.alerts.map((a) =>
+        a.id === alertId ? { ...a, snoozeUntil: snoozeDate } : a
+      ),
+    };
+    handleUpdatePersonalData(nextData);
+    setRingingAlerts((prev) => prev.filter((a) => a.id !== alertId));
+  };
+
+  useEffect(() => {
+    return subscribeIosPrintHelper((status) => {
+      setIosPrintHelperStatus(status || getIOSPrintStatus());
+    });
+  }, []);
 
   // Guards against race conditions wiping local data before/during loading or on logout
   const isDataLoadedRef = useRef<boolean>(false);
@@ -216,7 +355,14 @@ export default function App() {
 
       const finalModels = idbModels || [];
       const finalTerms = idbTerms || [];
-      const finalProfile = (idbProfile && !isTestProfile(idbProfile)) ? idbProfile : DEFAULT_TEACHER_PROFILE;
+      const rawProfile = (idbProfile && !isTestProfile(idbProfile))
+        ? idbProfile
+        : { ...DEFAULT_TEACHER_PROFILE, academicYear: getCurrentAcademicYear() };
+      const { profile: finalProfile, migrated: profileMigrated } = normalizeLegacyDefaultAcademicYear(rawProfile, targetUid);
+      if (profileMigrated) {
+        saveProfile(finalProfile, targetUid);
+        saveProfileToIndexedDB(finalProfile, targetUid).catch(() => {});
+      }
 
       setModels(finalModels);
       setTerms(finalTerms);
@@ -238,23 +384,43 @@ export default function App() {
       await syncAuthWithIndexedDB();
       const cur = getCurrentUser();
       if (cur) {
-        setCurrentUser(cur);
-        await loadUserData(cur.uid);
-
-        // Re-evaluate cancelled account info in case IndexedDB had it
-        if (!cur.isAdmin && (cur.subscriptionStatus === 'cancelled' || isAccountCancelled(cur.email))) {
-          setCancelledAccountInfo({
+        const isAnonDemo = cur.authProvider === 'trial' || cur.uid?.startsWith('trial-') || cur.email?.includes('@jok.nom');
+        if (!cur.isAdmin && !isAnonDemo && (cur.subscriptionStatus === 'cancelled' || isAccountCancelled(cur.email))) {
+          const cancelInfo = {
             email: cur.email,
             message: 'تم إلغاء حسابك من قِبل إدارة النظام.',
-          });
+          };
+          setCancelledAccountInfo(cancelInfo);
+          setCurrentUser(null);
+        } else {
+          setCurrentUser(cur);
         }
+        await loadUserData(cur.uid);
 
-        // مصالحة عند بدء التشغيل: إذا كان المستخدم مسجلاً دخوله والسيرفر لا يعرفه -> ننشئ سجله تلقائياً
-        if (cur.authProvider !== 'trial' && !cur.uid?.startsWith('trial-') && !cur.email?.includes('@jok.nom') && !cur.isAdmin) {
-          reconcileCurrentUserWithServer().then((updated) => {
-            if (updated) {
-              setCurrentUser(updated);
+        // مصالحة عند بدء التشغيل: إذا كان المستخدم مسجلاً دخوله والسيرفر لا يعرفه -> ننشئ سجله تلقائياً ونحدّث اشتراكه
+        if (!isAnonDemo && !cur.isAdmin) {
+          reconcileCurrentUserWithServer().then(async (updated) => {
+            if (!updated) return;
+            if (updated.subscriptionStatus === 'cancelled') {
+              const cancelInfo = {
+                email: updated.email,
+                message: 'تم إلغاء حسابك من قِبل إدارة النظام.',
+              };
+              try {
+                localStorage.setItem('gradebook_active_cancelled_user', JSON.stringify(cancelInfo));
+              } catch {}
+              setCancelledAccountInfo(cancelInfo);
+              setCurrentUser(null);
+              return;
             }
+            if (updated.subscriptionStatus === 'active' && !isSubscriptionExpired(updated)) {
+              try {
+                localStorage.removeItem('gradebook_active_cancelled_user');
+              } catch {}
+              lastOnlineVerifiedAtRef.current = Date.now();
+              setCancelledAccountInfo(null);
+            }
+            setCurrentUser(updated);
           }).catch(() => {});
         }
       } else {
@@ -303,17 +469,46 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (fbUser) => {
       if (fbUser) {
-        // مصالحة فورية للمستخدم المسجل في Firebase للتأكد من وجوده في D1
+        // مصالحة فورية للمستخدم المسجل في Firebase للتأكد من وجوده في D1 وتحديث حالة الاشتراك/الإلغاء
         const cleanEmail = (fbUser.email || '').trim().toLowerCase();
         if (cleanEmail && !cleanEmail.includes('@jok.nom')) {
-          reconcileCurrentUserWithServer().then((updated) => {
-            if (updated) setCurrentUser(updated);
+          fbUser.getIdToken().then((tok) => {
+            if (tok) {
+              saveCachedIdToken(tok);
+            }
+            return reconcileCurrentUserWithServer();
+          }).then(async (updated) => {
+            if (!updated) return;
+            if (!updated.isAdmin && updated.subscriptionStatus === 'cancelled') {
+              const cancelInfo = {
+                email: updated.email,
+                message: 'تم إلغاء حسابك من قِبل إدارة النظام.',
+              };
+              try {
+                localStorage.setItem('gradebook_active_cancelled_user', JSON.stringify(cancelInfo));
+              } catch {}
+              setCancelledAccountInfo(cancelInfo);
+              setCurrentUser(null);
+              return;
+            }
+            if (updated.subscriptionStatus === 'active' && !isSubscriptionExpired(updated)) {
+              try {
+                localStorage.removeItem('gradebook_active_cancelled_user');
+              } catch {}
+              lastOnlineVerifiedAtRef.current = Date.now();
+              setCancelledAccountInfo(null);
+            }
+            setCurrentUser(updated);
+            await loadUserData(updated.uid);
           }).catch(() => {});
         }
 
         setCurrentUser((prev) => {
-          // في حال كانت حالة المستخدم فارغة (عند غلق المتصفح والعودة)، استعادة الجلسة فوراً
+          // في حال كانت حالة المستخدم فارغة (عند غلق المتصفح والعودة)، استعادة الجلسة فوراً إلا إذا كان الحساب محظوراً محلياً
           if (!prev) {
+            if (cleanEmail && !isAdminUser(cleanEmail) && isAccountCancelled(cleanEmail)) {
+              return null;
+            }
             const localCur = getCurrentUser();
             if (localCur && (localCur.uid === fbUser.uid || (localCur.email && localCur.email.toLowerCase() === cleanEmail))) {
               loadUserData(localCur.uid);
@@ -386,7 +581,7 @@ export default function App() {
   const [cancelledAccountInfo, setCancelledAccountInfo] = useState<{ email?: string; message?: string } | null>(() => {
     try {
       const cur = getCurrentUser();
-      // Admins and local anonymous sessions are not blocked by cancellation
+      // Admins and anonymous demo users are NEVER blocked by cancellation
       if (cur && (cur.isAdmin || cur.authProvider === 'trial' || cur.uid?.startsWith('trial-') || cur.email?.includes('@jok.nom'))) return null;
 
       const raw = localStorage.getItem('gradebook_active_cancelled_user');
@@ -394,7 +589,8 @@ export default function App() {
         const p = JSON.parse(raw);
         if (p && p.email && isAccountCancelled(p.email)) return p;
       }
-      if (cur && !cur.isAdmin && (cur.subscriptionStatus === 'cancelled' || (cur.email && isAccountCancelled(cur.email)))) {
+      const isAnonDemo = cur && (cur.authProvider === 'trial' || cur.uid?.startsWith('trial-') || cur.email?.includes('@jok.nom'));
+      if (cur && !cur.isAdmin && !isAnonDemo && (cur.subscriptionStatus === 'cancelled' || (cur.email && isAccountCancelled(cur.email)))) {
         return { email: cur.email, message: 'تم إلغاء حسابك من قِبل إدارة النظام.' };
       }
     } catch (e) {
@@ -403,17 +599,25 @@ export default function App() {
     return null;
   });
 
+  const currentUserRef = useRef<AppUser | null>(currentUser);
+  useEffect(() => {
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
+
   // Hidden silent verification function with Cloudflare D1
   const runLiveD1Verification = async () => {
-    if (!currentUser || currentUser.isAdmin || currentUser.authProvider === 'trial' || currentUser.uid?.startsWith('trial-') || currentUser.email?.includes('@jok.nom')) return;
+    const activeUser = currentUserRef.current;
+    if (!activeUser || activeUser.isAdmin || activeUser.authProvider === 'trial' || activeUser.uid?.startsWith('trial-') || activeUser.email?.includes('@jok.nom')) return;
+
+    const wasLockedBefore = isSubscriptionExpired(activeUser) || activeUser.subscriptionStatus !== 'active';
 
     try {
-      const res = await verifyUserWithCloudflareD1(currentUser, lastOnlineVerifiedAtRef.current);
+      const res = await verifyUserWithCloudflareD1(activeUser, lastOnlineVerifiedAtRef.current);
 
       if (res.status === 'logged_out') return;
 
       if (res.status === 'cancelled_or_deleted') {
-        const email = currentUser?.email || '';
+        const email = activeUser.email || '';
         if (email) markAccountCancelled(email);
         const cancelInfo = {
           email,
@@ -429,27 +633,42 @@ export default function App() {
       }
 
       if (res.status === 'expired') {
-        setCurrentUser((prev) => (prev ? { ...prev, subscriptionStatus: 'expired' } : null));
+        if (res.user) {
+          setCurrentUser(res.user);
+        } else {
+          setCurrentUser((prev) => (prev ? { ...prev, subscriptionStatus: 'expired' } : null));
+        }
         return;
       }
 
       if (res.status === 'active') {
         lastOnlineVerifiedAtRef.current = Date.now();
         setIsOfflineTimeoutModalOpen(false);
+        try {
+          localStorage.removeItem('gradebook_active_cancelled_user');
+        } catch {}
+        setCancelledAccountInfo(null);
         if (res.user) {
           const verifiedUser: AppUser = res.user;
           setCurrentUser((prev) => {
             if (!prev) return verifiedUser;
             if (
+              prev.uid === verifiedUser.uid &&
               prev.subscriptionStatus === verifiedUser.subscriptionStatus &&
               prev.subscriptionType === verifiedUser.subscriptionType &&
               prev.expiresAt === verifiedUser.expiresAt &&
-              prev.isAdmin === verifiedUser.isAdmin
+              prev.isTrial === verifiedUser.isTrial &&
+              prev.isAdmin === verifiedUser.isAdmin &&
+              prev.userRole === verifiedUser.userRole &&
+              prev.institutionType === verifiedUser.institutionType
             ) {
               return prev;
             }
             return verifiedUser;
           });
+          if (wasLockedBefore) {
+            showToast('تم تفعيل اشتراكك واستلام التحديث من السيرفر بنجاح!');
+          }
         }
         return;
       }
@@ -467,33 +686,98 @@ export default function App() {
     }
   };
 
-  // Periodic and event-based verification (Hidden request on entry & activity)
+  // Automatic polling while on the Cancelled Account screen so Admin reactivation unlocks automatically without logout/reinstall
+  const cancelledEmail = cancelledAccountInfo?.email || '';
+  useEffect(() => {
+    if (!cancelledEmail) return;
+    let isDisposed = false;
+
+    const verifyCancelledAccountLive = async () => {
+      if (isDisposed) return;
+      if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+      try {
+        const check = await checkLiveSubscriptionByEmail(cancelledEmail);
+        if (isDisposed) return;
+        if (check.active && check.user) {
+          try {
+            localStorage.removeItem('gradebook_active_cancelled_user');
+          } catch {}
+          lastOnlineVerifiedAtRef.current = Date.now();
+          setCancelledAccountInfo(null);
+          setCurrentUser(check.user);
+          await loadUserData(check.user.uid);
+          showToast('تم التحقق بنجاح! تم إعادة الاشتراك وتفعيل حسابك تلقائياً.');
+        }
+      } catch {
+        // Keep current state when offline or transient failure
+      }
+    };
+
+    verifyCancelledAccountLive();
+    const timer = setInterval(verifyCancelledAccountLive, 15000);
+    const onOnlineOrFocus = () => verifyCancelledAccountLive();
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        verifyCancelledAccountLive();
+      }
+    };
+
+    window.addEventListener('online', onOnlineOrFocus);
+    window.addEventListener('focus', onOnlineOrFocus);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      isDisposed = true;
+      clearInterval(timer);
+      window.removeEventListener('online', onOnlineOrFocus);
+      window.removeEventListener('focus', onOnlineOrFocus);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [cancelledEmail, loadUserData]);
+
+  // Periodic and event-based verification (checks faster when locked out so activation unlocks automatically)
+  const isCurrentlyExpired = Boolean(currentUser && isSubscriptionExpired(currentUser) && !currentUser.isAdmin);
   useEffect(() => {
     if (!currentUser || currentUser.isAdmin || currentUser.authProvider === 'trial' || currentUser.uid?.startsWith('trial-') || currentUser.email?.includes('@jok.nom')) return;
 
     // Run silent check on entry
     runLiveD1Verification();
 
-    // Check timer every 30 seconds
+    // Check every 15s when expired/waiting for activation, or every 30s normally
+    const intervalMs = isCurrentlyExpired ? 15000 : 30000;
     const timer = setInterval(() => {
       runLiveD1Verification();
-    }, 30000);
+    }, intervalMs);
 
-    const onOnlineOrFocus = () => {
+    const onOnline = async () => {
+      await runLiveD1Verification();
+      const latest = currentUserRef.current;
+      if (latest && latest.subscriptionStatus === 'active' && !latest.isTrial && syncManager.hasUnsyncedChanges()) {
+        syncManager.syncPendingData(latest.uid).catch(() => {});
+      }
+    };
+
+    const onFocus = () => {
       runLiveD1Verification();
     };
 
-    window.addEventListener('online', onOnlineOrFocus);
-    window.addEventListener('focus', onOnlineOrFocus);
-    document.addEventListener('visibilitychange', onOnlineOrFocus);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        runLiveD1Verification();
+      }
+    };
+
+    window.addEventListener('online', onOnline);
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibilityChange);
 
     return () => {
       clearInterval(timer);
-      window.removeEventListener('online', onOnlineOrFocus);
-      window.removeEventListener('focus', onOnlineOrFocus);
-      document.removeEventListener('visibilitychange', onOnlineOrFocus);
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [currentUser?.uid]);
+  }, [currentUser?.uid, isCurrentlyExpired]);
 
   const isModelsInitialMount = useRef(true);
   const isTermsInitialMount = useRef(true);
@@ -682,7 +966,17 @@ export default function App() {
   };
 
   // Profile actions
+  const handleOpenProfileForSubject = useCallback(() => {
+    returnToCreateModelRef.current = true;
+    setHighlightProfileSubject(true);
+    setIsProfileModalOpen(true);
+  }, []);
+
   const handleSaveProfile = (updatedProfile: TeacherProfile) => {
+    const shouldReturnToCreateModel = returnToCreateModelRef.current;
+    returnToCreateModelRef.current = false;
+    setHighlightProfileSubject(false);
+
     setProfile(updatedProfile);
     saveProfile(updatedProfile, currentUser?.uid);
     saveProfileToIndexedDB(updatedProfile);
@@ -701,11 +995,28 @@ export default function App() {
       }
     }
 
-    if (models.length === 1 && (!models[0].subject || models[0].subject === 'عام') && updatedProfile.subject?.trim()) {
-      const updated = [{ ...models[0], subject: updatedProfile.subject.trim() }];
+    const nextAcademicYear = updatedProfile.academicYear?.trim();
+    const shouldUpdateSubject =
+      models.length === 1 &&
+      (!models[0].subject || models[0].subject === 'عام') &&
+      Boolean(updatedProfile.subject?.trim());
+    const shouldUpdateYear =
+      Boolean(nextAcademicYear) &&
+      models.some((m) => (m.academicYear || '').trim() !== nextAcademicYear);
+
+    if (shouldUpdateSubject || shouldUpdateYear) {
+      const updated = models.map((m, idx) => ({
+        ...m,
+        ...(shouldUpdateSubject && idx === 0 ? { subject: updatedProfile.subject.trim() } : {}),
+        ...(nextAcademicYear ? { academicYear: nextAcademicYear } : {}),
+      }));
       setModels(updated);
       saveModels(updated, currentUser?.uid);
       saveModelsToIndexedDB(updated);
+    }
+
+    if (shouldReturnToCreateModel && updatedProfile.subject?.trim()) {
+      setReopenCreateModelNonce((prev) => prev + 1);
     }
 
     const toastMsg = updatedProfile.institutionType === 'university'
@@ -777,6 +1088,8 @@ export default function App() {
     setProfile(DEFAULT_TEACHER_PROFILE);
     setActiveModelId('');
     setActiveTermId('');
+    returnToCreateModelRef.current = false;
+    setHighlightProfileSubject(false);
     setIsProfileModalOpen(false);
     showToast('تم تسجيل الخروج بنجاح وتأمين الجلسة ومسح البيانات من الشاشة.');
     setTimeout(() => {
@@ -875,11 +1188,16 @@ export default function App() {
             try {
               localStorage.removeItem('gradebook_active_cancelled_user');
             } catch {}
+            lastOnlineVerifiedAtRef.current = Date.now();
             setCancelledAccountInfo(null);
             setCurrentUser(check.user);
+            await loadUserData(check.user.uid);
             showToast('تم التحقق بنجاح! تم إعادة الاشتراك وتفعيل حسابك.');
           } else {
-            throw new Error(`ما زال الحساب غير مفعل من قِبل الإدارة. يرجى التواصل مع الأدمن على الرقم ${SUPPORT_PHONE_NUMBER || '07706118982'} لطلب إعادة الاشتراك.`);
+            throw new Error(
+              check.message ||
+                `ما زال الحساب غير مفعل من قِبل الإدارة. يرجى التواصل مع الأدمن على الرقم ${SUPPORT_PHONE_NUMBER || '07706118992'} لطلب إعادة الاشتراك.`
+            );
           }
         }}
         onSwitchAccount={() => {
@@ -939,28 +1257,25 @@ export default function App() {
   // Check if current user subscription has expired (blocked unless admin)
   const isExpired = isSubscriptionExpired(currentUser) && !currentUser.isAdmin;
 
-  // When user's 48-hour free trial expires without admin activation, show the unbypassable screen
+  // When user's yearly subscription or trial expires, show the unbypassable subscription renewal screen
   if (isExpired) {
     return (
-      <AccountCancelledModal
+      <SubscriptionExpiredModal
         isOpen={true}
-        message="تم إلغاء حسابك من قِبل إدارة النظام."
-        userEmail={currentUser.email}
-        onRecheck={async () => {
-          const check = await checkLiveSubscriptionByEmail(currentUser.email);
-          if (check.active && check.user) {
-            try {
-              localStorage.removeItem('gradebook_active_cancelled_user');
-            } catch {}
-            setCancelledAccountInfo(null);
-            setCurrentUser(check.user);
-            showToast('تم التحقق بنجاح! تم تفعيل واشتراك حسابك.');
-          } else {
-            throw new Error(`ما زال الحساب غير مفعل من قِبل الإدارة. يرجى التواصل مع الأدمن عبر واتساب أو الاتصال على الرقم ${SUPPORT_PHONE_NUMBER || '07706118982'} لإعادة الاشتراك.`);
-          }
-        }}
-        onSwitchAccount={handleLogout}
+        onClose={() => {}}
+        user={currentUser}
         onLogout={handleLogout}
+        canDismiss={false}
+        onSubscriptionActivated={async (updatedUser) => {
+          try {
+            localStorage.removeItem('gradebook_active_cancelled_user');
+          } catch {}
+          lastOnlineVerifiedAtRef.current = Date.now();
+          setCancelledAccountInfo(null);
+          setCurrentUser(updatedUser);
+          await loadUserData(updatedUser.uid);
+          showToast('تم التحقق بنجاح! تم تجديد اشتراكك وتحديث البيانات.');
+        }}
       />
     );
   }
@@ -995,7 +1310,11 @@ export default function App() {
         currentUser={currentUser}
         onLogout={handleInitiateLogout}
         onDeleteAccount={handleDeleteAccount}
-        onOpenProfileModal={() => setIsProfileModalOpen(true)}
+        onOpenProfileModal={() => {
+          returnToCreateModelRef.current = false;
+          setHighlightProfileSubject(false);
+          setIsProfileModalOpen(true);
+        }}
         onOpenSubscriptionModal={() => setIsSubscriptionModalOpen(true)}
         onOpenRoundingModal={() => setIsRoundingModalOpen(true)}
         onExportBackup={handleExportBackup}
@@ -1017,6 +1336,10 @@ export default function App() {
             onAddModel={handleAddModel}
             profile={profile}
             currentUser={currentUser}
+            onOpenProfileForSubject={handleOpenProfileForSubject}
+            reopenCreateModelNonce={reopenCreateModelNonce}
+            numeralMode={numeralMode}
+            onNumeralModeChange={handleNumeralModeChange}
           />
         )}
 
@@ -1032,6 +1355,8 @@ export default function App() {
             monthlyModels={models}
             profile={profile}
             currentUser={currentUser}
+            numeralMode={numeralMode}
+            onNumeralModeChange={handleNumeralModeChange}
           />
         )}
 
@@ -1041,6 +1366,8 @@ export default function App() {
             monthlyModels={models}
             profile={profile}
             onUpdateProfile={handleSaveProfile}
+            numeralMode={numeralMode}
+            onNumeralModeChange={handleNumeralModeChange}
           />
         )}
 
@@ -1098,6 +1425,8 @@ export default function App() {
       <TeacherSettingsModal
         isOpen={isProfileModalOpen}
         onClose={() => {
+          returnToCreateModelRef.current = false;
+          setHighlightProfileSubject(false);
           setIsProfileModalOpen(false);
           setHasDismissedProfileModal(true);
         }}
@@ -1105,6 +1434,7 @@ export default function App() {
         onSave={handleSaveProfile}
         currentUser={currentUser}
         onChangeRole={() => setIsRoleModalOpen(true)}
+        highlightSubject={highlightProfileSubject}
       />
 
       {/* Score Rounding Control Modal */}
@@ -1165,6 +1495,11 @@ export default function App() {
         onLogout={handleLogout}
         canDismiss={!isExpired}
         onSubscriptionActivated={(updatedUser) => {
+          try {
+            localStorage.removeItem('gradebook_active_cancelled_user');
+          } catch {}
+          lastOnlineVerifiedAtRef.current = Date.now();
+          setCancelledAccountInfo(null);
           setCurrentUser(updatedUser);
           setIsSubscriptionModalOpen(false);
           showToast('تم التحقق بنجاح! تم تفعيل اشتراكك وتحديث البيانات.');
@@ -1310,6 +1645,43 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      {/* iOS Print Helper Modal (shown only if iPhone Home-Screen PWA / in-app browser suppresses native print) */}
+      <IosPrintHelperModal
+        isOpen={Boolean(iosPrintHelperStatus)}
+        onClose={() => setIosPrintHelperStatus(null)}
+        status={iosPrintHelperStatus || getIOSPrintStatus()}
+      />
+
+      {/* Personal Teacher Side-Bottom Floating Icon */}
+      <TeacherPersonalFloatingButton
+        onClick={() => setIsPersonalModalOpen(true)}
+        activeAlertsCount={personalData.alerts.filter((a) => a.isActive).length}
+        hasRingingAlert={ringingAlerts.length > 0}
+      />
+
+      {/* Active Teacher Alert Banner */}
+      <TeacherAlertBanner
+        alerts={ringingAlerts}
+        onDismiss={handleDismissRingingAlert}
+        onSnooze={handleSnoozeRingingAlert}
+        onOpenAlertsTab={() => {
+          setPersonalModalTab('alerts');
+          setIsPersonalModalOpen(true);
+        }}
+      />
+
+      {/* Personal Teacher Workspace Modal (Weekly Schedule, Notes, Alerts) */}
+      <TeacherPersonalModal
+        isOpen={isPersonalModalOpen}
+        onClose={() => setIsPersonalModalOpen(false)}
+        activeTab={personalModalTab}
+        onTabChange={setPersonalModalTab}
+        data={personalData}
+        onChange={handleUpdatePersonalData}
+        models={models}
+        profile={profile}
+      />
     </div>
   );
 }

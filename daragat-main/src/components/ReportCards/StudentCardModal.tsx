@@ -2,6 +2,12 @@ import React from 'react';
 import { ClassSectionCard, TeacherProfile, TermModel, PrintSettings } from '../../types';
 import { X, Printer, Users } from 'lucide-react';
 import { ReportCardItem } from './ReportCardItem';
+import { triggerPrint } from '../../utils/printHelper';
+import {
+  NumeralMode,
+  formatScoreDisplay,
+  getSavedNumeralMode,
+} from '../../utils/numeralFormat';
 
 interface Props {
   isOpen: boolean;
@@ -12,6 +18,7 @@ interface Props {
   academicYear?: string;
   subject?: string;
   printSettings?: PrintSettings;
+  numeralMode?: NumeralMode;
 }
 
 export const StudentCardModal: React.FC<Props> = ({
@@ -23,11 +30,13 @@ export const StudentCardModal: React.FC<Props> = ({
   academicYear,
   subject,
   printSettings,
+  numeralMode: propNumeralMode,
 }) => {
   if (!isOpen || !classCard || terms.length === 0) return null;
+  const numeralMode: NumeralMode = propNumeralMode ?? getSavedNumeralMode();
 
   const handlePrint = () => {
-    window.print();
+    triggerPrint();
   };
 
   return (
@@ -44,7 +53,7 @@ export const StudentCardModal: React.FC<Props> = ({
                 {classCard.subject && ` | مادة ${classCard.subject}`}
                 {classCard.teacherName && ` | أ. ${classCard.teacherName}`}
               </strong>{' '}
-              <span className="text-xs text-slate-300">({classCard.students.length} طالب)</span>
+              <span className="text-xs text-slate-300">({formatScoreDisplay(classCard.students.length, numeralMode)} طالب)</span>
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -76,6 +85,7 @@ export const StudentCardModal: React.FC<Props> = ({
             subject={classCard.subject || subject}
             isPrintMode={true}
             printSettings={printSettings}
+            numeralMode={numeralMode}
           />
         </div>
       </div>

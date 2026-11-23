@@ -172,6 +172,17 @@ export async function handleDevUsers(req: any, res: any) {
         saveDevUsers(users);
       }
 
+      const resolvedStatus = (() => {
+        const rawStatus = found.subscriptionStatus || 'active';
+        if (rawStatus === 'active' && (found.subscriptionType === 'yearly' || found.subscriptionType === 'monthly') && found.expiresAt) {
+          const expMs = Date.parse(found.expiresAt);
+          if (!Number.isNaN(expMs) && expMs <= Date.now()) {
+            return 'expired';
+          }
+        }
+        return rawStatus;
+      })();
+
       res.statusCode = 200;
       res.end(JSON.stringify({
         success: true,
@@ -180,9 +191,10 @@ export async function handleDevUsers(req: any, res: any) {
           email: found.email,
           displayName: found.displayName || found.email,
           isAdmin: Boolean(found.isAdmin || found.email?.toLowerCase() === PRIMARY_ADMIN_EMAIL.toLowerCase()),
-          subscriptionStatus: found.subscriptionStatus || 'active',
+          isTrial: (found.subscriptionType === 'trial' && resolvedStatus !== 'active') || String(found.uid || '').startsWith('trial-'),
+          subscriptionStatus: resolvedStatus,
           subscriptionType: found.subscriptionType || 'monthly',
-          expiresAt: found.expiresAt,
+          expiresAt: found.subscriptionType === 'lifetime' && resolvedStatus === 'active' ? null : found.expiresAt,
           createdAt: found.createdAt,
           lastActiveAt: found.lastActiveAt,
           userRole: found.userRole === 'admin_school' ? 'admin_school' : 'teacher',
@@ -280,13 +292,13 @@ export async function handleDevUsers(req: any, res: any) {
             ...(user.userRole ? { userRole: user.userRole } : {}),
           };
         } else {
-          const trialExpiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
+          const trialExpiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
           users.unshift({
             uid: cleanUid,
             email: cleanEmail,
             displayName: user.displayName || cleanEmail,
             subscriptionStatus: isCancelled ? 'cancelled' : (user.subscriptionStatus || (enforcedIsAdmin ? 'active' : 'pending')),
-            subscriptionType: user.subscriptionType || (enforcedIsAdmin ? 'lifetime' : 'monthly'),
+            subscriptionType: user.subscriptionType || (enforcedIsAdmin ? 'lifetime' : 'trial'),
             expiresAt: enforcedIsAdmin ? undefined : trialExpiresAt,
             isAdmin: enforcedIsAdmin,
             createdAt: new Date().toISOString(),
@@ -386,26 +398,45 @@ export async function handleDevUsers(req: any, res: any) {
         const cleanUid = (uid || '').trim();
         const cleanEmail = (email || '').trim().toLowerCase();
 
-        if (subscriptionStatus === 'cancelled' && cleanEmail) {
-          if (!cancelledList.includes(cleanEmail)) {
-            cancelledList.push(cleanEmail);
-            saveCancelledAccounts(cancelledList);
-          }
-        } else if (subscriptionStatus === 'active' && cleanEmail) {
-          cancelledList = cancelledList.filter((e) => e !== cleanEmail);
-          saveCancelledAccounts(cancelledList);
-        }
-
         const idx = users.findIndex(
           (u) =>
             (cleanUid && u.uid === cleanUid) ||
             (cleanEmail && u.email && u.email.toLowerCase() === cleanEmail)
         );
+        const existing = idx >= 0 ? users[idx] : null;
+        const effectiveEmail = (cleanEmail || existing?.email || '').trim().toLowerCase();
 
-        const subType = subscriptionType || 'monthly';
-        const subStatus = subscriptionStatus || 'active';
-        const finalExpiresAt = subType === 'lifetime' && subStatus === 'active' ? null : (expiresAt !== undefined ? expiresAt : null);
+        const subType = subscriptionType || existing?.subscriptionType || 'monthly';
+        const subStatus = subscriptionStatus || existing?.subscriptionStatus || 'active';
 
+        let finalExpiresAt: string | null = null;
+        if (subType === 'lifetime' && subStatus === 'active') {
+          finalExpiresAt = null;
+        } else if (expiresAt !== undefined && expiresAt !== null && expiresAt !== '') {
+          finalExpiresAt = expiresAt;
+        } else if (!subscriptionType && !subscriptionStatus && existing?.expiresAt) {
+          finalExpiresAt = existing.expiresAt;
+        }
+
+        if (subStatus === 'active' && (subType === 'yearly' || subType === 'monthly')) {
+          const parsedExp = finalExpiresAt ? Date.parse(finalExpiresAt) : NaN;
+          if (Number.isNaN(parsedExp) || parsedExp <= Date.now()) {
+            const days = subType === 'yearly' ? 365 : 30;
+            finalExpiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+          }
+        }
+
+        if ((subStatus === 'cancelled' || subStatus === 'suspended') && effectiveEmail) {
+          if (!cancelledList.includes(effectiveEmail)) {
+            cancelledList.push(effectiveEmail);
+            saveCancelledAccounts(cancelledList);
+          }
+        } else if (subStatus === 'active' && effectiveEmail) {
+          cancelledList = cancelledList.filter((e) => e !== effectiveEmail);
+          saveCancelledAccounts(cancelledList);
+        }
+
+        let savedUser: any;
         if (idx >= 0) {
           if (cleanUid && !cleanUid.startsWith('user-')) {
             users[idx].uid = cleanUid;
@@ -413,29 +444,37 @@ export async function handleDevUsers(req: any, res: any) {
           users[idx].subscriptionType = subType;
           users[idx].subscriptionStatus = subStatus;
           users[idx].expiresAt = finalExpiresAt;
+          users[idx].isTrial = subType === 'trial' && subStatus !== 'active';
           if (displayName) users[idx].displayName = displayName;
           if (userRole !== undefined) users[idx].userRole = userRole;
           users[idx].lastActiveAt = new Date().toISOString();
+          savedUser = users[idx];
         } else {
-          users.unshift({
+          savedUser = {
             uid: cleanUid || `user-${Date.now()}`,
-            email: cleanEmail,
-            displayName: displayName || (cleanEmail ? `أ. ${cleanEmail.split('@')[0]}` : 'مستخدم'),
-            isTrial: subType === 'trial',
+            email: effectiveEmail,
+            displayName: displayName || (effectiveEmail ? `أ. ${effectiveEmail.split('@')[0]}` : 'مستخدم'),
+            isTrial: subType === 'trial' && subStatus !== 'active',
             createdAt: new Date().toISOString(),
             expiresAt: finalExpiresAt,
             lastActiveAt: new Date().toISOString(),
             subscriptionType: subType,
             subscriptionStatus: subStatus,
-            isAdmin: cleanEmail === PRIMARY_ADMIN_EMAIL.toLowerCase(),
-            authProvider: cleanEmail.includes('@gmail.com') ? 'google' : 'email',
+            isAdmin: effectiveEmail === PRIMARY_ADMIN_EMAIL.toLowerCase(),
+            authProvider: effectiveEmail.includes('@gmail.com') ? 'google' : 'email',
             userRole: userRole || null,
-          });
+          };
+          users.unshift(savedUser);
         }
 
         saveDevUsers(users);
         res.statusCode = 200;
-        res.end(JSON.stringify({ success: true, message: 'تم تحديث الحساب بواسطة المشرف العام', userRole: userRole !== undefined ? userRole : (idx >= 0 ? users[idx].userRole : null) }));
+        res.end(JSON.stringify({
+          success: true,
+          message: 'تم تحديث الحساب بواسطة المشرف العام',
+          user: savedUser,
+          userRole: savedUser.userRole,
+        }));
       } catch (e: any) {
         res.statusCode = 500;
         res.end(JSON.stringify({ error: e.message }));

@@ -1,4 +1,5 @@
 import { MonthlyModel, TermModel, TeacherProfile, StudentRow } from '../types';
+import { getCurrentAcademicYear } from './dateUtils';
 
 export const STORAGE_KEYS = {
   MODELS: 'teacher_gradebook_models_v2',
@@ -12,9 +13,40 @@ export const DEFAULT_TEACHER_PROFILE: TeacherProfile = {
   teacherName: '',
   schoolName: '',
   subject: '',
-  academicYear: '2024 - 2025',
+  academicYear: getCurrentAcademicYear(),
   governorate: '',
 };
+
+export function normalizeLegacyDefaultAcademicYear(
+  profile: TeacherProfile,
+  userUid?: string
+): { profile: TeacherProfile; migrated: boolean } {
+  const currentAcademicYear = getCurrentAcademicYear();
+  const trimmed = (profile.academicYear || '').trim();
+  const isLegacyDefault = !trimmed || /^2024\s*-\s*2025$/.test(trimmed);
+  if (!isLegacyDefault) {
+    return { profile, migrated: false };
+  }
+
+  const migrationKey = getScopedStorageKey('gradebook_academic_year_migrated_v1', userUid);
+  try {
+    if (!trimmed) {
+      return {
+        profile: { ...profile, academicYear: currentAcademicYear },
+        migrated: true,
+      };
+    }
+    if (localStorage.getItem(migrationKey) === '1') {
+      return { profile, migrated: false };
+    }
+    localStorage.setItem(migrationKey, '1');
+  } catch {}
+
+  return {
+    profile: { ...profile, academicYear: currentAcademicYear },
+    migrated: true,
+  };
+}
 
 export const INITIAL_MONTHLY_MODELS: MonthlyModel[] = [];
 export const INITIAL_TERMS: TermModel[] = [];
@@ -305,14 +337,20 @@ export function loadProfile(userUid?: string): TeacherProfile {
       const parsed = JSON.parse(raw);
       if (isTestProfile(parsed)) {
         localStorage.removeItem(key);
-        return DEFAULT_TEACHER_PROFILE;
+        return { ...DEFAULT_TEACHER_PROFILE, academicYear: getCurrentAcademicYear() };
       }
-      return parsed;
+      const { profile: migratedProfile, migrated } = normalizeLegacyDefaultAcademicYear(parsed, userUid);
+      if (migrated) {
+        try {
+          localStorage.setItem(key, JSON.stringify(migratedProfile));
+        } catch {}
+      }
+      return migratedProfile;
     }
   } catch (e) {
     console.error('Failed to load profile', e);
   }
-  return DEFAULT_TEACHER_PROFILE;
+  return { ...DEFAULT_TEACHER_PROFILE, academicYear: getCurrentAcademicYear() };
 }
 
 export function saveProfile(profile: TeacherProfile, userUid?: string): void {
@@ -341,7 +379,7 @@ export function resetToDefaults(userUid?: string): {
   return {
     models: INITIAL_MONTHLY_MODELS,
     terms: INITIAL_TERMS,
-    profile: DEFAULT_TEACHER_PROFILE,
+    profile: { ...DEFAULT_TEACHER_PROFILE, academicYear: getCurrentAcademicYear() },
   };
 }
 

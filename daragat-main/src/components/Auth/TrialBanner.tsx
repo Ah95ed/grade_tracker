@@ -42,8 +42,8 @@ export const TrialBanner: React.FC<Props> = ({
     return null;
   }
 
-  const adminPhone = SUPPORT_PHONE_NUMBER || '07706118982';
-  const whatsappUrl = `https://wa.me/${SUPPORT_WHATSAPP_NUMBER || '9647706118982'}?text=${encodeURIComponent(
+  const adminPhone = SUPPORT_PHONE_NUMBER || '07706118992';
+  const whatsappUrl = `https://wa.me/${SUPPORT_WHATSAPP_NUMBER || '9647706118992'}?text=${encodeURIComponent(
     `السلام عليكم، أود تفعيل واشتراك حسابي في نظام دفتر درجات المعلم.\nالاسم: ${user.displayName || 'معلم'}\nالبريد: ${user.email}\nرقم المعرف: ${user.uid}\nرقم الأدمن للتواصل: ${adminPhone}`
   )}`;
 
@@ -123,13 +123,13 @@ export const TrialBanner: React.FC<Props> = ({
             type="button"
             onClick={handleSubscribeClick}
             className="px-3 py-1 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 active:scale-95 text-slate-950 font-black text-xs rounded-lg transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
-            title="عرض تفاصيل الاشتراك والتفعيل مدى الحياة"
+            title="عرض تفاصيل الاشتراك السنوي (12,000 دينار لسنة كاملة)"
           >
             <Sparkles className="w-3.5 h-3.5 fill-current" />
             <span>طلب الاشتراك بالبرنامج</span>
           </button>
 
-          {/* Direct WhatsApp button with clear admin phone 07706118982 */}
+          {/* Direct WhatsApp button with clear admin phone 07706118992 */}
           <a
             href={whatsappUrl}
             target="_blank"

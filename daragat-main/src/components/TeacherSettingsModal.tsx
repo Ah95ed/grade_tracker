@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { TeacherProfile, InstitutionType } from '../types';
 import { isTestProfile } from '../utils/storage';
+import { getCurrentAcademicYear } from '../utils/dateUtils';
 import { AppUser } from '../utils/auth';
 import {
   X,
@@ -12,6 +13,8 @@ import {
   GraduationCap,
   School,
   Building,
+  BookOpen,
+  Sparkles,
 } from 'lucide-react';
 
 interface Props {
@@ -21,6 +24,7 @@ interface Props {
   onSave: (updated: TeacherProfile) => void;
   currentUser?: AppUser | null;
   onChangeRole?: () => void;
+  highlightSubject?: boolean;
 }
 
 export const TeacherSettingsModal: React.FC<Props> = ({
@@ -30,8 +34,10 @@ export const TeacherSettingsModal: React.FC<Props> = ({
   onSave,
   currentUser,
   onChangeRole,
+  highlightSubject = false,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const subjectInputRef = useRef<HTMLInputElement>(null);
 
   const sanitizeProfile = (p: TeacherProfile): TeacherProfile => {
     const defaultSub = currentUser?.userRole === 'admin_school' ? 'الإدارة' : '';
@@ -39,12 +45,13 @@ export const TeacherSettingsModal: React.FC<Props> = ({
       p.institutionType ||
       (currentUser?.institutionType === 'university' ? 'university' : 'school');
 
+    const currentAcademicYear = getCurrentAcademicYear();
     if (isTestProfile(p)) {
       return {
         teacherName: '',
         schoolName: '',
         subject: defaultSub,
-        academicYear: p.academicYear?.trim() || '2024 - 2025',
+        academicYear: p.academicYear?.trim() || currentAcademicYear,
         governorate: '',
         schoolLogo: '',
         institutionType: instType,
@@ -57,7 +64,7 @@ export const TeacherSettingsModal: React.FC<Props> = ({
       teacherName: p.teacherName || '',
       schoolName: p.schoolName || '',
       subject: p.subject || defaultSub,
-      academicYear: p.academicYear?.trim() || '2024 - 2025',
+      academicYear: p.academicYear?.trim() || currentAcademicYear,
       governorate: p.governorate || '',
       schoolLogo: p.schoolLogo || '',
       institutionType: instType,
@@ -85,6 +92,19 @@ export const TeacherSettingsModal: React.FC<Props> = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
+
+  useEffect(() => {
+    if (isOpen && highlightSubject) {
+      const timer = setTimeout(() => {
+        const el = subjectInputRef.current;
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          el.focus();
+        }
+      }, 120);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen, highlightSubject, formData.institutionType]);
 
   if (!isOpen) return null;
 
@@ -185,7 +205,7 @@ export const TeacherSettingsModal: React.FC<Props> = ({
       teacherName: formData.teacherName.trim(),
       schoolName: finalSchoolName,
       subject: formData.subject.trim(),
-      academicYear: formData.academicYear?.trim() || '2024 - 2025',
+      academicYear: formData.academicYear?.trim() || getCurrentAcademicYear(),
       governorate: formData.governorate?.trim() || '',
       schoolLogo: formData.schoolLogo || '',
       institutionType: formData.institutionType || 'school',
@@ -246,6 +266,15 @@ export const TeacherSettingsModal: React.FC<Props> = ({
 
         {/* Content Form (Scrollable body) */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4 text-right">
+          {highlightSubject && (
+            <div className="p-3 bg-amber-50 border-2 border-amber-400 rounded-2xl text-amber-950 text-xs font-bold flex items-start gap-2 shadow-xs animate-in fade-in duration-150">
+              <BookOpen className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+              <span>
+                يرجى كتابة <strong className="font-black underline decoration-amber-500">اسم المادة الدراسية</strong> في الحقل المميز أدناه ثم الضغط على «حفظ البيانات» للعودة تلقائياً إلى واجهة إنشاء النموذج الجديد.
+              </span>
+            </div>
+          )}
+
           {/* Segmented Control for Institution Type */}
           <div className="p-1 bg-slate-100 rounded-2xl flex items-center gap-1 border border-slate-200">
             <button
@@ -352,18 +381,35 @@ export const TeacherSettingsModal: React.FC<Props> = ({
                   />
                 </div>
 
-                <div>
-                  <label className="block text-xs sm:text-sm font-bold text-slate-800 mb-1.5">
-                    المادة / المقرر الدراسي
+                <div
+                  className={
+                    highlightSubject
+                      ? 'p-2.5 rounded-2xl bg-amber-50 border-2 border-amber-400 ring-2 ring-amber-300/60 shadow-sm transition-all'
+                      : ''
+                  }
+                >
+                  <label className="flex items-center justify-between gap-1 text-xs sm:text-sm font-bold text-slate-800 mb-1.5">
+                    <span>المادة / المقرر الدراسي</span>
+                    {highlightSubject && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500 text-white text-[10px] font-black animate-pulse">
+                        <Sparkles className="w-2.5 h-2.5" />
+                        <span>أدخل المادة هنا</span>
+                      </span>
+                    )}
                   </label>
                   <input
+                    ref={subjectInputRef}
                     type="text"
                     value={formData.subject}
                     onChange={(e) =>
                       setFormData({ ...formData, subject: e.target.value })
                     }
                     placeholder="مثال: هياكل البيانات"
-                    className="w-full px-3.5 py-2.5 bg-[#f8fafc] border border-slate-300 rounded-2xl text-slate-900 text-xs sm:text-sm font-semibold placeholder:text-slate-400 focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-500/20 focus:outline-none transition-all"
+                    className={`w-full px-3.5 py-2.5 rounded-2xl text-slate-900 text-xs sm:text-sm font-semibold placeholder:text-slate-400 focus:bg-white focus:outline-none transition-all ${
+                      highlightSubject
+                        ? 'bg-white border-2 border-amber-500 ring-2 ring-amber-400/40 focus:border-amber-600 focus:ring-amber-500/30'
+                        : 'bg-[#f8fafc] border border-slate-300 focus:border-blue-600 focus:ring-2 focus:ring-blue-500/20'
+                    }`}
                     required
                   />
                 </div>
@@ -371,7 +417,7 @@ export const TeacherSettingsModal: React.FC<Props> = ({
             </>
           ) : (
             /* School Mode Fields */
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-4 items-start">
               <div>
                 <label className="block text-sm font-bold text-slate-800 mb-1.5">
                   اسم المدرسة / الثانوية
@@ -388,18 +434,35 @@ export const TeacherSettingsModal: React.FC<Props> = ({
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-bold text-slate-800 mb-1.5">
-                  المادة الدراسية
+              <div
+                className={
+                  highlightSubject
+                    ? 'p-2.5 rounded-2xl bg-amber-50 border-2 border-amber-400 ring-2 ring-amber-300/60 shadow-sm transition-all'
+                    : ''
+                }
+              >
+                <label className="flex items-center justify-between gap-1 text-sm font-bold text-slate-800 mb-1.5">
+                  <span>المادة الدراسية</span>
+                  {highlightSubject && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500 text-white text-[10px] font-black animate-pulse">
+                      <Sparkles className="w-2.5 h-2.5" />
+                      <span>أدخل المادة هنا</span>
+                    </span>
+                  )}
                 </label>
                 <input
+                  ref={subjectInputRef}
                   type="text"
                   value={formData.subject}
                   onChange={(e) =>
                     setFormData({ ...formData, subject: e.target.value })
                   }
                   placeholder="مثال: الرياضيات، العلوم..."
-                  className="w-full px-4 py-3 bg-[#f8fafc] border border-slate-300 rounded-2xl text-slate-900 text-sm font-semibold placeholder:text-slate-400 focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none transition-all"
+                  className={`w-full px-4 py-3 rounded-2xl text-slate-900 text-sm font-semibold placeholder:text-slate-400 focus:bg-white focus:outline-none transition-all ${
+                    highlightSubject
+                      ? 'bg-white border-2 border-amber-500 ring-2 ring-amber-400/40 focus:border-amber-600 focus:ring-amber-500/30'
+                      : 'bg-[#f8fafc] border border-slate-300 focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/20'
+                  }`}
                   required
                 />
               </div>
@@ -417,7 +480,7 @@ export const TeacherSettingsModal: React.FC<Props> = ({
                 value={formData.academicYear || ''}
                 onChange={handleAcademicYearChange}
                 onKeyDown={handleAcademicYearKeyDown}
-                placeholder="2024 - 2025"
+                placeholder={getCurrentAcademicYear()}
                 className="w-full px-4 py-3 bg-[#f8fafc] border border-slate-300 rounded-2xl text-slate-900 text-sm font-semibold placeholder:text-slate-400 focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none transition-all text-center dir-ltr"
               />
             </div>

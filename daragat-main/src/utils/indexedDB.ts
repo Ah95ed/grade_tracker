@@ -713,6 +713,7 @@ export async function saveActivationToIndexedDB(activation: {
   uid: string;
   email: string;
   subscriptionType: string;
+  expiresAt?: string;
   activatedAt?: string;
 }): Promise<void> {
   try {
@@ -729,6 +730,7 @@ export async function saveActivationToIndexedDB(activation: {
       isActivated: true,
       subscriptionType: activation.subscriptionType || 'lifetime',
       subscriptionStatus: 'active',
+      expiresAt: activation.subscriptionType === 'lifetime' ? undefined : activation.expiresAt,
       activatedAt: activation.activatedAt || new Date().toISOString(),
     };
 
@@ -740,18 +742,28 @@ export async function saveActivationToIndexedDB(activation: {
       });
     }
 
-    // Also update trial meta if exists to mark as activated permanently
-    const metaUid = await new Promise<any>((resolve) => {
-      const req = store.get(`trial_session_${activation.uid}`);
-      req.onsuccess = () => resolve(req.result || null);
-      req.onerror = () => resolve(null);
-    });
-    if (metaUid) {
-      metaUid.isActivated = true;
-      metaUid.subscriptionType = activation.subscriptionType || 'lifetime';
-      metaUid.subscriptionStatus = 'active';
-      metaUid.activatedAt = actRecord.activatedAt;
-      store.put(metaUid);
+    // Also update trial meta by uid and email if exists to mark as activated with authoritative status
+    for (const metaKey of [
+      `trial_session_${activation.uid}`,
+      ...(cleanEmail ? [`trial_session_email_${cleanEmail}`] : []),
+    ]) {
+      const meta = await new Promise<any>((resolve) => {
+        const req = store.get(metaKey);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => resolve(null);
+      });
+      if (meta) {
+        meta.isActivated = true;
+        meta.subscriptionType = activation.subscriptionType || 'lifetime';
+        meta.subscriptionStatus = 'active';
+        if (activation.subscriptionType === 'lifetime') {
+          delete meta.expiresAt;
+        } else if (activation.expiresAt) {
+          meta.expiresAt = activation.expiresAt;
+        }
+        meta.activatedAt = actRecord.activatedAt;
+        store.put(meta);
+      }
     }
 
     await new Promise<void>((resolve, reject) => {
@@ -763,6 +775,52 @@ export async function saveActivationToIndexedDB(activation: {
   }
 }
 
+/**
+ * تفرض حالة السيرفر (ملغى / منتهٍ) داخل app_meta في IndexedDB حتى لا تتجاوز أي بيانات محلية قديمة قرار السيرفر
+ */
+export async function saveStatusOverrideToIndexedDB(info: {
+  uid: string;
+  email: string;
+  status: 'cancelled' | 'expired';
+  subscriptionType?: string;
+  expiresAt?: string;
+}): Promise<void> {
+  try {
+    const db = await openGradebookDB();
+    if (!db.objectStoreNames.contains('app_meta')) return;
+    const tx = db.transaction('app_meta', 'readwrite');
+    const store = tx.objectStore('app_meta');
+    const cleanEmail = (info.email || '').toLowerCase().trim();
+
+    const keys = [
+      ...(info.uid ? [`activated_user_${info.uid}`, `trial_session_${info.uid}`] : []),
+      ...(cleanEmail ? [`activated_user_email_${cleanEmail}`, `trial_session_email_${cleanEmail}`] : []),
+    ];
+
+    for (const key of keys) {
+      const existing = await new Promise<any>((resolve) => {
+        const req = store.get(key);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => resolve(null);
+      });
+      if (existing) {
+        existing.isActivated = false;
+        existing.subscriptionStatus = info.status;
+        if (info.subscriptionType) existing.subscriptionType = info.subscriptionType;
+        if (info.expiresAt) existing.expiresAt = info.expiresAt;
+        store.put(existing);
+      }
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (err) {
+    console.warn('Error overriding status in IndexedDB:', err);
+  }
+}
+
 export async function loadActivationFromIndexedDB(uid: string, email?: string): Promise<boolean> {
   try {
     const db = await openGradebookDB();
@@ -770,13 +828,24 @@ export async function loadActivationFromIndexedDB(uid: string, email?: string): 
     const tx = db.transaction('app_meta', 'readonly');
     const store = tx.objectStore('app_meta');
 
+    const isRecordValidActive = (rec: any): boolean => {
+      if (!rec) return false;
+      if (rec.subscriptionStatus === 'cancelled' || rec.subscriptionStatus === 'expired') return false;
+      if (!rec.isActivated && rec.subscriptionStatus !== 'active') return false;
+      if ((rec.subscriptionType === 'yearly' || rec.subscriptionType === 'monthly') && rec.expiresAt) {
+        const t = Date.parse(rec.expiresAt);
+        if (!Number.isNaN(t) && t <= Date.now()) return false;
+      }
+      return true;
+    };
+
     // 1. Direct activation record by UID
     const res = await new Promise<any>((resolve) => {
       const req = store.get(`activated_user_${uid}`);
       req.onsuccess = () => resolve(req.result || null);
       req.onerror = () => resolve(null);
     });
-    if (res && res.isActivated) return true;
+    if (isRecordValidActive(res)) return true;
 
     // 2. Direct activation record by Email
     if (email) {
@@ -786,7 +855,7 @@ export async function loadActivationFromIndexedDB(uid: string, email?: string): 
         req.onsuccess = () => resolve(req.result || null);
         req.onerror = () => resolve(null);
       });
-      if (resEmail && resEmail.isActivated) return true;
+      if (isRecordValidActive(resEmail)) return true;
     }
 
     // 3. Check trial session records marked as isActivated
@@ -795,7 +864,7 @@ export async function loadActivationFromIndexedDB(uid: string, email?: string): 
       req.onsuccess = () => resolve(req.result || null);
       req.onerror = () => resolve(null);
     });
-    if (trialRes && (trialRes.isActivated || trialRes.subscriptionStatus === 'active')) return true;
+    if (isRecordValidActive(trialRes)) return true;
 
     if (email) {
       const cleanEmail = email.toLowerCase().trim();
@@ -804,7 +873,7 @@ export async function loadActivationFromIndexedDB(uid: string, email?: string): 
         req.onsuccess = () => resolve(req.result || null);
         req.onerror = () => resolve(null);
       });
-      if (trialResEmail && (trialResEmail.isActivated || trialResEmail.subscriptionStatus === 'active')) return true;
+      if (isRecordValidActive(trialResEmail)) return true;
     }
 
     return false;

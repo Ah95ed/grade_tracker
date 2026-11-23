@@ -3,6 +3,14 @@ import { ClassSectionCard, TeacherProfile, TermModel, PrintSettings } from '../.
 import { Printer, Eye, School, FileSpreadsheet, Users } from 'lucide-react';
 import { isGradeLevelMatch, isSubjectMatch } from '../../utils/gradeAndSectionMatcher';
 import { canonicalizeArabic } from '../../utils/arabicNameMatcher';
+import { orderTermsWithAggregates } from '../../utils/gradeCalculations';
+import { StackedHeaderLabel } from '../Common/StackedHeaderLabel';
+import { getCurrentAcademicYear } from '../../utils/dateUtils';
+import {
+  NumeralMode,
+  formatScoreDisplay,
+  getSavedNumeralMode,
+} from '../../utils/numeralFormat';
 
 interface Props {
   classCard: ClassSectionCard;
@@ -16,6 +24,7 @@ interface Props {
   isPrintMode?: boolean;
   printSettings?: PrintSettings;
   searchQuery?: string;
+  numeralMode?: NumeralMode;
 }
 
 export const ReportCardItem: React.FC<Props> = ({
@@ -30,8 +39,10 @@ export const ReportCardItem: React.FC<Props> = ({
   isPrintMode = false,
   printSettings,
   searchQuery = '',
+  numeralMode: propNumeralMode,
 }) => {
-  const effectiveYear = profile.academicYear || academicYear || '2024 - 2025';
+  const numeralMode: NumeralMode = propNumeralMode ?? getSavedNumeralMode();
+  const effectiveYear = profile.academicYear?.trim() || academicYear?.trim() || getCurrentAcademicYear();
   const effectiveSubject =
     classCard.subject ||
     (subject && subject !== 'الإدارة' ? subject : profile.subject !== 'الإدارة' ? profile.subject : 'المادة الدراسية');
@@ -40,17 +51,19 @@ export const ReportCardItem: React.FC<Props> = ({
   const showHeader = printSettings ? printSettings.showSchoolHeader : true;
   const effectiveLogo = profile.schoolLogo || printSettings?.schoolLogo;
 
-  // Filter terms strictly to those matching this class/card's grade level, subject, and teacher
-  const relevantTerms = terms.filter((t) => {
-    const matchGrade = !t.gradeLevel || isGradeLevelMatch(t.gradeLevel, classCard.gradeLevel);
-    const matchSub =
-      !classCard.subject || !t.subject || isSubjectMatch(t.subject, classCard.subject);
-    const matchTeacher =
-      !classCard.teacherName ||
-      !t.teacherName ||
-      canonicalizeArabic(t.teacherName) === canonicalizeArabic(classCard.teacherName);
-    return matchGrade && matchSub && matchTeacher;
-  });
+  // Filter terms strictly to those matching this class/card's grade level, subject, and teacher, ordered with aggregates directly after source terms
+  const relevantTerms = orderTermsWithAggregates(
+    terms.filter((t) => {
+      const matchGrade = !t.gradeLevel || isGradeLevelMatch(t.gradeLevel, classCard.gradeLevel);
+      const matchSub =
+        !classCard.subject || !t.subject || isSubjectMatch(t.subject, classCard.subject);
+      const matchTeacher =
+        !classCard.teacherName ||
+        !t.teacherName ||
+        canonicalizeArabic(t.teacherName) === canonicalizeArabic(classCard.teacherName);
+      return matchGrade && matchSub && matchTeacher;
+    })
+  );
 
   // Filter students within this card if search query is provided
   const query = searchQuery.trim().toLowerCase();
@@ -122,7 +135,7 @@ export const ReportCardItem: React.FC<Props> = ({
             <div className="flex items-center justify-center sm:justify-start gap-1.5">
               <span className="text-slate-500 font-semibold">السنة الدراسية:</span>
               <span className="text-slate-900 font-black" dir="ltr">
-                {effectiveYear}
+                {formatScoreDisplay(effectiveYear, numeralMode)}
               </span>
             </div>
 
@@ -155,14 +168,23 @@ export const ReportCardItem: React.FC<Props> = ({
                 <th className="py-2.5 px-3 border-r border-slate-400 text-right font-black min-w-[160px] bg-slate-100 text-slate-900">
                   اسم الطالب
                 </th>
-                {relevantTerms.map((t) => (
-                  <th
-                    key={t.id}
-                    className="py-2.5 px-3 border-r border-slate-400 text-center font-black bg-slate-100 text-slate-900 min-w-[90px]"
-                  >
-                    درجة {t.name}
-                  </th>
-                ))}
+                {relevantTerms.map((t) => {
+                  const isAgg =
+                    t.sourceType === 'terms' ||
+                    Boolean(t.selectedTermIds && t.selectedTermIds.length > 0);
+                  return (
+                    <th
+                      key={t.id}
+                      className={`py-2 px-2 border-r border-slate-400 text-center font-extrabold text-[11px] w-auto min-w-[66px] ${
+                        isAgg
+                          ? 'bg-[#EAF3EE] text-[#1D3B2E]'
+                          : 'bg-slate-100 text-slate-900'
+                      }`}
+                    >
+                      <StackedHeaderLabel label={`درجة ${t.name}`} />
+                    </th>
+                  );
+                })}
                 {relevantTerms.length === 0 && (
                   <th className="py-2.5 px-3 border-r border-slate-400 text-center font-bold text-slate-500 min-w-[120px]">
                     الفصل الدراسي
@@ -189,20 +211,38 @@ export const ReportCardItem: React.FC<Props> = ({
                     }`}
                   >
                     <td className="py-2.5 px-3 border-r border-slate-400 text-center font-bold text-slate-600">
-                      {idx + 1}
+                      {formatScoreDisplay(idx + 1, numeralMode)}
                     </td>
                     <td className="py-2.5 px-3 border-r border-slate-400 text-right font-bold text-slate-900">
                       {student.name}
                     </td>
                     {relevantTerms.map((t) => {
                       const score = student.termScores[t.id];
+                      const detail = student.termScoreDetails?.[t.id];
+                      const isAgg =
+                        t.sourceType === 'terms' ||
+                        Boolean(t.selectedTermIds && t.selectedTermIds.length > 0);
                       return (
                         <td
                           key={t.id}
-                          className="py-2.5 px-3 border-r border-slate-400 text-center font-extrabold text-slate-900"
+                          className={`py-2.5 px-3 border-r border-slate-400 text-center font-extrabold text-slate-900 ${
+                            isAgg ? 'bg-[#F4F9F6]' : ''
+                          }`}
                         >
                           {score !== null && score !== undefined ? (
-                            <span className="text-sm font-black text-slate-900">{score}</span>
+                            <div className="flex flex-col items-center justify-center leading-tight">
+                              <span className="text-sm font-black text-slate-900">{formatScoreDisplay(score, numeralMode)}</span>
+                              {detail?.isRounded &&
+                                detail.raw !== null &&
+                                detail.raw !== undefined && (
+                                  <span
+                                    className="text-[10px] text-[#854D0E] font-bold mt-0.5 no-print"
+                                    title={`الدرجة قبل التقريب كانت ${detail.raw}`}
+                                  >
+                                    (أصله: {formatScoreDisplay(detail.raw, numeralMode)})
+                                  </span>
+                                )}
+                            </div>
                           ) : (
                             <span className="text-slate-400 font-normal">—</span>
                           )}
@@ -227,7 +267,7 @@ export const ReportCardItem: React.FC<Props> = ({
         <div className="px-3.5 py-2.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-2 no-print">
           <div className="flex items-center gap-1.5 text-xs font-bold text-slate-600">
             <Users className="w-4 h-4 text-slate-400" />
-            <span>{classCard.students.length} طالب في الشعبة</span>
+            <span>{formatScoreDisplay(classCard.students.length, numeralMode)} طالب في الشعبة</span>
           </div>
 
           <div className="flex items-center gap-2">

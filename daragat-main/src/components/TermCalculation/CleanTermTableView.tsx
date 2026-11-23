@@ -10,10 +10,17 @@ import {
   isGradeLevelMatch,
   isSectionMatch,
 } from '../../utils/gradeAndSectionMatcher';
+import { StackedHeaderLabel } from '../Common/StackedHeaderLabel';
+import {
+  NumeralMode,
+  formatScoreDisplay,
+  getSavedNumeralMode,
+} from '../../utils/numeralFormat';
 
 interface Props {
   term: TermModel;
   monthlyModels: MonthlyModel[];
+  allTerms?: TermModel[];
   onClose: () => void;
   showRatingColumn?: boolean;
   showSubjectColumn?: boolean;
@@ -21,11 +28,13 @@ interface Props {
   selectedSection?: string;
   onGradeChange?: (grade: string) => void;
   onSectionChange?: (section: string) => void;
+  numeralMode?: NumeralMode;
 }
 
 export const CleanTermTableView: React.FC<Props> = ({
   term,
   monthlyModels,
+  allTerms = [],
   onClose,
   showRatingColumn = true,
   showSubjectColumn = Boolean(term.subject),
@@ -33,7 +42,9 @@ export const CleanTermTableView: React.FC<Props> = ({
   selectedSection = 'ALL',
   onGradeChange,
   onSectionChange,
+  numeralMode: propNumeralMode,
 }) => {
+  const numeralMode: NumeralMode = propNumeralMode ?? getSavedNumeralMode();
   const containerRef = useRef<HTMLDivElement>(null);
   const activeRowRef = useRef<HTMLTableRowElement | null>(null);
   const [activeStudentCloud, setActiveStudentCloud] = useState<ActiveStudentCloudInfo | null>(null);
@@ -126,17 +137,28 @@ export const CleanTermTableView: React.FC<Props> = ({
     }
   };
 
-  // Models associated with this term
   const selectedModelsObj = useMemo(() => {
     return monthlyModels.filter((m) =>
       (term.selectedModelIds || []).includes(m.id)
     );
   }, [monthlyModels, term.selectedModelIds]);
 
-  // Calculate summaries across selected models
+  const selectedSourceTermsObj = useMemo(() => {
+    return allTerms.filter(
+      (t) =>
+        (term.selectedTermIds || []).includes(t.id) &&
+        t.id !== term.id
+    );
+  }, [allTerms, term.selectedTermIds, term.id]);
+
+  const isAggregateTerms =
+    selectedSourceTermsObj.length > 0 || term.sourceType === 'terms';
+  const activeSourceCount = selectedModelsObj.length + selectedSourceTermsObj.length;
+
+  // Calculate summaries across selected models or source terms
   const rawSummaries = useMemo(() => {
-    return calculateTermSummaries(term, monthlyModels);
-  }, [term, monthlyModels]);
+    return calculateTermSummaries(term, monthlyModels, allTerms);
+  }, [term, monthlyModels, allTerms]);
 
   // Filter students based on active Grade Level and Section
   const studentSummaries = useMemo(() => {
@@ -228,7 +250,7 @@ export const CleanTermTableView: React.FC<Props> = ({
           )}
 
           <span className="text-[10px] text-[#7A6E5F] font-semibold bg-white/70 px-1.5 py-0.5 rounded border border-[#D8CEBD] shrink-0">
-            {studentSummaries.length} طالب
+            {formatScoreDisplay(studentSummaries.length, numeralMode)} طالب
           </span>
         </div>
 
@@ -260,32 +282,45 @@ export const CleanTermTableView: React.FC<Props> = ({
                 <th className="py-1.5 px-3 min-w-[200px] text-right align-middle border border-[#D5C8B2] bg-[#EFE8D8]">
                   اسم الطالب
                 </th>
-                <th className="py-1.5 px-2 min-w-[80px] text-center align-middle border border-[#D5C8B2] bg-[#EFE8D8]">
+                <th className="py-1.5 px-2 w-auto min-w-[70px] text-center align-middle border border-[#D5C8B2] bg-[#EFE8D8] whitespace-nowrap text-[11px] font-extrabold text-[#0F172A]">
                   الصف
                 </th>
-                <th className="py-1.5 px-2 w-12 text-center align-middle border border-[#D5C8B2] bg-[#EFE8D8]">
+                <th className="py-1.5 px-1.5 w-11 text-center align-middle border border-[#D5C8B2] bg-[#EFE8D8] text-[11px] font-extrabold text-[#0F172A]">
                   الشعبة
                 </th>
                 {showSubjectColumn && (
-                  <th className="py-1.5 px-2 min-w-[85px] text-center align-middle border border-[#D5C8B2] bg-[#E8F0F7] text-[#1E3A8A]">
-                    اسم الدرس
+                  <th className="py-1.5 px-2 w-auto min-w-[60px] text-center align-middle border border-[#D5C8B2] bg-[#E8F0F7] text-[#1E3A8A] text-[11px] font-extrabold">
+                    <StackedHeaderLabel label="اسم الدرس" />
                   </th>
                 )}
                 {selectedModelsObj.map((model) => (
                   <th
                     key={model.id}
-                    className="py-1.5 px-2 min-w-[110px] text-center align-middle border border-[#D5C8B2] bg-[#E8F0F7] text-[#1E3A8A]"
+                    className="py-1.5 px-2 w-auto min-w-[72px] text-center align-middle border border-[#D5C8B2] bg-[#E8F0F7] text-[#0F172A]"
                   >
                     <div className="flex flex-col items-center justify-center gap-0.5">
-                      <div className="flex items-center justify-center gap-1">
-                        <span>{model.name}</span>
-                        <span className="text-[10px] font-bold text-[#3B82F6]">
-                          ({model.totalMaxScore})
-                        </span>
-                      </div>
+                      <StackedHeaderLabel label={model.name} className="text-[11px] font-extrabold text-[#0F172A]" />
+                      <span className="text-[10px] font-bold text-[#3B82F6]">
+                        ({formatScoreDisplay(model.totalMaxScore, numeralMode)})
+                      </span>
                       {model.subject && (
-                        <span className="text-[10px] font-bold text-[#1E3A8A] bg-white/80 border border-blue-200 px-1.5 py-0.2 rounded">
+                        <span className="text-[10px] font-bold text-[#1E3A8A] bg-white/80 border border-blue-200 px-1.5 py-0.2 rounded whitespace-nowrap">
                           {model.subject}
+                        </span>
+                      )}
+                    </div>
+                  </th>
+                ))}
+                {selectedSourceTermsObj.map((srcTerm) => (
+                  <th
+                    key={srcTerm.id}
+                    className="py-1.5 px-2 w-auto min-w-[72px] text-center align-middle border border-[#D5C8B2] bg-[#E6F3EC] text-[#143326]"
+                  >
+                    <div className="flex flex-col items-center justify-center gap-0.5">
+                      <StackedHeaderLabel label={`درجة ${srcTerm.name}`} className="text-[11px] font-extrabold text-[#143326]" />
+                      {srcTerm.subject && (
+                        <span className="text-[10px] font-bold text-[#1D3B2E] bg-white/80 border border-[#A8D2BD] px-1.5 py-0.2 rounded whitespace-nowrap">
+                          {srcTerm.subject}
                         </span>
                       )}
                     </div>
@@ -293,21 +328,24 @@ export const CleanTermTableView: React.FC<Props> = ({
                 ))}
                 <th
                   data-term-average-col="true"
-                  className="py-1.5 px-2 min-w-[120px] text-center align-middle border border-[#D5C8B2] bg-[#FEF3C7] text-[#92400E]"
+                  className="py-1.5 px-2 w-auto min-w-[80px] text-center align-middle border border-[#D5C8B2] bg-[#FEF3C7] text-[#78350F]"
                 >
-                  <div className="flex items-center justify-center gap-1">
-                    <span>معدل {term.name}</span>
+                  <div className="flex flex-col items-center justify-center gap-0.5">
+                    <StackedHeaderLabel
+                      label={isAggregateTerms ? term.name : `معدل ${term.name}`}
+                      className="text-[11px] font-extrabold text-[#78350F]"
+                    />
                     <span className="text-[10px] font-bold text-[#B45309]">
-                      {(term.selectedModelIds || []).length > 1 ? '(معدل)' : '(نهائي)'}
+                      {activeSourceCount > 1 ? '(معدل)' : '(نهائي)'}
                     </span>
                   </div>
                 </th>
                 {showRatingColumn && (
-                  <th className="py-1.5 px-2 min-w-[90px] text-center align-middle border border-[#D5C8B2] bg-[#EFE8D8]">
+                  <th className="py-1.5 px-2 w-auto min-w-[68px] text-center align-middle border border-[#D5C8B2] bg-[#EFE8D8] text-[11px] font-extrabold text-[#0F172A]">
                     التقدير
                   </th>
                 )}
-                <th className="py-1.5 px-2 min-w-[80px] text-center align-middle border border-[#D5C8B2] bg-[#EFE8D8]">
+                <th className="py-1.5 px-2 w-auto min-w-[62px] text-center align-middle border border-[#D5C8B2] bg-[#EFE8D8] text-[11px] font-extrabold text-[#0F172A]">
                   الحالة
                 </th>
               </tr>
@@ -315,24 +353,26 @@ export const CleanTermTableView: React.FC<Props> = ({
 
             {/* Clean Table Body */}
             <tbody>
-              {selectedModelsObj.length === 0 ? (
+              {activeSourceCount === 0 ? (
                 <tr>
                   <td
                     colSpan={5 + (showRatingColumn ? 1 : 0) + (showSubjectColumn ? 1 : 0)}
                     className="py-14 text-center text-slate-600 font-bold bg-[#FAF7EC] text-xs"
                   >
                     <p className="text-sm font-black text-[#8C4325]">
-                      لم يتم تحديد أي شهر لاحتساب معدل ({term.name}) بعد
+                      {isAggregateTerms
+                        ? `لم يتم تحديد أي فصل دراسي لاحتساب (${term.name}) بعد`
+                        : `لم يتم تحديد أي شهر لاحتساب معدل (${term.name}) بعد`}
                     </p>
                     <p className="text-[11px] text-[#7A6E5F] mt-1">
-                      اضغط على زر &quot;رجوع&quot; وحدد الأشهر المراد احتسابها من خلال مربعات الاختيار (☑ Checkbox).
+                      اضغط على زر &quot;رجوع&quot; وحدد {isAggregateTerms ? 'الفصول' : 'الأشهر'} المراد احتسابها من خلال مربعات الاختيار (☑ Checkbox).
                     </p>
                   </td>
                 </tr>
               ) : studentSummaries.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={5 + selectedModelsObj.length + (showRatingColumn ? 1 : 0) + (showSubjectColumn ? 1 : 0)}
+                    colSpan={5 + activeSourceCount + (showRatingColumn ? 1 : 0) + (showSubjectColumn ? 1 : 0)}
                     className="py-12 text-center text-slate-500 font-bold bg-[#FAF7EC] text-xs"
                   >
                     لا توجد بيانات طلاب مطابقة في {selectedGradeLevel && selectedGradeLevel !== 'ALL' ? selectedGradeLevel : 'هذا الفصل'}
@@ -341,9 +381,8 @@ export const CleanTermTableView: React.FC<Props> = ({
                 </tr>
               ) : (
                 studentSummaries.map((student, idx) => {
-                  const rating = getRatingDetails(student.finalTermScore, 100);
-                  const isPass =
-                    student.finalTermScore !== null && student.finalTermScore >= 50;
+                  const rating = getRatingDetails(student.finalTermScore, student.termMaxScore || 100);
+                  const isPass = rating.status === 'passed';
                   const isEven = idx % 2 === 0;
                   const isActive = activeStudentCloud?.studentId === student.studentId;
 
@@ -360,12 +399,12 @@ export const CleanTermTableView: React.FC<Props> = ({
                       }`}
                     >
                       <td className="py-1 px-1.5 text-center font-bold text-[#7A6E5F] border border-[#D5C8B2] text-[11px]">
-                        {idx + 1}
+                        {formatScoreDisplay(idx + 1, numeralMode)}
                       </td>
                       <td className="py-1 px-2.5 font-bold text-[#2F2822] border border-[#D5C8B2] whitespace-nowrap text-xs">
                         {student.name}
                       </td>
-                      <td className="py-1 px-2 text-center text-[11px] font-semibold text-[#5A4F43] border border-[#D5C8B2] whitespace-nowrap">
+                      <td className="py-1 px-2 text-center text-[11px] font-bold text-[#0F172A] border border-[#D5C8B2] whitespace-nowrap">
                         {student.gradeLevel || '-'}
                       </td>
                       <td className="py-1 px-2 text-center text-[11px] font-bold text-[#5A4F43] border border-[#D5C8B2] whitespace-nowrap">
@@ -373,7 +412,10 @@ export const CleanTermTableView: React.FC<Props> = ({
                       </td>
                       {showSubjectColumn && (
                         <td className="py-1 px-2 text-center text-[11px] font-bold text-[#1E3A8A] bg-blue-50/20 border border-[#D5C8B2] whitespace-nowrap">
-                          {term.subject || selectedModelsObj[0]?.subject || '-'}
+                          {term.subject ||
+                            selectedModelsObj[0]?.subject ||
+                            selectedSourceTermsObj[0]?.subject ||
+                            '-'}
                         </td>
                       )}
                       {selectedModelsObj.map((model) => {
@@ -386,20 +428,34 @@ export const CleanTermTableView: React.FC<Props> = ({
                             className="py-1 px-2 text-center border border-[#D5C8B2] font-bold text-xs text-[#1E293B]"
                           >
                             {mScore !== null && mScore !== undefined ? (
-                              mScore
+                              formatScoreDisplay(mScore, numeralMode)
                             ) : (
                               <span className="text-slate-400 font-normal">-</span>
                             )}
                           </td>
                         );
                       })}
-                      <td
-                        data-term-average-col="true"
-                        className="py-1 px-2 text-center font-black border border-[#D5C8B2] bg-[#FFFBEB]"
-                      >
+                      {selectedSourceTermsObj.map((srcTerm) => {
+                        const mScore = student.monthlyScores.find(
+                          (ms) => ms.modelId === srcTerm.id
+                        )?.score;
+                        return (
+                          <td
+                            key={srcTerm.id}
+                            className="py-1 px-2 text-center border border-[#D5C8B2] font-bold text-xs text-[#1D3B2E] bg-[#F5FAF7]"
+                          >
+                            {mScore !== null && mScore !== undefined ? (
+                              formatScoreDisplay(mScore, numeralMode)
+                            ) : (
+                              <span className="text-slate-400 font-normal">-</span>
+                            )}
+                          </td>
+                        );
+                      })}
+                      <td className="py-1 px-2 text-center font-black border border-[#D5C8B2] bg-[#FFFBEB]">
                         {student.finalTermScore !== null ? (
                           <span className="inline-block min-w-[36px] px-1.5 py-0.5 text-xs sm:text-sm font-black text-[#92400E] bg-amber-100/90 rounded border border-amber-300">
-                            {student.finalTermScore}
+                            {formatScoreDisplay(student.finalTermScore, numeralMode)}
                           </span>
                         ) : (
                           <span className="text-slate-400 font-bold">-</span>

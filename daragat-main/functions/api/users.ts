@@ -111,15 +111,23 @@ function formatUser(env: any, u: any, cancelledEmails: Set<string>) {
   const cancelled =
     cancelledEmails.has(email) || u.subscriptionStatus === 'cancelled' || u.subscriptionStatus === 'suspended';
   const type = u.subscriptionType || 'trial';
+  const expiresAt = normalizeToUtcIso(u.expiresAt);
+  let status = cancelled ? 'cancelled' : (u.subscriptionStatus || (isAdminEmail(env, email) ? 'active' : 'pending'));
+  if (!cancelled && !isAdminEmail(env, email) && !u.isAdmin && status === 'active' && (type === 'yearly' || type === 'monthly') && expiresAt) {
+    const expMs = Date.parse(expiresAt);
+    if (!Number.isNaN(expMs) && expMs <= Date.now()) {
+      status = 'expired';
+    }
+  }
   return {
     uid: u.uid,
     email: u.email,
     displayName: u.displayName || u.email,
     isAdmin: isAdminEmail(env, email) || Boolean(u.isAdmin),
-    isTrial: type === 'trial' || String(u.uid || '').startsWith('trial-'),
+    isTrial: (type === 'trial' && status !== 'active') || String(u.uid || '').startsWith('trial-'),
     subscriptionType: type,
-    subscriptionStatus: cancelled ? 'cancelled' : (u.subscriptionStatus || (isAdminEmail(env, email) ? 'active' : 'pending')),
-    expiresAt: normalizeToUtcIso(u.expiresAt),
+    subscriptionStatus: status,
+    expiresAt: type === 'lifetime' && status === 'active' ? null : expiresAt,
     lastActiveAt: normalizeToUtcIso(u.lastActiveAt) || new Date().toISOString(),
     createdAt: normalizeToUtcIso(u.createdAt) || new Date().toISOString(),
     authProvider: String(u.uid || '').startsWith('trial-') ? 'trial' : email.endsWith('@gmail.com') ? 'google' : 'email',
@@ -232,8 +240,16 @@ async function handleGet({ request, env }: EventContext): Promise<Response> {
       const targetUid = caller.isAdmin ? (qUid || '') : caller.uid;
       const targetEmail = caller.isAdmin ? (qEmail || '') : caller.email;
       const row = await env.DB
-        .prepare(`${USER_SELECT} WHERE (u.uid = ? AND ? != '') OR (LOWER(u.email) = ? AND ? != '') LIMIT 1`)
-        .bind(targetUid, targetUid, targetEmail, targetEmail)
+        .prepare(
+          `${USER_SELECT}
+           WHERE (u.uid = ? AND ? != '') OR (LOWER(TRIM(u.email)) = ? AND ? != '')
+           ORDER BY CASE WHEN u.subscription_status = 'active' THEN 0 ELSE 1 END,
+                    CASE WHEN u.uid = ? THEN 0 ELSE 1 END,
+                    u.last_active_at DESC,
+                    u.id DESC
+           LIMIT 1`
+        )
+        .bind(targetUid, targetUid, targetEmail, targetEmail, targetUid)
         .first<any>();
 
       if (!row) {
@@ -254,10 +270,23 @@ async function handleGet({ request, env }: EventContext): Promise<Response> {
         return json({ success: false, notFound: true, isCancelled: false, error: 'User not found' }, 404);
       }
 
-      // إذا وُجد السجل بالبريد ولكن كان مسجلاً بـ uid مؤقت، نحدّث الـ uid الحقيقي تلقائياً
-      if (!caller.isAdmin && !needsEmailProof(caller) && caller.uid && row.uid !== caller.uid && caller.email && String(row.email).toLowerCase() === caller.email) {
+      // إذا وُجد السجل بالبريد ولكن كان مسجلاً بـ uid مؤقت أو مختلف، نحدّث الـ uid الحقيقي تلقائياً ونزيل أي تكرار لنفس البريد أو uid
+      if (!caller.isAdmin && !needsEmailProof(caller) && caller.uid && row.uid !== caller.uid && caller.email && String(row.email).trim().toLowerCase() === caller.email) {
         try {
-          await env.DB.prepare('UPDATE users SET uid = ? WHERE LOWER(email) = ?').bind(caller.uid, caller.email).run();
+          const idRes = await env.DB
+            .prepare('SELECT id FROM users WHERE uid = ? LIMIT 1')
+            .bind(row.uid)
+            .first<{ id: number }>();
+          if (idRes?.id) {
+            await env.DB
+              .prepare('DELETE FROM users WHERE (LOWER(TRIM(email)) = ? OR uid = ?) AND id != ?')
+              .bind(caller.email, caller.uid, idRes.id)
+              .run();
+            await env.DB.prepare('UPDATE users SET uid = ? WHERE id = ?').bind(caller.uid, idRes.id).run();
+          } else {
+            await env.DB.prepare('DELETE FROM users WHERE uid = ? AND LOWER(TRIM(email)) = ?').bind(caller.uid, caller.email).run();
+            await env.DB.prepare('UPDATE users SET uid = ? WHERE LOWER(TRIM(email)) = ? AND uid = ?').bind(caller.uid, caller.email, row.uid).run();
+          }
           row.uid = caller.uid;
         } catch {}
       }
@@ -269,11 +298,15 @@ async function handleGet({ request, env }: EventContext): Promise<Response> {
     // قائمة كل المستخدمين: للأدمن فقط
     let userRows: any[] = [];
     try {
-      const q = await env.DB.prepare(`${USER_SELECT} ORDER BY u.created_at DESC`).all();
+      const q = await env.DB
+        .prepare(`${USER_SELECT} ORDER BY CASE WHEN u.subscription_status = 'active' THEN 0 ELSE 1 END, u.last_active_at DESC, u.created_at DESC`)
+        .all();
       userRows = (q.results as any[]) || [];
     } catch (sqlErr) {
       console.warn('USER_SELECT failed, falling back to direct users table select:', sqlErr);
-      const fallbackQ = await env.DB.prepare('SELECT * FROM users ORDER BY created_at DESC').all();
+      const fallbackQ = await env.DB
+        .prepare("SELECT * FROM users ORDER BY CASE WHEN subscription_status = 'active' THEN 0 ELSE 1 END, last_active_at DESC, created_at DESC")
+        .all();
       userRows = (fallbackQ.results as any[]) || [];
     }
     // Deduplicate users strictly by uid and email
@@ -321,8 +354,16 @@ async function handlePost({ request, env }: EventContext): Promise<Response> {
 
     // التعامل الصريح مع تغيير uid لنفس email لمنع التكرار والحفاظ على حالة الاشتراك
     const existingByEmail = await env.DB
-      .prepare('SELECT id, uid, subscription_type, subscription_status FROM users WHERE LOWER(email) = ? LIMIT 1')
-      .bind(caller.email)
+      .prepare(
+        `SELECT id, uid, subscription_type, subscription_status
+         FROM users
+         WHERE LOWER(TRIM(email)) = ?
+         ORDER BY CASE WHEN subscription_status = 'active' THEN 0 ELSE 1 END,
+                  CASE WHEN uid = ? THEN 0 ELSE 1 END,
+                  id DESC
+         LIMIT 1`
+      )
+      .bind(caller.email, caller.uid)
       .first<any>();
 
     const now = new Date();
@@ -337,14 +378,19 @@ async function handlePost({ request, env }: EventContext): Promise<Response> {
 
     if (existingByEmail) {
       await env.DB
+        .prepare('DELETE FROM users WHERE (LOWER(TRIM(email)) = ? OR uid = ?) AND id != ?')
+        .bind(caller.email, caller.uid, existingByEmail.id)
+        .run();
+      await env.DB
         .prepare(
           `UPDATE users SET
              uid = ?,
+             email = ?,
              display_name = COALESCE(?, display_name),
              last_active_at = ?
-           WHERE LOWER(email) = ?`
+           WHERE id = ?`
         )
-        .bind(caller.uid, displayName, nowIso, caller.email)
+        .bind(caller.uid, caller.email, displayName, nowIso, existingByEmail.id)
         .run();
     } else {
       await env.DB
@@ -374,7 +420,13 @@ async function handlePost({ request, env }: EventContext): Promise<Response> {
       if (proofNeeded) return await requireVerificationResponse(env, request, caller, displayName);
     }
 
-    return json({ success: true });
+    const cancelled = await cancelledSet(env.DB);
+    const savedRow = await env.DB
+      .prepare(`${USER_SELECT} WHERE u.uid = ? OR LOWER(TRIM(u.email)) = ? LIMIT 1`)
+      .bind(caller.uid, caller.email)
+      .first<any>();
+
+    return json({ success: true, user: savedRow ? formatUser(env, savedRow, cancelled) : null });
   } catch (err) {
     console.error('POST /api/users failed:', err);
     return fail(500, 'تعذر تسجيل المستخدم.');
@@ -423,114 +475,147 @@ async function handlePut({ request, env }: EventContext): Promise<Response> {
   const cleanEmail = str(body?.email, 320).toLowerCase();
   if (!cleanUid && !cleanEmail) return fail(400, 'يلزم uid أو email.');
 
-  const subType = SUB_TYPES.includes(body?.subscriptionType) ? body.subscriptionType : 'monthly';
-  const subStatus = SUB_STATUSES.includes(body?.subscriptionStatus) ? body.subscriptionStatus : 'active';
-  let expiresAt: string | null = null;
-  if (subType === 'lifetime' && subStatus === 'active') {
-    // خطة مدى الحياة دائماً بدون تاريخ انتهاء في السيرفر
-    expiresAt = null;
-  } else if (body?.expiresAt) {
-    const t = Date.parse(String(body.expiresAt));
-    if (Number.isNaN(t)) return fail(400, 'تاريخ الانتهاء غير صالح.');
-    expiresAt = new Date(t).toISOString();
-  }
-
-  // لا يمكن إلغاء أو تعليق حساب أدمن
-  if (cleanEmail && isAdminEmail(env, cleanEmail) && subStatus !== 'active') {
-    return fail(400, 'لا يمكن إلغاء حساب المشرف.');
-  }
+  const hasSubTypeInput = SUB_TYPES.includes(body?.subscriptionType);
+  const hasSubStatusInput = SUB_STATUSES.includes(body?.subscriptionStatus);
+  const roleInput = body?.userRole || body?.role;
+  const hasRoleInput = roleInput === 'admin_school' || roleInput === 'teacher';
 
   try {
     await ensureSchema(env.DB);
 
-    // إذا وُجد سجل بنفس email لكن بـ uid مختلف، نحدّث السجل الموجود بالـ uid الحقيقي بدل إنشاء صف مكرر
-    const existingByEmail = cleanEmail
-      ? await env.DB.prepare('SELECT id, uid FROM users WHERE LOWER(email) = ? LIMIT 1').bind(cleanEmail).first<any>()
-      : null;
+    // البحث أولاً عن السجل الموجود (بالبريد أو المعرف) للحفاظ على الخطة الحالية عند تعديل الصفة أو الإلغاء فقط
+    const existingRow = await env.DB
+      .prepare(
+        `SELECT id, uid, email, subscription_type, subscription_status, expires_at
+         FROM users
+         WHERE (LOWER(TRIM(email)) = ? AND ? != '') OR (uid = ? AND ? != '')
+         ORDER BY CASE WHEN uid NOT LIKE 'user-%' THEN 0 ELSE 1 END, last_active_at DESC, id DESC
+         LIMIT 1`
+      )
+      .bind(cleanEmail, cleanEmail, cleanUid, cleanUid)
+      .first<any>();
+
+    const effectiveEmail = (cleanEmail || String(existingRow?.email || '')).trim().toLowerCase();
+    const subType = hasSubTypeInput
+      ? body.subscriptionType
+      : (existingRow?.subscription_type || 'monthly');
+    const subStatus = hasSubStatusInput
+      ? body.subscriptionStatus
+      : (existingRow?.subscription_status || 'active');
+
+    // لا يمكن إلغاء أو تعليق حساب أدمن
+    if (effectiveEmail && isAdminEmail(env, effectiveEmail) && subStatus !== 'active') {
+      return fail(400, 'لا يمكن إلغاء حساب المشرف.');
+    }
+
+    let expiresAt: string | null = null;
+    if (subType === 'lifetime' && subStatus === 'active') {
+      // خطة مدى الحياة دائماً بدون تاريخ انتهاء في السيرفر
+      expiresAt = null;
+    } else if (body?.expiresAt !== undefined && body?.expiresAt !== null && body?.expiresAt !== '') {
+      const t = Date.parse(String(body.expiresAt));
+      if (Number.isNaN(t)) return fail(400, 'تاريخ الانتهاء غير صالح.');
+      expiresAt = new Date(t).toISOString();
+    } else if (!hasSubTypeInput && !hasSubStatusInput && existingRow?.expires_at) {
+      // تحديث الصفة فقط: نحافظ على تاريخ الانتهاء الحالي كما هو
+      expiresAt = normalizeToUtcIso(existingRow.expires_at);
+    }
+
+    // ضمان عدم حفظ اشتراك سنوي أو شهري نشط بدون تاريخ انتهاء مستقبلي صالح
+    if (subStatus === 'active' && (subType === 'yearly' || subType === 'monthly')) {
+      const parsedExp = expiresAt ? Date.parse(expiresAt) : NaN;
+      if (Number.isNaN(parsedExp) || parsedExp <= Date.now()) {
+        const days = subType === 'yearly' ? 365 : 30;
+        expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+      }
+    }
 
     const putNowIso = new Date().toISOString();
 
-    const roleInput = body?.userRole || body?.role;
-    const hasRoleInput = roleInput === 'admin_school' || roleInput === 'teacher';
+    if (existingRow) {
+      const targetUid = cleanUid && !cleanUid.startsWith('user-')
+        ? cleanUid
+        : (existingRow.uid || cleanUid || `user-${Date.now()}`);
+      const rowEmail = effectiveEmail || String(existingRow.email || '').trim().toLowerCase();
 
-    if (existingByEmail) {
-      const targetUid = (cleanUid && !cleanUid.startsWith('user-')) ? cleanUid : existingByEmail.uid;
+      // إزالة أي صفوف مكررة لنفس البريد أو نفس المعرف قبل التحديث لتجنب تعارض UNIQUE(uid) أو تضارب الحالة
+      await env.DB
+        .prepare('DELETE FROM users WHERE ((LOWER(TRIM(email)) = ? AND ? != \'\') OR (uid = ? AND ? != \'\')) AND id != ?')
+        .bind(rowEmail, rowEmail, targetUid, targetUid, existingRow.id)
+        .run();
+
       if (hasRoleInput) {
         await env.DB
           .prepare(
             `UPDATE users SET
                uid = ?,
+               email = ?,
                subscription_type = ?,
                subscription_status = ?,
                expires_at = ?,
                last_active_at = ?,
                user_role = ?
-             WHERE LOWER(email) = ?`
+             WHERE id = ?`
           )
-          .bind(targetUid, subType, subStatus, expiresAt, putNowIso, roleInput, cleanEmail)
+          .bind(targetUid, rowEmail, subType, subStatus, expiresAt, putNowIso, roleInput, existingRow.id)
           .run();
       } else {
         await env.DB
           .prepare(
             `UPDATE users SET
                uid = ?,
+               email = ?,
                subscription_type = ?,
                subscription_status = ?,
                expires_at = ?,
                last_active_at = ?
-             WHERE LOWER(email) = ?`
+             WHERE id = ?`
           )
-          .bind(targetUid, subType, subStatus, expiresAt, putNowIso, cleanEmail)
+          .bind(targetUid, rowEmail, subType, subStatus, expiresAt, putNowIso, existingRow.id)
           .run();
       }
     } else {
-      let upd: any;
-      if (hasRoleInput) {
-        upd = await env.DB
-          .prepare(
-            `UPDATE users SET subscription_type = ?, subscription_status = ?, expires_at = ?, last_active_at = ?, user_role = ?
-             WHERE uid = ? AND ? != ''`
-          )
-          .bind(subType, subStatus, expiresAt, putNowIso, roleInput, cleanUid, cleanUid)
-          .run();
-      } else {
-        upd = await env.DB
-          .prepare(
-            `UPDATE users SET subscription_type = ?, subscription_status = ?, expires_at = ?, last_active_at = ?
-             WHERE uid = ? AND ? != ''`
-          )
-          .bind(subType, subStatus, expiresAt, putNowIso, cleanUid, cleanUid)
-          .run();
-      }
-
-      if (!upd.meta?.changes) {
-        if (!cleanEmail) return fail(404, 'المستخدم غير موجود.');
-        const placeholderUid = cleanUid || `user-${Date.now()}`;
-        await env.DB
-          .prepare(
-            `INSERT INTO users (uid, email, display_name, is_admin, subscription_type, subscription_status, expires_at, last_active_at, created_at, user_role)
-             VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?)`
-          )
-          .bind(placeholderUid, cleanEmail, `أ. ${cleanEmail.split('@')[0]}`, subType, subStatus, expiresAt, putNowIso, putNowIso, hasRoleInput ? roleInput : null)
-          .run();
-      }
+      if (!effectiveEmail) return fail(404, 'المستخدم غير موجود.');
+      const placeholderUid = cleanUid || `user-${Date.now()}`;
+      await env.DB
+        .prepare(
+          `INSERT INTO users (uid, email, display_name, is_admin, subscription_type, subscription_status, expires_at, last_active_at, created_at, user_role)
+           VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?)`
+        )
+        .bind(placeholderUid, effectiveEmail, `أ. ${effectiveEmail.split('@')[0]}`, subType, subStatus, expiresAt, putNowIso, putNowIso, hasRoleInput ? roleInput : null)
+        .run();
     }
 
-    if (cleanEmail) {
-      if (subStatus === 'cancelled') {
+    if (effectiveEmail) {
+      if (subStatus === 'cancelled' || subStatus === 'suspended') {
         await env.DB
           .prepare(
             `INSERT INTO cancelled_accounts (email, reason, cancelled_at)
              VALUES (?, 'ملغي من الإدارة', datetime('now'))
              ON CONFLICT(email) DO UPDATE SET cancelled_at = datetime('now')`
           )
-          .bind(cleanEmail)
+          .bind(effectiveEmail)
           .run();
       } else if (subStatus === 'active') {
-        await env.DB.prepare('DELETE FROM cancelled_accounts WHERE LOWER(email) = ?').bind(cleanEmail).run();
+        await env.DB.prepare('DELETE FROM cancelled_accounts WHERE LOWER(TRIM(email)) = ?').bind(effectiveEmail).run();
       }
     }
-    return json({ success: true });
+
+    const cancelled = await cancelledSet(env.DB);
+    const savedRow = await env.DB
+      .prepare(
+        `${USER_SELECT}
+         WHERE (LOWER(TRIM(u.email)) = ? AND ? != '') OR (u.uid = ? AND ? != '')
+         ORDER BY u.id DESC
+         LIMIT 1`
+      )
+      .bind(effectiveEmail, effectiveEmail, cleanUid, cleanUid)
+      .first<any>();
+
+    return json({
+      success: true,
+      user: savedRow ? formatUser(env, savedRow, cancelled) : null,
+    });
   } catch (err) {
     console.error('PUT /api/users failed:', err);
     return fail(500, 'تعذر تحديث الاشتراك.');

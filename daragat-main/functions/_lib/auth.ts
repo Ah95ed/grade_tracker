@@ -296,7 +296,11 @@ export async function checkAccountAccess(
   let row: any = null;
   try {
     row = await env.DB.prepare(
-      'SELECT subscription_type, subscription_status, expires_at FROM users WHERE (uid = ? AND ? != "") OR (LOWER(email) = LOWER(?) AND ? != "") LIMIT 1'
+      `SELECT subscription_type, subscription_status, expires_at
+       FROM users
+       WHERE (uid = ? AND ? != '') OR (LOWER(TRIM(email)) = LOWER(TRIM(?)) AND ? != '')
+       ORDER BY CASE WHEN subscription_status = 'active' THEN 0 ELSE 1 END, id DESC
+       LIMIT 1`
     )
       .bind(caller.uid, caller.uid, caller.email, caller.email)
       .first();
@@ -308,7 +312,7 @@ export async function checkAccountAccess(
   if (!cancelled && caller.email) {
     try {
       const c = await env.DB.prepare(
-        'SELECT 1 AS x FROM cancelled_accounts WHERE LOWER(email) = ? LIMIT 1'
+        'SELECT 1 AS x FROM cancelled_accounts WHERE LOWER(TRIM(email)) = LOWER(TRIM(?)) LIMIT 1'
       )
         .bind(caller.email)
         .first();

@@ -4,8 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "dev": "NODE_DISABLE_COMPILE_CACHE=1 vite",
+    "build": "NODE_DISABLE_COMPILE_CACHE=1 vite build",
     "preview": "vite preview",
     "generate:icons": "node scripts/generate-icons.js",
     "lint": "tsc --noEmit",
@@ -15,6 +15,7 @@
     "@google/genai": "^2.27.0",
     "@tailwindcss/vite": "^4.3.3",
     "@vitejs/plugin-react": "^6.1.1",
+    "docx": "^9.16.0",
     "firebase": "^12.19.0",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",

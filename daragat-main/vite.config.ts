@@ -122,7 +122,7 @@ export default defineConfig(({ mode }) => {
       VitePWA({
         registerType: 'autoUpdate',
         devOptions: {
-          enabled: true,
+          enabled: false,
         },
         workbox: {
           skipWaiting: true,
@@ -162,9 +162,9 @@ export default defineConfig(({ mode }) => {
         },
         manifest: {
           id: '/',
-          name: 'دفتر درجات المعلم',
-          short_name: 'دفتر الدرجات',
-          description: 'نظام رصد درجات الطلاب الذكي للمعلمين والمدرسين • يعمل أونلاين وبدون إنترنت',
+          name: 'رصد الدرجات للطلاب',
+          short_name: 'رصد الدرجات',
+          description: 'نظام رصد الدرجات للطلاب الذكي • يعمل أونلاين وبدون إنترنت',
           theme_color: '#1e3a8a',
           background_color: '#FAF8F5',
           display: 'standalone',

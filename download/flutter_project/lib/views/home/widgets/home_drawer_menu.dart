@@ -19,6 +19,7 @@ import 'import_backup_dialog.dart';
 import 'drawer_user_header.dart';
 import '../../admin/admin_dashboard_dialog.dart';
 import '../../teacher_personal/teacher_personal_workspace_dialog.dart';
+import '../../exam_builder/exam_builder_view.dart';
 import '../../monthly_sheet/widgets/batch_import_modal.dart';
 import '../../../features/term_calculation/widgets/term_student_cards_modal.dart';
 
@@ -90,6 +91,24 @@ class HomeDrawerMenu extends StatelessWidget {
                 },
               ),
               _buildSectionHeader('المساحة الشخصية وأدوات التدريس'),
+              _buildTile(
+                icon: Icons.quiz_rounded,
+                color: const Color(0xFFD97706),
+                title: 'كتابة وبناء الأسئلة الامتحانية (A4 وزاري)',
+                trailing: Container(
+                  padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
+                  decoration: BoxDecoration(color: const Color(0xFFFEF3C7), borderRadius: BorderRadius.circular(6.r)),
+                  child: Text('جديد • طباعة A4', style: TextStyle(fontSize: 8.5.sp, fontWeight: FontWeight.bold, color: const Color(0xFF92400E))),
+                ),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const ExamBuilderView(isStandalone: true),
+                    ),
+                  );
+                },
+              ),
               _buildTile(
                 icon: Icons.person_pin_rounded,
                 color: const Color(0xFF4338CA),

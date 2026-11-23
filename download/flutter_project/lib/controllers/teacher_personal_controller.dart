@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/constants/app_constants.dart';
 import '../models/teacher_personal.dart';
+import '../models/exam_paper.dart';
 import '../services/teacher_notification_service.dart';
 
 /// MVC Controller for the Teacher Personal Workspace (Section 2)
@@ -13,6 +14,10 @@ class TeacherPersonalController extends ChangeNotifier {
   List<ClassWeeklySchedule> _schedules = [];
   List<TeacherNote> _notes = [];
   List<TeacherAlert> _alerts = [];
+  ExamBuilderData _exams = ExamBuilderData(
+    draft: createDefaultExamPaper(),
+    savedExams: const [],
+  );
   String _activeScheduleId = '';
 
   TeacherPersonalController(this._prefs, {String? userUid})
@@ -23,6 +28,10 @@ class TeacherPersonalController extends ChangeNotifier {
   List<ClassWeeklySchedule> get schedules => _schedules;
   List<TeacherNote> get notes => _notes;
   List<TeacherAlert> get alerts => _alerts;
+  ExamBuilderData get exams => _exams;
+  SavedExamPaper get draftExam => _exams.draft;
+  List<SavedExamPaper> get savedExams => _exams.savedExams;
+  String? get activeExamId => _exams.activeExamId;
   String get activeScheduleId => _activeScheduleId;
 
   ClassWeeklySchedule? get currentSchedule {
@@ -56,16 +65,20 @@ class TeacherPersonalController extends ChangeNotifier {
         _schedules = workspace.schedules;
         _notes = workspace.notes;
         _alerts = workspace.alerts;
+        _exams = workspace.exams ??
+            ExamBuilderData(draft: createDefaultExamPaper(), savedExams: const []);
       } catch (e) {
         debugPrint('Error decoding teacher workspace: $e');
         _schedules = [];
         _notes = [];
         _alerts = [];
+        _exams = ExamBuilderData(draft: createDefaultExamPaper(), savedExams: const []);
       }
     } else {
       _schedules = [];
       _notes = [];
       _alerts = [];
+      _exams = ExamBuilderData(draft: createDefaultExamPaper(), savedExams: const []);
     }
 
     if (_schedules.isEmpty) {
@@ -89,14 +102,123 @@ class TeacherPersonalController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _persist() async {
+  Future<void> _persist({bool notify = true}) async {
     final workspace = TeacherPersonalWorkspace(
       schedules: _schedules,
       notes: _notes,
       alerts: _alerts,
+      exams: _exams,
     );
     await _prefs.setString(_storageKey, jsonEncode(workspace.toJson()));
-    notifyListeners();
+    if (notify) {
+      notifyListeners();
+    }
+  }
+
+  // --- Exam Builder Operations ---
+
+  void updateDraftExam(SavedExamPaper draft, {bool notify = true}) {
+    _exams = _exams.copyWith(draft: draft);
+    _persist(notify: notify);
+  }
+
+  void saveCurrentExam([String? customTitle]) {
+    final current = _exams.draft;
+    final trimmed = customTitle?.trim() ?? '';
+    String finalTitle = trimmed;
+    if (finalTitle.isEmpty) {
+      if (current.title.trim().isNotEmpty) {
+        finalTitle = current.title.trim();
+      } else {
+        final subLine = current.header.rightLines.firstWhere(
+          (l) => l.contains('المادة'),
+          orElse: () => '',
+        );
+        final cleanSub = subLine.replaceAll(RegExp(r'^المادة\s*:\s*'), '').trim();
+        if (cleanSub.isNotEmpty) {
+          finalTitle = 'أسئلة $cleanSub';
+        } else {
+          finalTitle = 'نموذج أسئلة امتحانية';
+        }
+      }
+    }
+
+    // Assign a stable persistent exam ID if this is a new draft or sample
+    final examId = (current.id.startsWith('exam_draft_') || current.id.startsWith('exam_sample_'))
+        ? 'exam_${DateTime.now().millisecondsSinceEpoch}'
+        : current.id;
+
+    final paperToSave = current.copyWith(
+      id: examId,
+      title: finalTitle,
+      updatedAt: DateTime.now().toIso8601String(),
+    );
+
+    final updatedList = List<SavedExamPaper>.from(_exams.savedExams);
+    final existingIdx = updatedList.indexWhere((e) => e.id == paperToSave.id);
+    if (existingIdx >= 0) {
+      updatedList[existingIdx] = paperToSave;
+    } else {
+      updatedList.insert(0, paperToSave);
+    }
+
+    _exams = _exams.copyWith(
+      activeExamId: paperToSave.id,
+      draft: paperToSave,
+      savedExams: updatedList,
+    );
+    _persist(notify: true);
+  }
+
+  void loadExam(String id) {
+    final match = _exams.savedExams.firstWhere(
+      (e) => e.id == id,
+      orElse: () => _exams.draft,
+    );
+    _exams = _exams.copyWith(
+      activeExamId: match.id,
+      draft: match,
+    );
+    _persist(notify: true);
+  }
+
+  void deleteExam(String id) {
+    final updatedList = _exams.savedExams.where((e) => e.id != id).toList();
+    _exams = _exams.copyWith(
+      activeExamId: _exams.activeExamId == id ? null : _exams.activeExamId,
+      savedExams: updatedList,
+    );
+    _persist(notify: true);
+  }
+
+  void createNewExam({
+    String? schoolName,
+    String? subject,
+    String? academicYear,
+    String? teacherName,
+    String? schoolLogo,
+  }) {
+    final newDraft = createDefaultExamPaper(
+      schoolName: schoolName,
+      subject: subject,
+      academicYear: academicYear,
+      teacherName: teacherName,
+      schoolLogo: schoolLogo,
+    );
+    _exams = _exams.copyWith(
+      activeExamId: null,
+      draft: newDraft,
+    );
+    _persist(notify: true);
+  }
+
+  void loadSampleExam({String? schoolLogo}) {
+    final sample = createSampleExamPaper(schoolLogo: schoolLogo);
+    _exams = _exams.copyWith(
+      activeExamId: sample.id,
+      draft: sample,
+    );
+    _persist(notify: true);
   }
 
   // --- Schedules Operations ---

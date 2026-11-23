@@ -67,7 +67,7 @@ export const AdminDashboardView: React.FC<Props> = ({ currentUser }) => {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'active' | 'admin_school' | 'teacher' | 'trial48' | 'exceeded48' | 'cancelled'>('all');
-  const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isSqlModalOpen, setIsSqlModalOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [syncResult, setSyncResult] = useState<RemoteUsersResult | null>(null);
@@ -81,7 +81,7 @@ export const AdminDashboardView: React.FC<Props> = ({ currentUser }) => {
 
   // Quick email reactivation form state
   const [quickEmail, setQuickEmail] = useState('');
-  const [quickPlan, setQuickPlan] = useState<SubscriptionType>('lifetime');
+  const [quickPlan, setQuickPlan] = useState<SubscriptionType>('yearly');
 
   const refreshList = async () => {
     setIsRefreshing(true);
@@ -114,9 +114,9 @@ export const AdminDashboardView: React.FC<Props> = ({ currentUser }) => {
     return () => unsub();
   }, []);
 
-  const showNotice = (msg: string) => {
-    setActionNotice(msg);
-    setTimeout(() => setActionNotice(null), 3500);
+  const showNotice = (text: string, type: 'success' | 'error' = 'success') => {
+    setActionNotice({ type, text });
+    setTimeout(() => setActionNotice(null), 5000);
   };
 
   // Add new admin
@@ -154,11 +154,11 @@ export const AdminDashboardView: React.FC<Props> = ({ currentUser }) => {
     }
   };
 
-  // Update subscription type directly in Cloudflare D1
-  const handleSetSubscription = async (uid: string, type: SubscriptionType) => {
+  // Update subscription type directly in Cloudflare D1 with strict server verification
+  const handleSetSubscription = async (uid: string, email: string, type: SubscriptionType) => {
     setIsRefreshing(true);
     try {
-      const updated = await updateUserSubscription(uid, type, 'active');
+      const updated = await reactivateUserSubscription(uid, email, type);
       if (updated) {
         await refreshList();
         const planNames = {
@@ -167,10 +167,11 @@ export const AdminDashboardView: React.FC<Props> = ({ currentUser }) => {
           lifetime: 'مدى الحياة (دائم)',
           trial: 'تجريبي (3 أيام)',
         };
-        showNotice(`تم تحديث اشتراك (${updated.email}) مباشرة في قاعدة البيانات إلى: ${planNames[type]}`);
+        const expNote = updated.expiresAt ? ` — ينتهي في ${formatIraqDate(updated.expiresAt)}` : '';
+        showNotice(`✅ تم تأكيد وتحديث اشتراك (${updated.email}) في قاعدة البيانات: ${planNames[type]}${expNote}`);
       }
     } catch (e: any) {
-      showNotice(e.message || 'فشل حفظ الاشتراك في قاعدة البيانات السحابية');
+      showNotice(e.message || 'فشل حفظ الاشتراك في قاعدة البيانات السحابية', 'error');
     } finally {
       setIsRefreshing(false);
     }
@@ -193,12 +194,13 @@ export const AdminDashboardView: React.FC<Props> = ({ currentUser }) => {
           lifetime: 'مدى الحياة (دائم)',
           trial: 'تجريبي (48 ساعة)',
         };
-        showNotice(`✅ تمت إعادة تفعيل واشتراك المستخدم (${email}) بنجاح (${planNames[type]})! أصبح حسابه نشطاً الآن.`);
+        const expNote = updated.expiresAt ? ` (ينتهي في: ${formatIraqDate(updated.expiresAt)})` : '';
+        showNotice(`✅ تم التفعيل والتأكد من حفظه في السيرفر للمستخدم (${updated.email}): ${planNames[type]}${expNote}`);
       } else {
-        showNotice(`تعذر إعادة اشتراك (${email})، يرجى التحقق من الاتصال`);
+        showNotice(`تعذر إعادة اشتراك (${email})، يرجى التحقق من الاتصال`, 'error');
       }
     } catch (e: any) {
-      showNotice(e.message || 'حدث خطأ أثناء إعادة الاشتراك والتفعيل');
+      showNotice(e.message || 'حدث خطأ أثناء إعادة الاشتراك والتفعيل', 'error');
     } finally {
       setIsRefreshing(false);
     }
@@ -218,10 +220,10 @@ export const AdminDashboardView: React.FC<Props> = ({ currentUser }) => {
           await refreshList();
           showNotice(`🚫 تم إلغاء تفعيل حساب (${email}) بنجاح. ستظهر له صفحة التواصل معك لإعادة الاشتراك.`);
         } else {
-          showNotice(`تعذر إلغاء حساب (${email})`);
+          showNotice(`تعذر إلغاء حساب (${email})`, 'error');
         }
       } catch (e: any) {
-        showNotice(e.message || 'حدث خطأ أثناء إلغاء الحساب');
+        showNotice(e.message || 'حدث خطأ أثناء إلغاء الحساب', 'error');
       } finally {
         setIsRefreshing(false);
       }
@@ -236,9 +238,8 @@ export const AdminDashboardView: React.FC<Props> = ({ currentUser }) => {
       alert('يرجى إدخال بريد إلكتروني صالح لإعادة الاشتراك.');
       return;
     }
-    const target = users.find((u) => u.email.toLowerCase() === cleanEmail);
-    // إذا لم يكن المستخدم موجوداً محلياً بعد، نمرر المعرف الخاص به إن وجد أو ننشئه
-    const uid = target ? target.uid : `user-${Date.now()}`;
+    const target = users.find((u) => u.email.trim().toLowerCase() === cleanEmail);
+    const uid = target ? target.uid : '';
     await handleReactivateSubscription(uid, cleanEmail, quickPlan);
     setQuickEmail('');
   };
@@ -253,7 +254,7 @@ export const AdminDashboardView: React.FC<Props> = ({ currentUser }) => {
         showNotice(`تم إنهاء تفعيل اشتراك (${updated.email}) مباشرة في قاعدة البيانات`);
       }
     } catch (e: any) {
-      showNotice(e.message || 'فشل إنهاء الاشتراك في السيرفر');
+      showNotice(e.message || 'فشل إنهاء الاشتراك في السيرفر', 'error');
     } finally {
       setIsRefreshing(false);
     }
@@ -269,10 +270,10 @@ export const AdminDashboardView: React.FC<Props> = ({ currentUser }) => {
         if (ok) {
           showNotice(`تم حذف المستخدم (${email}) نهائياً من قاعدة البيانات`);
         } else {
-          showNotice(`تعذر حذف المستخدم (${email})`);
+          showNotice(`تعذر حذف المستخدم (${email})`, 'error');
         }
       } catch (e: any) {
-        showNotice(e.message || 'فشل حذف المستخدم');
+        showNotice(e.message || 'فشل حذف المستخدم', 'error');
       } finally {
         setIsRefreshing(false);
       }
@@ -290,7 +291,7 @@ export const AdminDashboardView: React.FC<Props> = ({ currentUser }) => {
         showNotice(`تم تغيير صفة حساب (${user.email}) إلى «${newRole === 'admin_school' ? 'إدارة مدرسة' : 'أستاذ / معلم'}» وتثبيته في قاعدة البيانات`);
       }
     } catch (e: any) {
-      showNotice(e.message || 'فشل تحديث نوع الحساب في السيرفر');
+      showNotice(e.message || 'فشل تحديث نوع الحساب في السيرفر', 'error');
     } finally {
       setIsRefreshing(false);
     }
@@ -312,7 +313,21 @@ export const AdminDashboardView: React.FC<Props> = ({ currentUser }) => {
     if (user.isAdmin) {
       return { type: 'admin' as const, label: 'مشرف عام (دائم)', hours: 0, minutes: 0 };
     }
+    if (user.subscriptionStatus === 'cancelled') {
+      return { type: 'cancelled' as const, label: 'ملغي من الإدارة', hours: 0, minutes: 0 };
+    }
     if (user.subscriptionStatus === 'active') {
+      if ((user.subscriptionType === 'yearly' || user.subscriptionType === 'monthly') && user.expiresAt) {
+        const expMs = parseSafeTimestamp(user.expiresAt);
+        if (expMs > 0 && nowTick >= expMs) {
+          return {
+            type: 'exceeded' as const,
+            label: `انتهى الاشتراك (${user.subscriptionType === 'yearly' ? 'سنوي' : 'شهري'})`,
+            hours: 0,
+            minutes: 0,
+          };
+        }
+      }
       const planLabel =
         user.subscriptionType === 'lifetime'
           ? 'دائم (مدى الحياة)'
@@ -320,9 +335,6 @@ export const AdminDashboardView: React.FC<Props> = ({ currentUser }) => {
           ? 'سنوي (365 يوماً)'
           : 'شهري (30 يوماً)';
       return { type: 'active' as const, label: `مشترك نشط - ${planLabel}`, hours: 0, minutes: 0 };
-    }
-    if (user.subscriptionStatus === 'cancelled') {
-      return { type: 'cancelled' as const, label: 'ملغي من الإدارة', hours: 0, minutes: 0 };
     }
 
     const createdMs = parseSafeTimestamp(user.createdAt);
@@ -485,9 +497,19 @@ export const AdminDashboardView: React.FC<Props> = ({ currentUser }) => {
 
       {/* Action Notification Toast */}
       {actionNotice && (
-        <div className="p-3.5 bg-emerald-50 border border-emerald-300 rounded-2xl text-emerald-900 text-xs sm:text-sm font-bold flex items-center gap-2 animate-in slide-in-from-top-2">
-          <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
-          <span>{actionNotice}</span>
+        <div
+          className={`p-3.5 rounded-2xl text-xs sm:text-sm font-bold flex items-center gap-2 animate-in slide-in-from-top-2 border ${
+            actionNotice.type === 'error'
+              ? 'bg-rose-50 border-rose-300 text-rose-900'
+              : 'bg-emerald-50 border-emerald-300 text-emerald-900'
+          }`}
+        >
+          {actionNotice.type === 'error' ? (
+            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+          ) : (
+            <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+          )}
+          <span>{actionNotice.text}</span>
         </div>
       )}
 
@@ -644,9 +666,9 @@ export const AdminDashboardView: React.FC<Props> = ({ currentUser }) => {
               onChange={(e) => setQuickPlan(e.target.value as SubscriptionType)}
               className="px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold focus:outline-none"
             >
-              <option value="lifetime">مدى الحياة (دائم) - الافتراضي</option>
+              <option value="yearly">سنوي (365 يوماً - 12,000 د.ع) - الافتراضي</option>
+              <option value="lifetime">مدى الحياة (دائم)</option>
               <option value="monthly">شهري (30 يوماً)</option>
-              <option value="yearly">سنوي (365 يوماً)</option>
             </select>
             <button
               type="submit"
@@ -683,7 +705,7 @@ export const AdminDashboardView: React.FC<Props> = ({ currentUser }) => {
                   : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-200'
               }`}
             >
-              الكل ({users.length})
+              الكل ({totalCount})
             </button>
             <button
               onClick={() => setFilterType('active')}
@@ -848,7 +870,9 @@ export const AdminDashboardView: React.FC<Props> = ({ currentUser }) => {
                               <span>{countdown.label}</span>
                             </span>
                             <span className="text-[10px] text-emerald-700 font-semibold">
-                              بدون عداد • مفعل دائم ويعمل أوفلاين
+                              {user.subscriptionType !== 'lifetime' && user.expiresAt
+                                ? `ينتهي في: ${formatIraqDate(user.expiresAt)} • مفعل في السيرفر`
+                                : 'بدون عداد • مفعل دائم ويعمل أوفلاين'}
                             </span>
                           </div>
                         ) : countdown.type === 'countdown' ? (
@@ -907,50 +931,46 @@ export const AdminDashboardView: React.FC<Props> = ({ currentUser }) => {
 
                       {/* Subscription Control & Reactivation Buttons */}
                       <td className="py-3 px-3 whitespace-nowrap text-center">
-                        <div className="inline-flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
-                          {/* زر إعادة الاشتراك والتفعيل الأساسي المطلوب - افتراضياً مدى الحياة */}
+                        <div className="inline-flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
+                          {/* 1. زر التفعيل السنوي (سنة كاملة) */}
+                          <button
+                            onClick={() => handleReactivateSubscription(user.uid, user.email, 'yearly')}
+                            disabled={isRefreshing}
+                            className={`px-2.5 py-1.5 rounded-lg font-black text-xs flex items-center gap-1 shadow-2xs transition-all active:scale-95 cursor-pointer ${
+                              user.subscriptionType === 'yearly' && user.subscriptionStatus === 'active'
+                                ? 'bg-emerald-600 text-white ring-2 ring-emerald-300 shadow-sm'
+                                : 'bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-200'
+                            }`}
+                            title="تفعيل أو تجديد اشتراك المستخدم لسنة كاملة (365 يوماً - 12,000 د.ع)"
+                          >
+                            <Calendar className="w-3.5 h-3.5" />
+                            <span>تفعيل سنوي (سنة)</span>
+                          </button>
+
+                          {/* 2. زر التفعيل الدائم (مدى الحياة - بدون انتهاء صلاحية) */}
                           <button
                             onClick={() => handleReactivateSubscription(user.uid, user.email, 'lifetime')}
                             disabled={isRefreshing}
-                            className={`px-3 py-1.5 rounded-lg font-black text-xs flex items-center gap-1.5 shadow-2xs transition-all active:scale-95 cursor-pointer ${
-                              user.subscriptionStatus === 'cancelled' || user.subscriptionStatus === 'expired'
-                                ? 'bg-emerald-600 hover:bg-emerald-700 text-white ring-2 ring-emerald-300 shadow-sm'
-                                : 'bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-200'
+                            className={`px-2.5 py-1.5 rounded-lg font-black text-xs flex items-center gap-1 shadow-2xs transition-all active:scale-95 cursor-pointer ${
+                              user.subscriptionType === 'lifetime' && user.subscriptionStatus === 'active'
+                                ? 'bg-amber-500 text-white ring-2 ring-amber-300 shadow-sm'
+                                : 'bg-white hover:bg-amber-50 text-amber-900 border border-amber-200'
                             }`}
-                            title="إعادة تفعيل واشتراك المستخدم فوراً مدى الحياة (دائم)"
+                            title="تفعيل اشتراك دائم مدى الحياة بدون انتهاء صلاحية ويبقى في قاعدة بيانات الهاتف"
                           >
-                            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
-                            <span>تفعيل مدى الحياة</span>
+                            <InfinityIcon className="w-3.5 h-3.5 text-amber-600" />
+                            <span>تفعيل دائم (مدى الحياة)</span>
                           </button>
 
-                          {/* Monthly Extension Button */}
+                          {/* 3. زر تمديد شهري (30 يوماً) */}
                           <button
-                            onClick={() => handleSetSubscription(user.uid, 'monthly')}
-                            className="px-2 py-1 bg-white hover:bg-blue-50 text-blue-700 border border-slate-200 hover:border-blue-300 rounded-lg font-bold text-[11px] transition-colors flex items-center gap-0.5 shadow-2xs"
+                            onClick={() => handleSetSubscription(user.uid, user.email, 'monthly')}
+                            disabled={isRefreshing}
+                            className="px-2 py-1 bg-white hover:bg-blue-50 text-blue-700 border border-slate-200 hover:border-blue-300 rounded-lg font-bold text-[11px] transition-colors flex items-center gap-0.5 shadow-2xs cursor-pointer"
                             title="تمديد اشتراك شهري (30 يوماً)"
                           >
-                            <Calendar className="w-3 h-3" />
-                            <span>شهري</span>
-                          </button>
-
-                          {/* Yearly Button */}
-                          <button
-                            onClick={() => handleSetSubscription(user.uid, 'yearly')}
-                            className="px-2 py-1 bg-white hover:bg-indigo-50 text-indigo-700 border border-slate-200 hover:border-indigo-300 rounded-lg font-bold text-[11px] transition-colors flex items-center gap-0.5 shadow-2xs"
-                            title="تفعيل أو تمديد اشتراك سنوي (365 يوماً)"
-                          >
                             <Clock className="w-3 h-3" />
-                            <span>سنوي</span>
-                          </button>
-
-                          {/* Lifetime Button */}
-                          <button
-                            onClick={() => handleSetSubscription(user.uid, 'lifetime')}
-                            className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-lg font-bold text-[11px] transition-colors flex items-center gap-0.5 shadow-2xs"
-                            title="تفعيل اشتراك دائم مدى الحياة بدون انتهاء"
-                          >
-                            <InfinityIcon className="w-3 h-3 text-amber-600" />
-                            <span>مدى الحياة</span>
+                            <span>شهري</span>
                           </button>
 
                           {/* زر إلغاء الحساب (Cancel / Block Account) */}

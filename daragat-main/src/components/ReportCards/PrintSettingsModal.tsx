@@ -16,6 +16,11 @@ import {
 } from 'lucide-react';
 import { ReportCardItem } from './ReportCardItem';
 import { StudentIndividualCardItem, StudentCardData } from './StudentIndividualCardItem';
+import {
+  NumeralMode,
+  formatScoreDisplay,
+  getSavedNumeralMode,
+} from '../../utils/numeralFormat';
 
 interface Props {
   isOpen: boolean;
@@ -34,6 +39,7 @@ interface Props {
   onStartPrint: () => void;
   totalCardsCount: number;
   isAdministration?: boolean;
+  numeralMode?: NumeralMode;
 }
 
 export const PrintSettingsModal: React.FC<Props> = ({
@@ -53,10 +59,12 @@ export const PrintSettingsModal: React.FC<Props> = ({
   onStartPrint,
   totalCardsCount,
   isAdministration,
+  numeralMode: propNumeralMode,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
+  const numeralMode: NumeralMode = propNumeralMode ?? getSavedNumeralMode();
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -117,7 +125,7 @@ export const PrintSettingsModal: React.FC<Props> = ({
               <h3 className="text-base sm:text-lg font-black tracking-tight flex items-center gap-2">
                 <span>تخصيص وإعدادات طباعة كروت النتائج</span>
                 <span className="text-[11px] font-normal px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
-                  {totalCardsCount} كارت
+                  {formatScoreDisplay(totalCardsCount, numeralMode)} كارت
                 </span>
               </h3>
               <p className="text-xs text-slate-300 mt-0.5">
@@ -458,6 +466,7 @@ export const PrintSettingsModal: React.FC<Props> = ({
                         isPrintMode={true}
                         printSettings={settings}
                         isAdministration={isAdministration}
+                        numeralMode={numeralMode}
                       />
                     );
                   }
@@ -482,6 +491,7 @@ export const PrintSettingsModal: React.FC<Props> = ({
                       subject={subject}
                       isPrintMode={true}
                       printSettings={settings}
+                      numeralMode={numeralMode}
                     />
                   ) : (
                     <div className="py-12 text-center text-xs text-slate-400">
@@ -502,7 +512,7 @@ export const PrintSettingsModal: React.FC<Props> = ({
             className="px-6 py-3 bg-[#2B6CB0] hover:bg-[#20548A] active:scale-98 text-white rounded-2xl font-black text-sm shadow-md shadow-blue-500/25 transition-all flex items-center gap-2 cursor-pointer"
           >
             <Printer className="w-4 h-4 stroke-[2.5]" />
-            <span>بدء الطباعة الآن ({totalCardsCount} كارت)</span>
+            <span>بدء الطباعة الآن ({formatScoreDisplay(totalCardsCount, numeralMode)} كارت)</span>
           </button>
 
           <button

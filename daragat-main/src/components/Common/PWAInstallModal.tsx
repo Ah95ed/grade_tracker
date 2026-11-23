@@ -10,7 +10,7 @@ import {
   ExternalLink,
   MoreVertical,
 } from 'lucide-react';
-import { AppLogo } from './AppLogo';
+import { AppLogo } from '../common/AppLogo';
 import { usePWAInstall } from '../../hooks/usePWAInstall';
 
 interface Props {

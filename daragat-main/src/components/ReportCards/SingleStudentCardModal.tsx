@@ -2,6 +2,8 @@ import React from 'react';
 import { TeacherProfile, TermModel, PrintSettings } from '../../types';
 import { X, Printer, User } from 'lucide-react';
 import { StudentIndividualCardItem, StudentCardData } from './StudentIndividualCardItem';
+import { triggerPrint } from '../../utils/printHelper';
+import { NumeralMode, getSavedNumeralMode } from '../../utils/numeralFormat';
 
 interface Props {
   isOpen: boolean;
@@ -12,6 +14,7 @@ interface Props {
   academicYear?: string;
   printSettings?: PrintSettings;
   isAdministration?: boolean;
+  numeralMode?: NumeralMode;
 }
 
 export const SingleStudentCardModal: React.FC<Props> = ({
@@ -23,11 +26,13 @@ export const SingleStudentCardModal: React.FC<Props> = ({
   academicYear,
   printSettings,
   isAdministration,
+  numeralMode: propNumeralMode,
 }) => {
   if (!isOpen || !studentCard) return null;
+  const numeralMode: NumeralMode = propNumeralMode ?? getSavedNumeralMode();
 
   const handlePrint = () => {
-    window.print();
+    triggerPrint();
   };
 
   return (
@@ -76,6 +81,7 @@ export const SingleStudentCardModal: React.FC<Props> = ({
             isPrintMode={true}
             printSettings={printSettings}
             isAdministration={isAdministration}
+            numeralMode={numeralMode}
           />
         </div>
       </div>

@@ -23,6 +23,8 @@ import {
 } from '../../utils/gradeAndSectionMatcher';
 import { AttendanceRecordModal } from './AttendanceRecordModal';
 import { formatScoreDisplay } from './GradeNumericKeypad';
+import { NumeralMode, getSavedNumeralMode } from '../../utils/numeralFormat';
+import { StackedHeaderLabel } from '../Common/StackedHeaderLabel';
 
 interface Props {
   model: MonthlyModel;
@@ -39,6 +41,7 @@ interface Props {
   selectedSection?: string;
   onGradeChange?: (grade: string) => void;
   onSectionChange?: (section: string) => void;
+  numeralMode?: NumeralMode;
 }
 
 export const CleanTableView: React.FC<Props> = ({
@@ -55,6 +58,7 @@ export const CleanTableView: React.FC<Props> = ({
   selectedSection = 'ALL',
   onGradeChange,
   onSectionChange,
+  numeralMode: propNumeralMode,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const activeRowRef = useRef<HTMLTableRowElement | null>(null);
@@ -226,13 +230,7 @@ export const CleanTableView: React.FC<Props> = ({
   const finalScoreLabel = columnLabels?.finalScore || 'النهائي';
   const ratingLabel = columnLabels?.rating || 'التقدير';
 
-  const numeralMode: 'EN' | 'AR' = (() => {
-    try {
-      return (localStorage.getItem('gradebook_numeral_mode') as 'EN' | 'AR') || 'EN';
-    } catch {
-      return 'EN';
-    }
-  })();
+  const numeralMode: NumeralMode = propNumeralMode ?? getSavedNumeralMode();
 
   const handleScoreChange = (studentId: string, field: 'written' | string, value: string) => {
     if (!onUpdateStudent) return;
@@ -405,24 +403,24 @@ export const CleanTableView: React.FC<Props> = ({
                 </th>
 
                 {/* Grade */}
-                <th className="py-1.5 px-2 min-w-[80px] text-center align-middle border border-[#D5C8B2] bg-[#EFE8D8]">
+                <th className="py-1.5 px-2 w-auto min-w-[70px] text-center align-middle border border-[#D5C8B2] bg-[#EFE8D8] whitespace-nowrap text-[11px] font-extrabold text-[#0F172A]">
                   {gradeLevelLabel}
                 </th>
 
                 {/* Section */}
-                <th className="py-1.5 px-2 w-12 text-center align-middle border border-[#D5C8B2] bg-[#EFE8D8]">
+                <th className="py-1.5 px-1.5 w-11 text-center align-middle border border-[#D5C8B2] bg-[#EFE8D8] text-[11px] font-extrabold text-[#0F172A]">
                   {sectionLabel}
                 </th>
 
                 {/* Subject Name */}
-                <th className="py-1.5 px-2 min-w-[85px] text-center align-middle border border-[#D5C8B2] bg-[#EFE8D8] text-[#1E3A8A]">
-                  اسم المادة
+                <th className="py-1.5 px-2 w-auto min-w-[62px] text-center align-middle border border-[#D5C8B2] bg-[#EFE8D8] text-[#1E3A8A] text-[11px] font-extrabold">
+                  <StackedHeaderLabel label="اسم المادة" />
                 </th>
 
                 {/* Written Exam Score */}
-                <th className="py-1.5 px-2 min-w-[120px] text-center align-middle border border-[#D5C8B2] bg-[#E8F0F7] text-[#1E3A8A]">
-                  <div className="flex items-center justify-center gap-1">
-                    <span>{writtenScoreLabel}</span>
+                <th className="py-1.5 px-2 w-auto min-w-[74px] text-center align-middle border border-[#D5C8B2] bg-[#E8F0F7] text-[#0F172A]">
+                  <div className="flex flex-col items-center justify-center gap-0.5">
+                    <StackedHeaderLabel label={writtenScoreLabel} className="text-[11px] font-extrabold text-[#0F172A]" />
                     <span className="text-[10px] font-bold text-[#3B82F6]">
                       ({effectiveWrittenWeight})
                     </span>
@@ -433,13 +431,13 @@ export const CleanTableView: React.FC<Props> = ({
                 {customCols.map((col) => (
                   <th
                     key={col.id}
-                    className="py-1.5 px-2 min-w-[100px] text-center align-middle border border-[#D5C8B2] bg-[#EFE8D8]"
+                    className="py-1.5 px-2 w-auto min-w-[68px] text-center align-middle border border-[#D5C8B2] bg-[#EFE8D8] text-[#0F172A]"
                   >
-                    <div className="flex items-center justify-center gap-1">
-                      <span>{col.name}</span>
+                    <div className="flex flex-col items-center justify-center gap-0.5">
+                      <StackedHeaderLabel label={col.name} className="text-[11px] font-extrabold text-[#0F172A]" />
                       {col.isAttendance ? (
                         <span
-                          className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${
+                          className={`text-[9px] font-bold px-1.5 py-0.5 rounded border whitespace-nowrap ${
                             col.attendanceConfig?.affectsGrade
                               ? 'bg-amber-100 text-amber-800 border-amber-300'
                               : 'bg-emerald-100 text-emerald-800 border-emerald-300'
@@ -457,9 +455,9 @@ export const CleanTableView: React.FC<Props> = ({
                 ))}
 
                 {/* Final Score */}
-                <th className="py-1.5 px-2 min-w-[110px] text-center align-middle border border-[#D5C8B2] bg-[#FEF3C7] text-[#92400E]">
-                  <div className="flex items-center justify-center gap-1">
-                    <span>{finalScoreLabel}</span>
+                <th className="py-1.5 px-2 w-auto min-w-[74px] text-center align-middle border border-[#D5C8B2] bg-[#FEF3C7] text-[#78350F]">
+                  <div className="flex flex-col items-center justify-center gap-0.5">
+                    <StackedHeaderLabel label={finalScoreLabel} className="text-[11px] font-extrabold text-[#78350F]" />
                     <span className="text-[10px] font-bold text-[#B45309]">
                       ({effectiveTotalMax})
                     </span>
@@ -468,8 +466,8 @@ export const CleanTableView: React.FC<Props> = ({
 
                 {/* Rating Badge Header */}
                 {showRatingColumn && (
-                  <th className="py-1.5 px-2 min-w-[90px] text-center align-middle border border-[#D5C8B2] bg-[#EFE8D8]">
-                    {ratingLabel}
+                  <th className="py-1.5 px-2 w-auto min-w-[68px] text-center align-middle border border-[#D5C8B2] bg-[#EFE8D8] text-[11px] font-extrabold text-[#0F172A]">
+                    <StackedHeaderLabel label={ratingLabel} />
                   </th>
                 )}
               </tr>
@@ -523,7 +521,7 @@ export const CleanTableView: React.FC<Props> = ({
                     >
                       {/* Index */}
                       <td className="py-1 px-1.5 text-center font-bold text-[#7A6E5F] border border-[#D5C8B2] text-[11px]">
-                        {idx + 1}
+                        {formatScoreDisplay(idx + 1, numeralMode)}
                       </td>
 
                       {/* Student Name */}
@@ -532,7 +530,7 @@ export const CleanTableView: React.FC<Props> = ({
                       </td>
 
                       {/* Grade */}
-                      <td className="py-1 px-2 text-center text-[11px] font-semibold text-[#5A4F43] border border-[#D5C8B2] whitespace-nowrap">
+                      <td className="py-1 px-2 text-center text-[11px] font-bold text-[#0F172A] border border-[#D5C8B2] whitespace-nowrap">
                         {student.gradeLevel || '-'}
                       </td>
 
@@ -567,7 +565,7 @@ export const CleanTableView: React.FC<Props> = ({
                                 className="text-[10px] font-bold text-[#2B6CB0] bg-[#EFF6FF] px-1 py-0.2 rounded"
                                 title={`المحسوبة من ${effectiveWrittenWeight}`}
                               >
-                                ={writtenCalculated}
+                                ={formatScoreDisplay(writtenCalculated, numeralMode)}
                               </span>
                             )}
                         </div>
@@ -594,9 +592,9 @@ export const CleanTableView: React.FC<Props> = ({
                                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white hover:bg-emerald-50 border border-emerald-300 text-[10px] font-bold transition-all shadow-2xs cursor-pointer active:scale-95"
                                 title="عرض وتسجيل الحضور والغياب"
                               >
-                                <span className="text-rose-700 font-black">غ:{absentCount}</span>
-                                <span className="text-amber-700 font-bold">م:{excusedCount}</span>
-                                <span className="text-emerald-700 font-bold">ح:{presentCount}</span>
+                                <span className="text-rose-700 font-black">غ:{formatScoreDisplay(absentCount, numeralMode)}</span>
+                                <span className="text-amber-700 font-bold">م:{formatScoreDisplay(excusedCount, numeralMode)}</span>
+                                <span className="text-emerald-700 font-bold">ح:{formatScoreDisplay(presentCount, numeralMode)}</span>
                               </button>
                             </td>
                           );
@@ -627,7 +625,7 @@ export const CleanTableView: React.FC<Props> = ({
                       <td className="py-1 px-2 text-center font-black border border-[#D5C8B2] bg-[#FFFBEB]">
                         {totalMonthly !== null ? (
                           <span className="inline-block min-w-[36px] px-1.5 py-0.5 text-xs sm:text-sm font-black text-[#92400E] bg-amber-100/90 rounded border border-amber-300">
-                            {totalMonthly}
+                            {formatScoreDisplay(totalMonthly, numeralMode)}
                           </span>
                         ) : (
                           <span className="text-slate-400 font-bold">-</span>

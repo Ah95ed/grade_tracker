@@ -3,17 +3,30 @@ import { TeacherProfile, TermModel, PrintSettings } from '../../types';
 import { Printer, Eye, School, User, Award, CheckCircle2, XCircle } from 'lucide-react';
 import { isGradeLevelMatch } from '../../utils/gradeAndSectionMatcher';
 import { canonicalizeArabic } from '../../utils/arabicNameMatcher';
+import { getCurrentAcademicYear } from '../../utils/dateUtils';
+import { orderTermsWithAggregates } from '../../utils/gradeCalculations';
+import { StackedHeaderLabel } from '../Common/StackedHeaderLabel';
+import {
+  NumeralMode,
+  formatScoreDisplay,
+  getSavedNumeralMode,
+} from '../../utils/numeralFormat';
 
 export interface UnifiedTermColumn {
   key: string;
   displayName: string;
   termIds: string[];
+  isAggregate?: boolean;
 }
 
 export interface StudentSubjectScoreDetail {
   subjectName: string;
   teacherName?: string;
   termScores: Record<string, number | null>; // termId -> score
+  termScoreDetails?: Record<
+    string,
+    { raw: number | null; final: number | null; isRounded: boolean }
+  >;
   finalScore: number | null;
   ratingText: string;
   ratingBadgeBg: string;
@@ -47,6 +60,7 @@ interface Props {
   isPrintMode?: boolean;
   printSettings?: PrintSettings;
   isAdministration?: boolean;
+  numeralMode?: NumeralMode;
 }
 
 export const StudentIndividualCardItem: React.FC<Props> = ({
@@ -59,7 +73,9 @@ export const StudentIndividualCardItem: React.FC<Props> = ({
   isPrintMode = false,
   printSettings,
   isAdministration: propIsAdministration,
+  numeralMode: propNumeralMode,
 }) => {
+  const numeralMode: NumeralMode = propNumeralMode ?? getSavedNumeralMode();
   const isAdministration =
     propIsAdministration ??
     (profile.subject === 'الإدارة' ||
@@ -76,14 +92,20 @@ export const StudentIndividualCardItem: React.FC<Props> = ({
         })()
       ));
 
-  const effectiveYear = profile.academicYear || academicYear || '2024 - 2025';
+  const effectiveYear = profile.academicYear?.trim() || academicYear?.trim() || getCurrentAcademicYear();
   const showLogo = printSettings ? printSettings.showSchoolLogo : true;
   const showHeader = printSettings ? printSettings.showSchoolHeader : true;
   const effectiveLogo = profile.schoolLogo || printSettings?.schoolLogo;
 
-  // Filter terms strictly relevant to this student's grade level
-  const relevantTerms = terms.filter(
-    (t) => !t.gradeLevel || isGradeLevelMatch(t.gradeLevel, studentCard.gradeLevel)
+  // Filter terms strictly relevant to this student's grade level and order aggregate terms right after their source terms
+  const relevantTerms = React.useMemo(
+    () =>
+      orderTermsWithAggregates(
+        terms.filter(
+          (t) => !t.gradeLevel || isGradeLevelMatch(t.gradeLevel, studentCard.gradeLevel)
+        )
+      ),
+    [terms, studentCard.gradeLevel]
   );
 
   // Group terms with the same name (e.g. "الفصل الأول" for Arabic and "الفصل الأول" for English)
@@ -95,11 +117,14 @@ export const StudentIndividualCardItem: React.FC<Props> = ({
     for (const t of relevantTerms) {
       const rawName = t.name?.trim() || 'فصل دراسي';
       const key = canonicalizeArabic(rawName);
+      const isAgg =
+        t.sourceType === 'terms' || Boolean(t.selectedTermIds && t.selectedTermIds.length > 0);
       if (!map.has(key)) {
         const col: UnifiedTermColumn = {
           key,
           displayName: rawName,
           termIds: [t.id],
+          isAggregate: isAgg,
         };
         map.set(key, col);
         list.push(col);
@@ -107,6 +132,9 @@ export const StudentIndividualCardItem: React.FC<Props> = ({
         const existing = map.get(key)!;
         if (!existing.termIds.includes(t.id)) {
           existing.termIds.push(t.id);
+        }
+        if (isAgg) {
+          existing.isAggregate = true;
         }
       }
     }
@@ -186,7 +214,7 @@ export const StudentIndividualCardItem: React.FC<Props> = ({
                 الشعبة: <strong className="text-[#4E7A68]">{studentCard.section || '—'}</strong>
               </span>
               <span className="bg-white px-2.5 py-1 rounded-lg border border-[#D8CEBD] font-bold text-slate-800" dir="ltr">
-                {effectiveYear}
+                {formatScoreDisplay(effectiveYear, numeralMode)}
               </span>
             </div>
           </div>
@@ -198,27 +226,29 @@ export const StudentIndividualCardItem: React.FC<Props> = ({
             <thead>
               <tr className="bg-slate-100 text-slate-900 font-black border-b border-slate-300">
                 <th className="py-2.5 px-3 border-r border-slate-300 text-center w-10">#</th>
-                <th className="py-2.5 px-3 border-r border-slate-300 text-right min-w-[140px]">
-                  المادة الدراسية
+                <th className="py-2 px-2.5 border-r border-slate-300 text-right min-w-[95px] text-[11px] font-extrabold">
+                  <StackedHeaderLabel label="المادة الدراسية" />
                 </th>
                 {unifiedTermColumns.length === 0 ? (
-                  <th className="py-2.5 px-3 border-r border-slate-300 text-center min-w-[85px] text-slate-400">
+                  <th className="py-2 px-2 border-r border-slate-300 text-center min-w-[66px] text-slate-400 text-[11px]">
                     الفصول
                   </th>
                 ) : (
                   unifiedTermColumns.map((col) => (
                     <th
                       key={col.key}
-                      className="py-2.5 px-3 border-r border-slate-300 text-center min-w-[85px]"
+                      className={`py-2 px-2 border-r border-slate-300 text-center w-auto min-w-[64px] text-[11px] font-extrabold ${
+                        col.isAggregate ? 'bg-[#EAF3EE] text-[#1D3B2E]' : ''
+                      }`}
                     >
-                      درجة {col.displayName}
+                      <StackedHeaderLabel label={`درجة ${col.displayName}`} />
                     </th>
                   ))
                 )}
-                <th className="py-2.5 px-3 border-r border-slate-300 text-center min-w-[80px]">
+                <th className="py-2 px-2 border-r border-slate-300 text-center min-w-[66px] text-[11px] font-extrabold">
                   التقدير
                 </th>
-                <th className="py-2.5 px-3 text-center min-w-[75px]">
+                <th className="py-2 px-2 text-center min-w-[60px] text-[11px] font-extrabold">
                   النتيجة
                 </th>
               </tr>
@@ -242,7 +272,7 @@ export const StudentIndividualCardItem: React.FC<Props> = ({
                     }`}
                   >
                     <td className="py-2.5 px-3 border-r border-slate-300 text-center font-bold text-slate-500">
-                      {idx + 1}
+                      {formatScoreDisplay(idx + 1, numeralMode)}
                     </td>
                     <td className="py-2.5 px-3 border-r border-slate-300 text-right font-black text-slate-900">
                       <div>{sub.subjectName}</div>
@@ -259,23 +289,42 @@ export const StudentIndividualCardItem: React.FC<Props> = ({
                     ) : (
                       unifiedTermColumns.map((col) => {
                         let score: number | null = null;
+                        let scoreDetail:
+                          | { raw: number | null; final: number | null; isRounded: boolean }
+                          | undefined;
                         for (const tid of col.termIds) {
                           const s = sub.termScores[tid];
                           if (s !== null && s !== undefined && !isNaN(s)) {
                             score = s;
+                            scoreDetail = sub.termScoreDetails?.[tid];
                             break;
                           }
                         }
                         if (score === null && sub.termScores[col.key] !== undefined && sub.termScores[col.key] !== null) {
                           score = sub.termScores[col.key];
+                          scoreDetail = sub.termScoreDetails?.[col.key];
                         }
                         return (
                           <td
                             key={col.key}
-                            className="py-2.5 px-3 border-r border-slate-300 text-center font-bold text-slate-800"
+                            className={`py-2.5 px-3 border-r border-slate-300 text-center font-bold ${
+                              col.isAggregate ? 'bg-[#F4F9F6] text-[#1D3B2E] font-extrabold' : 'text-slate-800'
+                            }`}
                           >
                             {score !== null && score !== undefined ? (
-                              score
+                              <div className="flex flex-col items-center justify-center leading-tight">
+                                <span>{formatScoreDisplay(score, numeralMode)}</span>
+                                {scoreDetail?.isRounded &&
+                                  scoreDetail.raw !== null &&
+                                  scoreDetail.raw !== undefined && (
+                                    <span
+                                      className="text-[10px] text-[#854D0E] font-bold mt-0.5 no-print"
+                                      title={`الدرجة قبل التقريب كانت ${scoreDetail.raw}`}
+                                    >
+                                      (أصله: {formatScoreDisplay(scoreDetail.raw, numeralMode)})
+                                    </span>
+                                  )}
+                              </div>
                             ) : (
                               <span className="text-slate-400 font-normal">-</span>
                             )}
@@ -324,7 +373,7 @@ export const StudentIndividualCardItem: React.FC<Props> = ({
                     colSpan={Math.max(1, unifiedTermColumns.length)}
                     className="py-2.5 px-3 text-center border-r border-slate-300 text-xs text-slate-600 font-normal"
                   >
-                    مجموع المواد: {studentCard.subjects.length}
+                    مجموع المواد: {formatScoreDisplay(studentCard.subjects.length, numeralMode)}
                   </td>
                   <td className="py-2.5 px-3 text-center border-r border-slate-300">
                     {studentCard.overallRating?.text ? (

@@ -3,6 +3,8 @@ import { MonthlyModel, TermModel, TeacherProfile, RoundingMode } from '../../typ
 import {
   calculateTermSummaries,
 } from '../../utils/gradeCalculations';
+import { triggerPrint } from '../../utils/printHelper';
+import { getCurrentAcademicYear } from '../../utils/dateUtils';
 import {
   getUniqueGradeLevels,
   getUniqueSections,
@@ -32,18 +34,30 @@ import {
   EyeOff,
   User,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Maximize2,
   GraduationCap,
   BookOpen,
+  IdCard,
 } from 'lucide-react';
 import { CleanTermTableView } from './CleanTermTableView';
-import { AddTermModal } from './AddTermModal';
+import { TermStudentCardsModal } from './TermStudentCardsModal';
+import { AddTermModal, STANDARD_TERM_SUGGESTIONS, TERM_NAME_HISTORY_KEY } from './AddTermModal';
 import { ConfirmDeleteModal } from '../Common/ConfirmDeleteModal';
 import { ScoreRoundingModal } from '../MonthlySheet/ScoreRoundingModal';
 import { StudentFloatingCloud, ActiveStudentCloudInfo } from '../Common/StudentFloatingCloud';
 import { ColumnSlant, getSlantClasses, getNextSlant, SlantButton } from '../Common/ColumnSlantToggle';
+import { StackedHeaderLabel } from '../Common/StackedHeaderLabel';
 import { AppUser, getCurrentUser } from '../../utils/auth';
 import { canonicalizeArabic } from '../../utils/arabicNameMatcher';
+import { NumeralModeToggle } from '../Common/NumeralModeToggle';
+import {
+  NumeralMode,
+  NUMERAL_MODE_STORAGE_KEY,
+  formatScoreDisplay,
+  getSavedNumeralMode,
+} from '../../utils/numeralFormat';
 
 function isSubjectMatch(a?: string, b?: string): boolean {
   if (!a || !b) return false;
@@ -65,6 +79,8 @@ interface Props {
   monthlyModels: MonthlyModel[];
   profile: TeacherProfile;
   currentUser?: AppUser | null;
+  numeralMode?: NumeralMode;
+  onNumeralModeChange?: (mode: NumeralMode) => void;
 }
 
 export const TermCalculationView: React.FC<Props> = ({
@@ -78,14 +94,28 @@ export const TermCalculationView: React.FC<Props> = ({
   monthlyModels,
   profile,
   currentUser,
+  numeralMode: propNumeralMode,
+  onNumeralModeChange: propOnNumeralModeChange,
 }) => {
   const currentTerm = terms.find((t) => t.id === activeTermId) || terms[0];
+  const [internalNumeralMode, setInternalNumeralMode] = useState<NumeralMode>(() => getSavedNumeralMode());
+  const numeralMode: NumeralMode = propNumeralMode ?? internalNumeralMode;
+
+  const handleNumeralModeChange = (mode: NumeralMode) => {
+    setInternalNumeralMode(mode);
+    try {
+      localStorage.setItem(NUMERAL_MODE_STORAGE_KEY, mode);
+    } catch {}
+    propOnNumeralModeChange?.(mode);
+  };
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedGradeLevel, setSelectedGradeLevel] = useState('ALL');
   const [selectedSection, setSelectedSection] = useState('ALL');
   // Clean Fullscreen Table View without any buttons
   const [isCleanTableView, setIsCleanTableView] = useState(false);
+  // Student Cards Modal (by student name with subjects, monthly scores & term averages)
+  const [isStudentCardsModalOpen, setIsStudentCardsModalOpen] = useState(false);
 
   // Column header slant/orientation (normal | italic | vertical)
   const [columnSlants, setColumnSlants] = useState<Record<string, ColumnSlant>>(() => {
@@ -290,6 +320,230 @@ export const TermCalculationView: React.FC<Props> = ({
   const [newTermSections, setNewTermSections] = useState<string[]>([]);
 
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [termToDelete, setTermToDelete] = useState<TermModel | null>(null);
+  const requestDeleteTerm = (term: TermModel) => {
+    setTermToDelete(term);
+    setIsDeleteModalOpen(true);
+  };
+
+  // Filter state for Term cards toolbar (term name and grade level)
+  const [selectedTermNameFilter, setSelectedTermNameFilter] = useState('ALL');
+  const [selectedTermGradeFilter, setSelectedTermGradeFilter] = useState('ALL');
+
+  const availableTermNamesForFilter = useMemo(() => {
+    const set = new Set<string>();
+    terms.forEach((t) => {
+      if (t.name?.trim()) set.add(t.name.trim());
+    });
+    return Array.from(set);
+  }, [terms]);
+
+  const availableTermGradesForFilter = useMemo(() => {
+    const set = new Set<string>();
+    terms.forEach((t) => {
+      if (t.gradeLevel?.trim()) set.add(t.gradeLevel.trim());
+    });
+    return Array.from(set);
+  }, [terms]);
+
+  const displayedTerms = useMemo(() => {
+    return terms.filter((t) => {
+      if (selectedTermNameFilter !== 'ALL' && t.name?.trim() !== selectedTermNameFilter) {
+        return false;
+      }
+      if (
+        selectedTermGradeFilter !== 'ALL' &&
+        !isGradeLevelMatch(t.gradeLevel || '', selectedTermGradeFilter)
+      ) {
+        return false;
+      }
+      return true;
+    });
+  }, [terms, selectedTermNameFilter, selectedTermGradeFilter]);
+
+  const regularTermsCount = useMemo(
+    () =>
+      terms.filter(
+        (t) => t.sourceType !== 'terms' && !(t.selectedTermIds && t.selectedTermIds.length > 0)
+      ).length,
+    [terms]
+  );
+
+  // Horizontal scroll container ref & handlers for term cards
+  const termCardsContainerRef = React.useRef<HTMLDivElement | null>(null);
+
+  const handleScrollTerms = (direction: 'left' | 'right') => {
+    if (!termCardsContainerRef.current) return;
+    const scrollAmount = 320;
+    const delta = direction === 'left' ? -scrollAmount : scrollAmount;
+    termCardsContainerRef.current.scrollBy({ left: delta, behavior: 'smooth' });
+  };
+
+  React.useEffect(() => {
+    if (!termCardsContainerRef.current || !currentTerm?.id) return;
+    const cardEl = termCardsContainerRef.current.querySelector(
+      `[data-term-id="${currentTerm.id}"]`
+    ) as HTMLElement | null;
+    if (cardEl) {
+      cardEl.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    }
+  }, [currentTerm?.id]);
+
+  // Helper to get scoped monthly models for any term
+  const getScopedMonthlyModelsForTerm = React.useCallback(
+    (term: TermModel) => {
+      return monthlyModels.filter((m) => {
+        const matchGrade = !term.gradeLevel || isGradeLevelMatch(m.gradeLevel || '', term.gradeLevel);
+        const matchSub = !term.subject || isSubjectMatch(m.subject, term.subject);
+        const matchTeacher =
+          !term.teacherName ||
+          !m.teacherName ||
+          canonicalizeArabic(m.teacherName) === canonicalizeArabic(term.teacherName);
+        return matchGrade && matchSub && matchTeacher;
+      });
+    },
+    [monthlyModels]
+  );
+
+  // Helper to prevent circular term dependencies (A -> B -> A)
+  const termDependsOn = React.useCallback(
+    (termId: string, targetId: string, visited = new Set<string>()): boolean => {
+      if (termId === targetId) return true;
+      if (visited.has(termId)) return false;
+      visited.add(termId);
+      const found = terms.find((item) => item.id === termId);
+      if (!found || !found.selectedTermIds?.length) return false;
+      return found.selectedTermIds.some((childId) =>
+        termDependsOn(childId, targetId, visited)
+      );
+    },
+    [terms]
+  );
+
+  // Helper to get scoped created regular terms that can be included in any term
+  const getScopedSourceTermsForAggregate = React.useCallback(
+    (targetTerm: TermModel) => {
+      return terms.filter((t) => {
+        if (t.id === targetTerm.id) return false;
+        if (termDependsOn(t.id, targetTerm.id)) return false;
+        const matchGrade =
+          !targetTerm.gradeLevel ||
+          !t.gradeLevel ||
+          isGradeLevelMatch(t.gradeLevel, targetTerm.gradeLevel);
+        const matchSub =
+          !targetTerm.subject || !t.subject || isSubjectMatch(t.subject, targetTerm.subject);
+        const matchTeacher =
+          !targetTerm.teacherName ||
+          !t.teacherName ||
+          canonicalizeArabic(t.teacherName) === canonicalizeArabic(targetTerm.teacherName);
+        const matchSections =
+          !targetTerm.assignedSections?.length ||
+          !t.assignedSections?.length ||
+          targetTerm.assignedSections.some((sec) =>
+            t.assignedSections!.some((tSec) => isSectionMatch(tSec, sec))
+          );
+        return matchGrade && matchSub && matchTeacher && matchSections;
+      });
+    },
+    [terms, termDependsOn]
+  );
+
+  // Toggle created term inclusion for any term (preserves selected monthly models)
+  const handleToggleSourceTermForAggregate = (targetTerm: TermModel, sourceTermId: string) => {
+    const currentValidSelected = Array.from(
+      new Set(
+        (targetTerm.selectedTermIds || []).filter((id) =>
+          terms.some(
+            (t) =>
+              t.id === id &&
+              t.id !== targetTerm.id &&
+              !termDependsOn(t.id, targetTerm.id)
+          )
+        )
+      )
+    );
+
+    const newSelectedTerms = currentValidSelected.includes(sourceTermId)
+      ? currentValidSelected.filter((id) => id !== sourceTermId)
+      : [...currentValidSelected, sourceTermId];
+
+    const validModelIds = (targetTerm.selectedModelIds || []).filter((id) =>
+      monthlyModels.some((m) => m.id === id)
+    );
+    const totalCount = validModelIds.length + newSelectedTerms.length;
+    const mode: 'average' | 'sum' | 'single' =
+      totalCount > 1
+        ? targetTerm.calculationMode === 'sum'
+          ? 'sum'
+          : 'average'
+        : 'single';
+
+    onUpdateTerm({
+      ...targetTerm,
+      selectedTermIds: newSelectedTerms,
+      sourceType: newSelectedTerms.length > 0 && validModelIds.length === 0 ? 'terms' : 'models',
+      calculationMode: mode,
+    });
+  };
+
+  // Toggle monthly model inclusion for any specific term (preserves selected created terms)
+  const handleToggleModelForTerm = (targetTerm: TermModel, modelId: string) => {
+    const currentValidSelected = Array.from(
+      new Set(
+        (targetTerm.selectedModelIds || []).filter((id) =>
+          monthlyModels.some((m) => m.id === id)
+        )
+      )
+    );
+
+    let newSelected: string[];
+    if (currentValidSelected.includes(modelId)) {
+      newSelected = currentValidSelected.filter((id) => id !== modelId);
+    } else {
+      newSelected = [...currentValidSelected, modelId];
+    }
+
+    const validTermIds = (targetTerm.selectedTermIds || []).filter((id) =>
+      terms.some(
+        (t) =>
+          t.id === id &&
+          t.id !== targetTerm.id &&
+          !termDependsOn(t.id, targetTerm.id)
+      )
+    );
+    const totalCount = newSelected.length + validTermIds.length;
+    const mode: 'average' | 'sum' | 'single' =
+      totalCount > 1
+        ? targetTerm.calculationMode === 'sum'
+          ? 'sum'
+          : 'average'
+        : 'single';
+
+    try {
+      localStorage.setItem(
+        `daragat_term_selected_models_${targetTerm.id}`,
+        JSON.stringify(newSelected)
+      );
+    } catch {}
+
+    onUpdateTerm({
+      ...targetTerm,
+      selectedModelIds: newSelected,
+      sourceType: validTermIds.length > 0 && newSelected.length === 0 ? 'terms' : 'models',
+      calculationMode: mode,
+    });
+  };
+
+  const handleOpenEditSpecificTerm = (term: TermModel) => {
+    onSelectTerm(term.id);
+    setEditTermNameValue(term.name);
+    setEditTermGradeValue(term.gradeLevel || availableGradesFromModels[0] || '');
+    setEditTermSubjectValue(term.subject || availableSubjectsFromModels[0] || '');
+    setEditTermTeacherValue(term.teacherName || '');
+    setEditTermSectionsValue(term.assignedSections || []);
+    setIsEditingTermName(true);
+  };
+
   const [isRoundingModalOpen, setIsRoundingModalOpen] = useState(false);
 
   // Rating Column visibility preference (hidden by default)
@@ -390,18 +644,60 @@ export const TermCalculationView: React.FC<Props> = ({
     const updatedSubject = editTermSubjectValue || undefined;
     const updatedTeacher = editTermTeacherValue.trim() || undefined;
 
-    // Check matching monthly models from "صفحة الجدول"
-    const matchingModelIds = monthlyModels
-      .filter((m) => {
-        const matchGrade = !updatedGrade || isGradeLevelMatch(m.gradeLevel || '', updatedGrade);
-        const matchSub = !updatedSubject || isSubjectMatch(m.subject, updatedSubject);
-        const matchTeacher =
-          !updatedTeacher ||
-          !m.teacherName ||
-          canonicalizeArabic(m.teacherName) === canonicalizeArabic(updatedTeacher);
-        return matchGrade && matchSub && matchTeacher;
-      })
-      .map((m) => m.id);
+    const hasSourceTerms =
+      currentTerm.sourceType === 'terms' || Boolean(currentTerm.selectedTermIds?.length);
+    const hasDirectModels = (currentTerm.selectedModelIds || []).length > 0;
+
+    const matchingTermIds = hasSourceTerms
+      ? terms
+          .filter((t) => {
+            if (
+              t.id === currentTerm.id ||
+              t.sourceType === 'terms' ||
+              (t.selectedTermIds && t.selectedTermIds.length > 0)
+            ) {
+              return false;
+            }
+            const matchGrade =
+              !updatedGrade || !t.gradeLevel || isGradeLevelMatch(t.gradeLevel, updatedGrade);
+            const matchSub =
+              !updatedSubject || !t.subject || isSubjectMatch(t.subject, updatedSubject);
+            const matchTeacher =
+              !updatedTeacher ||
+              !t.teacherName ||
+              canonicalizeArabic(t.teacherName) === canonicalizeArabic(updatedTeacher);
+            return matchGrade && matchSub && matchTeacher;
+          })
+          .map((t) => t.id)
+      : [];
+
+    const matchingModelIds =
+      hasDirectModels || !hasSourceTerms
+        ? monthlyModels
+            .filter((m) => {
+              const matchGrade = !updatedGrade || isGradeLevelMatch(m.gradeLevel || '', updatedGrade);
+              const matchSub = !updatedSubject || isSubjectMatch(m.subject, updatedSubject);
+              const matchTeacher =
+                !updatedTeacher ||
+                !m.teacherName ||
+                canonicalizeArabic(m.teacherName) === canonicalizeArabic(updatedTeacher);
+              return matchGrade && matchSub && matchTeacher;
+            })
+            .map((m) => m.id)
+        : [];
+
+    const nextModelIds =
+      hasDirectModels || !hasSourceTerms
+        ? matchingModelIds.length > 0
+          ? matchingModelIds
+          : currentTerm.selectedModelIds
+        : [];
+    const nextTermIds = hasSourceTerms
+      ? matchingTermIds.length > 0
+        ? matchingTermIds
+        : currentTerm.selectedTermIds || []
+      : currentTerm.selectedTermIds;
+    const totalCount = nextModelIds.length + (nextTermIds?.length || 0);
 
     onUpdateTerm({
       ...currentTerm,
@@ -410,15 +706,60 @@ export const TermCalculationView: React.FC<Props> = ({
       subject: updatedSubject,
       teacherName: updatedTeacher,
       assignedSections: editTermSectionsValue.length > 0 ? editTermSectionsValue : undefined,
-      selectedModelIds:
-        matchingModelIds.length > 0 ? matchingModelIds : currentTerm.selectedModelIds,
-      calculationMode: matchingModelIds.length > 1 ? 'average' : currentTerm.calculationMode,
+      selectedModelIds: nextModelIds,
+      selectedTermIds: nextTermIds,
+      sourceType: nextTermIds && nextTermIds.length > 0 && nextModelIds.length === 0 ? 'terms' : 'models',
+      calculationMode:
+        totalCount > 1
+          ? currentTerm.calculationMode === 'sum'
+            ? 'sum'
+            : 'average'
+          : 'single',
     });
+
     if (updatedGrade) {
       setSelectedGradeLevel(updatedGrade);
     }
+
+    try {
+      const trimmed = editTermNameValue.trim();
+      const raw = localStorage.getItem(TERM_NAME_HISTORY_KEY);
+      const list: string[] = raw ? JSON.parse(raw) : [];
+      const updated = list.filter((item) => canonicalizeArabic(item) !== canonicalizeArabic(trimmed));
+      updated.push(trimmed);
+      localStorage.setItem(TERM_NAME_HISTORY_KEY, JSON.stringify(updated));
+    } catch {}
+
     setIsEditingTermName(false);
   };
+
+  const allTermNameSuggestions = useMemo(() => {
+    const list: string[] = [];
+    const seen = new Set<string>();
+    const add = (n?: string) => {
+      const t = n?.trim();
+      if (!t) return;
+      const c = canonicalizeArabic(t);
+      if (!seen.has(c)) {
+        seen.add(c);
+        list.push(t);
+      }
+    };
+    if (terms && terms.length > 0) {
+      for (let i = terms.length - 1; i >= 0; i--) {
+        add(terms[i].name);
+      }
+    }
+    try {
+      const raw = localStorage.getItem(TERM_NAME_HISTORY_KEY);
+      const saved: string[] = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(saved)) {
+        for (let i = saved.length - 1; i >= 0; i--) add(saved[i]);
+      }
+    } catch {}
+    STANDARD_TERM_SUGGESTIONS.forEach(add);
+    return list;
+  }, [terms]);
 
   const [defaultSuggestedTermName, setDefaultSuggestedTermName] = useState('الفصل الأول');
   const [highlightAverageCol, setHighlightAverageCol] = useState(false);
@@ -483,8 +824,12 @@ export const TermCalculationView: React.FC<Props> = ({
     teacherName?: string;
     assignedSections?: string[];
     selectedModelIds: string[];
+    selectedTermIds: string[];
+    calculationMode: 'average' | 'sum' | 'single';
   }) => {
     const termId = 'term-' + Date.now();
+    const hasTerms = termData.selectedTermIds.length > 0;
+    const hasModels = termData.selectedModelIds.length > 0;
     const newTerm: TermModel = {
       id: termId,
       name: termData.name.trim(),
@@ -493,7 +838,9 @@ export const TermCalculationView: React.FC<Props> = ({
       teacherName: termData.teacherName,
       assignedSections: termData.assignedSections,
       selectedModelIds: termData.selectedModelIds,
-      calculationMode: termData.selectedModelIds.length > 1 ? 'average' : 'single',
+      sourceType: hasTerms && !hasModels ? 'terms' : 'models',
+      selectedTermIds: hasTerms ? termData.selectedTermIds : undefined,
+      calculationMode: termData.calculationMode,
       notes: '',
     };
     onAddTerm(newTerm);
@@ -511,7 +858,7 @@ export const TermCalculationView: React.FC<Props> = ({
   };
 
   const handleOpenAddTerm = () => {
-    const nextNum = terms.length + 1;
+    const nextNum = regularTermsCount + 1;
     const suggested =
       nextNum === 1 ? 'الفصل الأول' : nextNum === 2 ? 'الفصل الثاني' : nextNum === 3 ? 'الفصل الثالث' : `الفصل ${nextNum}`;
     setDefaultSuggestedTermName(suggested);
@@ -541,16 +888,29 @@ export const TermCalculationView: React.FC<Props> = ({
     });
   }, [monthlyModels, currentTerm]);
 
-  // Self-heal and sync term's selectedModelIds so phantom or deleted model IDs are never counted.
-  // Persists and restores user selections without forcing any month if the user chose none.
+  // Self-heal and sync term's selectedModelIds AND selectedTermIds so phantom/deleted IDs are never counted.
   // CRITICAL: Must be placed BEFORE any early return to satisfy React Rules of Hooks!
   React.useEffect(() => {
     if (!currentTerm) return;
 
+    const currentTermIds = currentTerm.selectedTermIds || [];
+    const validTermIds = Array.from(
+      new Set(
+        currentTermIds.filter((id) =>
+          terms.some(
+            (t) =>
+              t.id === id &&
+              t.id !== currentTerm.id &&
+              !termDependsOn(t.id, currentTerm.id)
+          )
+        )
+      )
+    );
+
     let currentIds = currentTerm.selectedModelIds || [];
 
-    // If currently empty, check if user had previously selected months saved in localStorage for this term
-    if (currentIds.length === 0) {
+    // Check saved selections only when both models and terms are empty
+    if (currentIds.length === 0 && validTermIds.length === 0 && currentTerm.sourceType !== 'terms') {
       try {
         const saved = localStorage.getItem(`daragat_term_selected_models_${currentTerm.id}`);
         if (saved) {
@@ -570,29 +930,44 @@ export const TermCalculationView: React.FC<Props> = ({
       )
     );
 
-    if (
+    const termsChanged =
+      validTermIds.length !== currentTermIds.length ||
+      validTermIds.some((id, idx) => id !== currentTermIds[idx]);
+    const modelsChanged =
       validIds.length !== (currentTerm.selectedModelIds || []).length ||
-      validIds.some((id, idx) => id !== currentTerm.selectedModelIds[idx])
-    ) {
+      validIds.some((id, idx) => id !== currentTerm.selectedModelIds[idx]);
+
+    if (termsChanged || modelsChanged) {
+      const totalCount = validIds.length + validTermIds.length;
       onUpdateTerm({
         ...currentTerm,
         selectedModelIds: validIds,
-        calculationMode: validIds.length > 1 ? 'average' : 'single',
+        selectedTermIds: validTermIds.length > 0 ? validTermIds : undefined,
+        sourceType: validTermIds.length > 0 && validIds.length === 0 ? 'terms' : 'models',
+        calculationMode:
+          totalCount > 1
+            ? currentTerm.calculationMode === 'sum'
+              ? 'sum'
+              : 'average'
+            : 'single',
       });
     }
-  }, [currentTerm?.id, scopedMonthlyModels]);
+  }, [currentTerm?.id, currentTerm?.sourceType, scopedMonthlyModels, terms]);
 
-  // Memoized student summaries across chosen models (strictly scoped to this term's Grade Level & Subject & Teacher's assigned sections!)
+  // Memoized student summaries across chosen models and/or chosen source terms
   const studentSummaries = useMemo(() => {
     if (!currentTerm) return [];
-    const summaries = calculateTermSummaries(currentTerm, scopedMonthlyModels);
+    const hasSourceTerms =
+      currentTerm.sourceType === 'terms' || Boolean(currentTerm.selectedTermIds?.length);
+    const modelsInput = hasSourceTerms ? monthlyModels : scopedMonthlyModels;
+    const summaries = calculateTermSummaries(currentTerm, modelsInput, terms);
     if (currentTerm.assignedSections && currentTerm.assignedSections.length > 0) {
       return summaries.filter((s) =>
         currentTerm.assignedSections!.some((sec) => isSectionMatch(s.section || 'أ', sec))
       );
     }
     return summaries;
-  }, [currentTerm, scopedMonthlyModels]);
+  }, [currentTerm, monthlyModels, scopedMonthlyModels, terms]);
 
   // Check if any student in the active term has decimal / fractional scores, or if rounding is configured
   const hasDecimalScores = useMemo(() => {
@@ -641,7 +1016,7 @@ export const TermCalculationView: React.FC<Props> = ({
   if (!currentTerm) {
     return (
       <div className="space-y-4">
-        {/* Full-width "إضافة فصل جديد" button */}
+        {/* Top Action Button: Single unified "إضافة فصل دراسي جديد" */}
         <div className="no-print">
           <button
             type="button"
@@ -690,6 +1065,7 @@ export const TermCalculationView: React.FC<Props> = ({
           initialSections={newTermSections}
           defaultName={defaultSuggestedTermName}
           profile={profile}
+          existingTerms={terms}
         />
       </div>
     );
@@ -750,8 +1126,8 @@ export const TermCalculationView: React.FC<Props> = ({
     .filter((score): score is number => score !== null);
 
   const totalCount = studentSummaries.length;
-  const passedCount = validScores.filter(
-    (score) => (score / (currentTerm ? 100 : 100)) * 100 >= 50
+  const passedCount = studentSummaries.filter(
+    (s) => s.finalTermScore !== null && s.status === 'passed'
   ).length;
   const passRate =
     validScores.length > 0 ? Math.round((passedCount / validScores.length) * 100) : 0;
@@ -763,30 +1139,58 @@ export const TermCalculationView: React.FC<Props> = ({
       : 0;
   const maxScore = validScores.length > 0 ? Math.max(...validScores) : 0;
 
-  // Selected models objects
+  // Selected models AND selected source terms objects (supports months, created terms, or both together)
   const selectedModelsObj = monthlyModels.filter((m) =>
-    currentTerm.selectedModelIds.includes(m.id)
+    (currentTerm.selectedModelIds || []).includes(m.id)
   );
+  const selectedSourceTermsObj = terms.filter(
+    (t) =>
+      (currentTerm.selectedTermIds || []).includes(t.id) &&
+      t.id !== currentTerm.id &&
+      !termDependsOn(t.id, currentTerm.id)
+  );
+  const isAggregateTerms =
+    selectedSourceTermsObj.length > 0 || currentTerm.sourceType === 'terms';
+  const activeSourceItems = [
+    ...selectedModelsObj.map((m) => ({
+      kind: 'model' as const,
+      id: m.id,
+      name: m.name,
+      subject: m.subject,
+    })),
+    ...selectedSourceTermsObj.map((t) => ({
+      kind: 'term' as const,
+      id: t.id,
+      name: t.name,
+      subject: t.subject,
+    })),
+  ];
 
   // Export CSV
   const handleExportCSV = () => {
     const exportGradeLabel = 'الصف الدراسي';
     const exportSectionLabel = 'الشعبة';
     const exportFinalScoreLabel = 'النهائي';
+    const effectiveAcademicYear = profile.academicYear?.trim() || getCurrentAcademicYear();
 
     const headers = [
       'م',
       'اسم الطالب',
       exportGradeLabel,
       exportSectionLabel,
+      'السنة الدراسية',
       ...(showSubjectColumn ? ['اسم الدرس'] : []),
-      ...selectedModelsObj.map((m) => `درجة ${m.name}`),
+      ...activeSourceItems.map((item) => `درجة ${item.name}`),
       exportFinalScoreLabel,
       'التقدير',
       'الحالة',
     ];
 
-    const currentSubName = currentTerm.subject || selectedModelsObj[0]?.subject || '';
+    const currentSubName =
+      currentTerm.subject ||
+      selectedModelsObj[0]?.subject ||
+      selectedSourceTermsObj[0]?.subject ||
+      '';
 
     const rows = filteredSummaries.map((s, idx) => {
       const monthScores = s.monthlyScores.map((ms) => ms.score ?? '');
@@ -795,6 +1199,7 @@ export const TermCalculationView: React.FC<Props> = ({
         `"${s.name}"`,
         `"${s.gradeLevel}"`,
         `"${s.section}"`,
+        `"${effectiveAcademicYear}"`,
         ...(showSubjectColumn ? [`"${currentSubName}"`] : []),
         ...monthScores,
         s.finalTermScore ?? '',
@@ -819,7 +1224,7 @@ export const TermCalculationView: React.FC<Props> = ({
 
   return (
     <div className="space-y-3 sm:space-y-4">
-      {/* Full-width "إضافة فصل جديد" button */}
+      {/* Top Action Button: Single unified "إضافة فصل دراسي جديد" */}
       <div className="no-print">
         <button
           type="button"
@@ -832,296 +1237,444 @@ export const TermCalculationView: React.FC<Props> = ({
         </button>
       </div>
 
-      {/* Term Switcher Bar */}
-      <div className="bg-[#FAF7EC] p-3.5 rounded-2xl border border-[#D8CEBD] shadow-xs flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
-          {terms.map((term) => {
-            const isActive = term.id === currentTerm.id;
-            const termValidCount = monthlyModels.filter((m) =>
-              term.selectedModelIds.includes(m.id)
-            ).length;
+      {/* Term Cards Slider with Square Cards & Horizontal Navigation */}
+      <div className="bg-[#FAF7EC] p-3.5 sm:p-5 rounded-2xl border border-[#D8CEBD] shadow-xs no-print">
+        {/* Top Toolbar: Title + Compact Filter Box + Horizontal Navigation Arrows */}
+        <div className="flex items-center justify-between pb-3 mb-3 border-b border-[#E6DCB8]/60 flex-wrap gap-2">
+          {/* Title & Count Badge */}
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#B86848]"></span>
+            <h3 className="text-xs sm:text-sm md:text-base font-black text-[#2F2822] whitespace-nowrap">
+              فصول ونماذج احتساب الدرجات
+            </h3>
+            <span className="text-[10px] sm:text-xs font-bold px-1.5 sm:px-2 py-0.5 rounded-full bg-[#EFE3DC] text-[#4A2818] whitespace-nowrap">
+              {formatScoreDisplay(displayedTerms.length, numeralMode)} من {formatScoreDisplay(terms.length, numeralMode)}
+            </span>
+          </div>
 
-            return (
-              <button
-                key={term.id}
-                onClick={() => {
-                  onSelectTerm(term.id);
-                  if (term.gradeLevel) {
-                    setSelectedGradeLevel(term.gradeLevel);
-                  }
-                }}
-                className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
-                  isActive
-                    ? 'bg-[#B86848] text-white border border-[#944D30] shadow-sm font-black'
-                    : 'bg-[#EFE3DC] hover:bg-[#E5D4CB] text-[#4A2818] border border-[#D6BFB2]'
-                }`}
-              >
-                <span>{term.name}</span>
-                {term.gradeLevel && (
-                  <span
-                    className={`text-[11px] px-1.5 py-0.5 rounded-md font-bold border ${
-                      isActive
-                        ? 'bg-white/20 text-white border-white/30'
-                        : 'bg-white/80 text-[#7A361D] border-[#D6BFB2]'
-                    }`}
-                  >
-                    {term.gradeLevel}
-                  </span>
-                )}
-                {term.subject && (
-                  <span
-                    className={`text-[11px] px-1.5 py-0.5 rounded-md font-bold border ${
-                      isActive
-                        ? 'bg-amber-300/30 text-amber-100 border-amber-200/40'
-                        : 'bg-amber-100 text-amber-900 border-amber-200'
-                    }`}
-                  >
-                    {term.subject}
-                  </span>
-                )}
-                {term.teacherName && (
-                  <span
-                    className={`text-[11px] px-1.5 py-0.5 rounded-md font-bold border ${
-                      isActive
-                        ? 'bg-white/20 text-white border-white/30'
-                        : 'bg-emerald-50 text-emerald-900 border-emerald-200'
-                    }`}
-                  >
-                    أ. {term.teacherName}
-                  </span>
-                )}
-                {term.assignedSections && term.assignedSections.length > 0 && (
-                  <span
-                    className={`text-[10px] px-1.5 py-0.5 rounded-md font-bold border ${
-                      isActive
-                        ? 'bg-white/20 text-white border-white/30'
-                        : 'bg-blue-50 text-blue-900 border-blue-200'
-                    }`}
-                  >
-                    شُعب: {term.assignedSections.join('، ')}
-                  </span>
-                )}
-                <span
-                  className={`text-[11px] px-2 py-0.5 rounded-full font-semibold ${
-                    isActive ? 'bg-white/20 text-white' : 'bg-[#DDC9BD] text-[#4A2818]'
-                  }`}
-                >
-                  {termValidCount === 1
-                    ? 'نموذج واحد'
-                    : termValidCount === 2
-                    ? 'معدل نموذجين'
-                    : `معدل ${termValidCount} نماذج`}
+          {/* Controls Group: Filter Box + Navigation Arrows on the same line */}
+          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0 flex-wrap">
+            {/* Rectangular Box with "تصفية" on top border containing only the two dropdowns */}
+            {(availableTermNamesForFilter.length > 0 || availableTermGradesForFilter.length > 0) && (
+              <div className="relative border border-[#CBB69F] rounded-xl px-1.5 sm:px-2 py-1 inline-flex items-center gap-1 sm:gap-1.5 bg-[#FAF7F0]/80 mt-1 sm:mt-0">
+                {/* Centered label on top border */}
+                <span className="absolute -top-2 left-1/2 -translate-x-1/2 bg-[#FAF7EC] px-1 text-[10px] font-black text-[#8C7662] leading-none whitespace-nowrap select-none">
+                  تصفية
                 </span>
-              </button>
-            );
-          })}
-        </div>
 
-        <div className="flex items-center gap-2">
-          {/* Edit Term Name & Scope Button */}
-          <button
-            type="button"
-            onClick={handleOpenEditTermName}
-            className="text-xs text-[#8C4325] hover:text-[#6D3219] bg-[#FAEDE8] hover:bg-[#F5DDD5] border border-[#ECD1C5] px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 font-bold shadow-2xs active:scale-95 cursor-pointer"
-            title={`تعديل اسم وبيانات فصل ${currentTerm.name}`}
-            aria-label={`تعديل اسم وبيانات فصل ${currentTerm.name}`}
-          >
-            <Pencil className="w-3.5 h-3.5 text-[#8C4325]" />
-            <span>تعديل الفصل</span>
-          </button>
+                {/* 1. قائمة منبثقة لاسم الفصل الدراسي */}
+                {availableTermNamesForFilter.length > 0 && (
+                  <select
+                    value={selectedTermNameFilter}
+                    onChange={(e) => setSelectedTermNameFilter(e.target.value)}
+                    className="px-1.5 py-0.5 sm:px-2 sm:py-1 bg-white border border-[#D8CEBD] rounded-lg text-[11px] font-bold text-[#3D2E21] focus:ring-1 focus:ring-[#B86848] focus:outline-none cursor-pointer shadow-2xs hover:border-[#B86848] transition-colors max-w-[105px] sm:max-w-[130px] truncate"
+                    title="تصفية حسب اسم الفصل"
+                  >
+                    <option value="ALL">جميع الفصول ({formatScoreDisplay(terms.length, numeralMode)})</option>
+                    {availableTermNamesForFilter.map((name) => {
+                      const count = terms.filter((t) => t.name?.trim() === name).length;
+                      return (
+                        <option key={name} value={name}>
+                          {name} ({formatScoreDisplay(count, numeralMode)})
+                        </option>
+                      );
+                    })}
+                  </select>
+                )}
 
-          {/* Delete Term Button - Always available even if only 1 term remains */}
-          <button
-            type="button"
-            onClick={() => setIsDeleteModalOpen(true)}
-            className="text-xs text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 font-bold shadow-2xs active:scale-95 cursor-pointer"
-            title={`حذف فصل ${currentTerm.name}`}
-            aria-label={`حذف فصل ${currentTerm.name}`}
-          >
-            <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-            <span>حذف فصل {currentTerm.name}</span>
-          </button>
-        </div>
-      </div>
+                {/* 2. قائمة منبثقة للصف الدراسي */}
+                {availableTermGradesForFilter.length > 0 && (
+                  <select
+                    value={selectedTermGradeFilter}
+                    onChange={(e) => setSelectedTermGradeFilter(e.target.value)}
+                    className="px-1.5 py-0.5 sm:px-2 sm:py-1 bg-white border border-[#D8CEBD] rounded-lg text-[11px] font-bold text-[#3D2E21] focus:ring-1 focus:ring-[#B86848] focus:outline-none cursor-pointer shadow-2xs hover:border-[#B86848] transition-colors max-w-[95px] sm:max-w-[120px] truncate"
+                    title="تصفية حسب الصف الدراسي"
+                  >
+                    <option value="ALL">جميع الصفوف</option>
+                    {availableTermGradesForFilter.map((grade) => {
+                      const count = terms.filter((t) =>
+                        isGradeLevelMatch(t.gradeLevel || '', grade)
+                      ).length;
+                      return (
+                        <option key={grade} value={grade}>
+                          {grade} ({formatScoreDisplay(count, numeralMode)})
+                        </option>
+                      );
+                    })}
+                  </select>
+                )}
 
-      {/* Model Selection & Auto-Calculation Controller - Terracotta Theme */}
-      <div className="bg-[#B86848] rounded-2xl text-white p-5 sm:p-6 shadow-md relative overflow-hidden">
-        <div className="relative z-10 space-y-4">
-          <div className="flex items-center justify-between gap-4 flex-wrap">
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <span className="px-2.5 py-0.5 rounded-md text-xs font-black bg-[#FAF0EB] text-[#7A361D] uppercase">
-                صفحة احتساب الدرجات
-              </span>
-              <h2 className="text-xl sm:text-2xl font-black">{currentTerm.name}</h2>
-              {currentTerm.gradeLevel && (
-                <span className="text-xs px-2.5 py-1 rounded-lg font-black bg-white/20 text-white border border-white/25 flex items-center gap-1">
-                  <GraduationCap className="w-3.5 h-3.5 text-white/90" />
-                  <span>{currentTerm.gradeLevel}</span>
-                </span>
-              )}
-              {currentTerm.subject && (
-                <span className="text-xs px-2.5 py-1 rounded-lg font-black bg-amber-300/25 text-amber-100 border border-amber-200/30 flex items-center gap-1">
-                  <BookOpen className="w-3.5 h-3.5 text-amber-200" />
-                  <span>{currentTerm.subject}</span>
-                </span>
-              )}
-              {currentTerm.teacherName && (
-                <span className="text-xs px-2.5 py-1 rounded-lg font-black bg-emerald-900/40 text-emerald-100 border border-emerald-300/30 flex items-center gap-1">
-                  <User className="w-3.5 h-3.5 text-emerald-200" />
-                  <span>الأستاذ: {currentTerm.teacherName}</span>
-                </span>
-              )}
-              {currentTerm.assignedSections && currentTerm.assignedSections.length > 0 && (
-                <span className="text-xs px-2.5 py-1 rounded-lg font-black bg-blue-900/40 text-blue-100 border border-blue-300/30 flex items-center gap-1">
-                  <span>الشُعب المخصصة: {currentTerm.assignedSections.join('، ')}</span>
-                </span>
-              )}
+                {/* زر إلغاء الفرز السريع إذا كانت الفلترة مفعلة */}
+                {(selectedTermNameFilter !== 'ALL' || selectedTermGradeFilter !== 'ALL') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedTermNameFilter('ALL');
+                      setSelectedTermGradeFilter('ALL');
+                    }}
+                    className="w-5 h-5 rounded-md bg-rose-50 hover:bg-rose-100 text-rose-600 flex items-center justify-center transition-colors cursor-pointer shrink-0"
+                    title="إلغاء التصفية وعرض الكل"
+                    aria-label="إلغاء التصفية"
+                  >
+                    <X className="w-3 h-3 stroke-[2.5]" />
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Navigation Arrows for Horizontal Scrolling */}
+            <div className="flex items-center gap-1 shrink-0">
               <button
                 type="button"
-                onClick={handleOpenEditTermName}
-                className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/15 hover:bg-white/25 text-white transition-colors cursor-pointer"
-                title={`تعديل مسمى وبيانات ${currentTerm.name}`}
-                aria-label={`تعديل مسمى وبيانات ${currentTerm.name}`}
+                onClick={() => handleScrollTerms('right')}
+                className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-white hover:bg-[#EFE3DC] active:bg-[#E5D4CB] border border-[#D8CEBD] text-[#4A2818] flex items-center justify-center transition-all shadow-2xs hover:shadow-xs active:scale-95 cursor-pointer"
+                title="التمرير لليمين (الفصول السابقة)"
+                aria-label="التمرير لليمين"
               >
-                <Pencil className="w-3.5 h-3.5" />
+                <ChevronRight className="w-4 h-4 stroke-[2.5]" />
+              </button>
+              <button
+                type="button"
+                onClick={() => handleScrollTerms('left')}
+                className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-white hover:bg-[#EFE3DC] active:bg-[#E5D4CB] border border-[#D8CEBD] text-[#4A2818] flex items-center justify-center transition-all shadow-2xs hover:shadow-xs active:scale-95 cursor-pointer"
+                title="التمرير لليسار (الفصول التالية)"
+                aria-label="التمرير لليسار"
+              >
+                <ChevronLeft className="w-4 h-4 stroke-[2.5]" />
               </button>
             </div>
           </div>
+        </div>
 
-          {/* Interactive Checkboxes / Cards for choosing Monthly Models */}
-          <div className="pt-1">
-            <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
-              <label className="text-xs font-bold text-orange-100 flex items-center gap-1.5 flex-wrap">
-                <span>تحديد أشهر ({currentTerm.name}):</span>
-                {selectedModelsObj.length > 0 ? (
-                  <span className="text-amber-200 font-black">
-                    ({selectedModelsObj.map((m) => m.name).join(' + ')})
-                  </span>
-                ) : (
-                  <span className="text-orange-200 font-medium bg-black/20 px-2 py-0.5 rounded">
-                    (لم يتم تحديد أي شهر بعد — حدد بالضغط على مربعات الاختيار ☑)
-                  </span>
-                )}
-              </label>
+        {/* Scrollable Container with Side Navigation Buttons */}
+        <div className="relative group/scroll">
+          {/* Floating scroll arrows on container sides for desktop */}
+          <button
+            type="button"
+            onClick={() => handleScrollTerms('right')}
+            className="hidden md:flex absolute -right-2 top-1/2 -translate-y-1/2 z-10 w-9 h-9 rounded-full bg-white/95 hover:bg-white text-[#4A2818] border border-[#D8CEBD] shadow-md items-center justify-center transition-all hover:scale-110 active:scale-95 cursor-pointer"
+            title="تصفح لليمين"
+          >
+            <ChevronRight className="w-5 h-5 stroke-[2.5]" />
+          </button>
+          <button
+            type="button"
+            onClick={() => handleScrollTerms('left')}
+            className="hidden md:flex absolute -left-2 top-1/2 -translate-y-1/2 z-10 w-9 h-9 rounded-full bg-white/95 hover:bg-white text-[#4A2818] border border-[#D8CEBD] shadow-md items-center justify-center transition-all hover:scale-110 active:scale-95 cursor-pointer"
+            title="تصفح لليسار"
+          >
+            <ChevronLeft className="w-5 h-5 stroke-[2.5]" />
+          </button>
 
-              {/* Quick Select All / Deselect All helpers */}
-              {scopedMonthlyModels.length > 1 && (
-                <div className="flex items-center gap-2 text-[11px] font-bold">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const allIds = scopedMonthlyModels.map((m) => m.id);
-                      try {
-                        localStorage.setItem(
-                          `daragat_term_selected_models_${currentTerm.id}`,
-                          JSON.stringify(allIds)
-                        );
-                      } catch {}
-                      onUpdateTerm({
-                        ...currentTerm,
-                        selectedModelIds: allIds,
-                        calculationMode: allIds.length > 1 ? 'average' : 'single',
-                      });
-                    }}
-                    className="text-orange-100 hover:text-white underline cursor-pointer"
-                  >
-                    تحديد الكل
-                  </button>
-                  <span className="text-orange-300">•</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      try {
-                        localStorage.setItem(
-                          `daragat_term_selected_models_${currentTerm.id}`,
-                          JSON.stringify([])
-                        );
-                      } catch {}
-                      onUpdateTerm({
-                        ...currentTerm,
-                        selectedModelIds: [],
-                        calculationMode: 'single',
-                      });
-                    }}
-                    className="text-orange-100 hover:text-white underline cursor-pointer"
-                  >
-                    إلغاء تحديد الكل
-                  </button>
-                </div>
-              )}
-            </div>
+          <div
+            ref={termCardsContainerRef}
+            className="flex items-stretch gap-3.5 overflow-x-auto pb-3 pt-1 px-1 scroll-smooth max-w-full"
+            style={{ scrollbarWidth: 'thin' }}
+          >
+            {displayedTerms.map((term) => {
+              const isActive = term.id === currentTerm.id;
+              const isAgg =
+                term.sourceType === 'terms' ||
+                Boolean(term.selectedTermIds && term.selectedTermIds.length > 0);
+              const matchingScoped = getScopedMonthlyModelsForTerm(term);
+              const selectedForTerm = matchingScoped.filter((m) =>
+                (term.selectedModelIds || []).includes(m.id)
+              );
+              const matchingSourceTerms = getScopedSourceTermsForAggregate(term);
+              const selectedSourceForAgg = matchingSourceTerms.filter((t) =>
+                (term.selectedTermIds || []).includes(t.id)
+              );
 
-            {scopedMonthlyModels.length === 0 ? (
-              <div className="bg-black/20 border border-white/20 rounded-xl p-4 sm:p-5 text-center text-sm text-orange-100 space-y-1.5">
-                <p className="font-bold text-white text-base">
-                  لا توجد كشوف درجات شهرية تطابق هذا الصف والمادة
-                </p>
-                <p className="text-xs text-orange-200 leading-relaxed max-w-lg mx-auto">
-                  هذا الفصل الدراسي مخصص لـ{' '}
-                  <span className="font-black text-amber-200 underline">{currentTerm.gradeLevel || 'الصف المحدد'}</span>
-                  {currentTerm.subject ? ` ومادة (${currentTerm.subject})` : ''}.
-                  <br />
-                  يرجى إضافة كشف شهري جديد لهذا الصف والمادة من صفحة جدول الدرجات ليظهر هنا لاحتساب المعدل.
-                </p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                {scopedMonthlyModels.map((model) => {
-                  const isSelected = (currentTerm.selectedModelIds || []).includes(model.id);
-                  // Calculate students count strictly matching the term's designated gradeLevel
-                  const matchingStudents = currentTerm.gradeLevel
-                    ? model.students.filter((s) => isGradeLevelMatch(s.gradeLevel, currentTerm.gradeLevel!))
-                    : model.students;
-                  const matchingCount = matchingStudents.length;
-
-                  return (
-                    <div
-                      key={model.id}
-                      onClick={() => handleToggleModel(model.id)}
-                      role="checkbox"
-                      aria-checked={isSelected}
-                      tabIndex={0}
-                      onKeyDown={(e) => {
-                        if (e.key === ' ' || e.key === 'Enter') {
-                          e.preventDefault();
-                          handleToggleModel(model.id);
-                        }
-                      }}
-                      className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all flex items-start gap-3 select-none ${
-                        isSelected
-                          ? 'bg-[#96472A] border-[#F2C5B3] shadow-md text-white ring-2 ring-white/20'
-                          : 'bg-white/10 border-white/20 hover:border-white/50 hover:bg-white/15 text-orange-100/90'
-                      }`}
-                    >
-                      {/* Clear Square Checkbox */}
-                      <div
-                        className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 mt-0.5 transition-all ${
-                          isSelected
-                            ? 'bg-white border-white text-[#7A361D] shadow-xs'
-                            : 'border-white/60 bg-white/10 hover:border-white'
+              return (
+                <div
+                  key={term.id}
+                  data-term-id={term.id}
+                  onClick={() => {
+                    onSelectTerm(term.id);
+                    if (term.gradeLevel) {
+                      setSelectedGradeLevel(term.gradeLevel);
+                    }
+                  }}
+                  className={`w-72 sm:w-80 shrink-0 rounded-2xl p-4 flex flex-col justify-between transition-all duration-200 cursor-pointer select-none border-2 text-right relative snap-start ${
+                    isActive
+                      ? isAgg
+                        ? 'bg-[#F8FBF9] border-[#3B6554] shadow-md ring-2 ring-[#3B6554]/25'
+                        : 'bg-[#FFFDFC] border-[#B86848] shadow-md ring-2 ring-[#B86848]/25'
+                      : isAgg
+                      ? 'bg-[#F3F8F5] hover:bg-[#EAF3EE] border-[#B8D1C4] hover:border-[#3B6554]/70 shadow-2xs hover:shadow-xs'
+                      : 'bg-[#FAF7EC] hover:bg-[#F3EFE0] border-[#D8CEBD] hover:border-[#B86848]/60 shadow-2xs hover:shadow-xs'
+                  }`}
+                >
+                  {/* Top Action Header (Status & Edit / Delete Buttons) */}
+                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#E6DCB8]">
+                    <div className="flex items-center gap-1.5">
+                      <span
+                        className={`w-2 h-2 rounded-full ${
+                          isActive
+                            ? isAgg
+                              ? 'bg-[#3B6554] animate-pulse'
+                              : 'bg-[#B86848] animate-pulse'
+                            : 'bg-slate-400'
                         }`}
+                      ></span>
+                      <span className={`text-[11px] font-bold ${isAgg ? 'text-[#2E5243]' : 'text-[#8C7662]'}`}>
+                        {isAgg ? 'معدل الفصول الدراسية' : 'صفحة احتساب الدرجات'}
+                      </span>
+                    </div>
+                    <div
+                      className="flex items-center gap-1"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditSpecificTerm(term)}
+                        className="w-7 h-7 rounded-lg bg-[#B86848]/10 hover:bg-[#B86848] text-[#8C4325] hover:text-white flex items-center justify-center transition-all cursor-pointer shadow-2xs"
+                        title={`تعديل مسمى وبيانات ${term.name}`}
+                        aria-label={`تعديل ${term.name}`}
                       >
-                        {isSelected && <Check className="w-3.5 h-3.5 stroke-[3.5]" />}
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => requestDeleteTerm(term)}
+                        className="w-7 h-7 rounded-lg bg-rose-50 hover:bg-rose-600 text-rose-600 hover:text-white flex items-center justify-center transition-all cursor-pointer shadow-2xs"
+                        title={`حذف ${term.name}`}
+                        aria-label={`حذف ${term.name}`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Main Title / Term Name */}
+                  <div className="mb-2.5">
+                    <h4 className="text-base sm:text-lg font-black text-[#2F2822] leading-tight flex items-center gap-1.5 flex-wrap">
+                      <span>{term.name}</span>
+                      {isAgg && (
+                        <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-[#E1EFE8] text-[#264A3B] border border-[#B2D3C2]">
+                          يشمل فصول
+                        </span>
+                      )}
+                      {isActive && (
+                        <span
+                          className={`text-[10px] font-black px-1.5 py-0.5 rounded-md text-white ${
+                            isAgg ? 'bg-[#3B6554]' : 'bg-[#B86848]'
+                          }`}
+                        >
+                          المعروض حالياً
+                        </span>
+                      )}
+                    </h4>
+                  </div>
+
+                  {/* Info Badges (Grade, Subject, Teacher, Sections) */}
+                  <div className="flex flex-col gap-1.5 mb-2.5 text-xs">
+                    {/* الصف والمادة */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {term.gradeLevel ? (
+                        <span className="px-2 py-0.5 rounded-lg text-xs font-black bg-blue-50 text-blue-900 border border-blue-200/90 flex items-center gap-1">
+                          <GraduationCap className="w-3.5 h-3.5 text-blue-700" />
+                          <span>{term.gradeLevel}</span>
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-lg text-xs font-medium text-slate-500 bg-slate-100">
+                          الصف غير محدد
+                        </span>
+                      )}
+
+                      {term.subject ? (
+                        <span className="px-2 py-0.5 rounded-lg text-xs font-black bg-amber-50 text-amber-900 border border-amber-200/90 flex items-center gap-1">
+                          <BookOpen className="w-3.5 h-3.5 text-amber-700" />
+                          <span>{term.subject}</span>
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-lg text-xs font-medium text-slate-500 bg-slate-100">
+                          المادة غير محددة
+                        </span>
+                      )}
+                    </div>
+
+                    {/* الأستاذ */}
+                    <div className="px-2 py-1 rounded-lg text-xs font-bold bg-emerald-50/90 text-emerald-950 border border-emerald-200/80 flex items-center gap-1.5">
+                      <User className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                      <span className="truncate">
+                        الأستاذ: <strong className="font-black">{term.teacherName || 'غير محدد'}</strong>
+                      </span>
+                    </div>
+
+                    {/* الشُعب المخصصة */}
+                    <div className="px-2 py-1 rounded-lg text-xs font-bold bg-amber-50/90 text-[#544030] border border-amber-200/80 flex items-center justify-between gap-1">
+                      <span className="text-[#8C7662] font-semibold text-[11px]">الشُعب المخصصة:</span>
+                      <span className="font-black text-[#2F2822]">
+                        {term.assignedSections?.length ? term.assignedSections.join('، ') : 'جميع الشُعب'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Two Separate Colored Bordered Rectangles: Monthly Models (Terracotta) & Created Terms (Emerald) */}
+                  <div
+                    className="pt-2 border-t border-[#E6DCB8]/80 space-y-2"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {/* Rectangle 1: Monthly Models from الجدول */}
+                    <div className="rounded-xl border-2 border-[#C87D5E] bg-[#FDF6F2] p-2 space-y-1.5">
+                      <div className="flex items-center justify-between gap-1 flex-wrap">
+                        <span className="text-[11px] font-black text-[#7A361D] flex items-center gap-1">
+                          <Calendar className="w-3 h-3 text-[#B86848] shrink-0" />
+                          <span>الأشهر (من الجدول):</span>
+                        </span>
+                        {selectedForTerm.length > 0 ? (
+                          <span className="text-[10px] font-black text-[#8C4325] bg-white px-1.5 py-0.5 rounded border border-[#E5BFA9] truncate max-w-[125px]">
+                            ({selectedForTerm.map((m) => m.name).join(' + ')})
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-medium text-[#8C5237]/80 bg-white/80 px-1.5 py-0.5 rounded border border-[#ECD1C5]">
+                            (لم يُحدد شهر)
+                          </span>
+                        )}
                       </div>
-                      <div className="flex-1">
-                        <div className="font-bold text-sm text-white flex items-center justify-between gap-1">
-                          <span>{model.name}</span>
-                          {model.subject && (
-                            <span className="text-[11px] font-black bg-white/20 text-amber-200 px-1.5 py-0.5 rounded border border-white/20">
-                              {model.subject}
+
+                      {matchingScoped.length === 0 ? (
+                        <div className="text-[11px] text-[#7A361D]/80 bg-white/75 border border-dashed border-[#D8A890] rounded-lg p-1.5 text-center">
+                          لا توجد كشوف شهرية مطابقة بعد
+                        </div>
+                      ) : (
+                        <div
+                          className="space-y-1 max-h-28 overflow-y-auto pr-0.5"
+                          style={{ scrollbarWidth: 'thin' }}
+                        >
+                          {matchingScoped.map((m) => {
+                            const isChecked = (term.selectedModelIds || []).includes(m.id);
+                            return (
+                              <div
+                                key={m.id}
+                                onClick={() => handleToggleModelForTerm(term, m.id)}
+                                role="checkbox"
+                                aria-checked={isChecked}
+                                tabIndex={0}
+                                onKeyDown={(e) => {
+                                  if (e.key === ' ' || e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleToggleModelForTerm(term, m.id);
+                                  }
+                                }}
+                                className={`p-1.5 rounded-lg border transition-all flex items-center gap-2 cursor-pointer text-xs select-none ${
+                                  isChecked
+                                    ? 'bg-white border-[#B86848] text-[#4A2818] font-bold shadow-2xs'
+                                    : 'bg-white/75 border-[#E8CEC0] hover:border-[#B86848]/70 text-slate-700'
+                                }`}
+                              >
+                                <div
+                                  className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-all ${
+                                    isChecked
+                                      ? 'bg-[#B86848] border-[#B86848] text-white'
+                                      : 'border-slate-400 bg-white'
+                                  }`}
+                                >
+                                  {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                                </div>
+                                <span className="truncate flex-1 font-bold">{m.name}</span>
+                                <span className="text-[10px] text-slate-500 font-normal shrink-0">
+                                  (من {formatScoreDisplay(m.totalMaxScore, numeralMode)})
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Rectangle 2: Created Terms from المعدل */}
+                    {(matchingSourceTerms.length > 0 || (term.selectedTermIds || []).length > 0) && (
+                      <div className="rounded-xl border-2 border-[#3B6554] bg-[#EFF7F3] p-2 space-y-1.5">
+                        <div className="flex items-center justify-between gap-1 flex-wrap">
+                          <span className="text-[11px] font-black text-[#1E4D3B] flex items-center gap-1">
+                            <Layers className="w-3 h-3 text-[#3B6554] shrink-0" />
+                            <span>الفصول المنشأة (المعدل):</span>
+                          </span>
+                          {selectedSourceForAgg.length > 0 ? (
+                            <span className="text-[10px] font-black text-[#1E4D3B] bg-white px-1.5 py-0.5 rounded border border-[#A8D2BD] truncate max-w-[125px]">
+                              ({selectedSourceForAgg.map((t) => t.name).join(' + ')})
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-medium text-[#2E5243]/80 bg-white/80 px-1.5 py-0.5 rounded border border-[#B8D5C6]">
+                              (لم يُحدد فصل)
                             </span>
                           )}
                         </div>
-                        <div className="text-[11px] text-orange-100 mt-0.5 flex items-center justify-between">
-                          <span className={matchingCount === 0 ? 'text-amber-200 font-bold' : ''}>
-                            {matchingCount === 0 ? 'لا يوجد طلاب لهذا الصف' : `${matchingCount} طالب`}
-                          </span>
-                          <span className="font-bold">من {model.totalMaxScore}</span>
-                        </div>
+
+                        {matchingSourceTerms.length === 0 ? (
+                          <div className="text-[11px] text-[#1E4D3B]/80 bg-white/75 border border-dashed border-[#8EC0A9] rounded-lg p-1.5 text-center">
+                            لا توجد فصول منشأة مطابقة بعد
+                          </div>
+                        ) : (
+                          <div
+                            className="space-y-1 max-h-28 overflow-y-auto pr-0.5"
+                            style={{ scrollbarWidth: 'thin' }}
+                          >
+                            {matchingSourceTerms.map((srcTerm) => {
+                              const isChecked = (term.selectedTermIds || []).includes(srcTerm.id);
+                              return (
+                                <div
+                                  key={srcTerm.id}
+                                  onClick={() => handleToggleSourceTermForAggregate(term, srcTerm.id)}
+                                  role="checkbox"
+                                  aria-checked={isChecked}
+                                  tabIndex={0}
+                                  onKeyDown={(e) => {
+                                    if (e.key === ' ' || e.key === 'Enter') {
+                                      e.preventDefault();
+                                      handleToggleSourceTermForAggregate(term, srcTerm.id);
+                                    }
+                                  }}
+                                  className={`p-1.5 rounded-lg border transition-all flex items-center gap-2 cursor-pointer text-xs select-none ${
+                                    isChecked
+                                      ? 'bg-white border-[#3B6554] text-[#1D3B2E] font-bold shadow-2xs'
+                                      : 'bg-white/75 border-[#BFE0CF] hover:border-[#3B6554]/70 text-[#355A4B]'
+                                  }`}
+                                >
+                                  <div
+                                    className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-all ${
+                                      isChecked
+                                        ? 'bg-[#3B6554] border-[#3B6554] text-white'
+                                        : 'border-[#8EB5A3] bg-white'
+                                    }`}
+                                  >
+                                    {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                                  </div>
+                                  <span className="truncate flex-1 font-bold">{srcTerm.name}</span>
+                                  <span className="text-[10px] text-[#4C7061] font-normal shrink-0">
+                                    ({formatScoreDisplay((srcTerm.selectedModelIds || []).length, numeralMode)} شهر)
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  );
-                })}
+                    )}
+                  </div>
+
+                  {/* Bottom Active Indicator Banner */}
+                  <div className="mt-2.5 pt-2 text-center border-t border-dashed border-[#D8CEBD]/60">
+                    {isActive ? (
+                      <div className={`inline-flex items-center gap-1.5 text-xs font-black ${isAgg ? 'text-[#2E5243]' : 'text-[#8C4325]'}`}>
+                        <CheckCircle2 className={`w-4 h-4 ${isAgg ? 'text-[#2E5243]' : 'text-[#8C4325]'}`} />
+                        <span>معروض حالياً في جدول المعدل</span>
+                      </div>
+                    ) : (
+                      <div className="text-[11px] font-bold text-[#8C7662] hover:text-[#2F2822] transition-colors">
+                        انقر لاحتساب وعرض معدل هذا الفصل ←
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+
+            {displayedTerms.length === 0 && (
+              <div className="text-xs text-[#7A6A58] py-8 px-4 font-semibold text-center w-full bg-white/60 rounded-xl border border-dashed border-[#D8CEBD]">
+                لا توجد فصول دراسية مطابقة للفصل أو الصف المحدد في التصفية.
               </div>
             )}
           </div>
@@ -1129,14 +1682,14 @@ export const TermCalculationView: React.FC<Props> = ({
       </div>
 
       {/* Analytics Widgets */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className={`grid grid-cols-2 sm:grid-cols-4 gap-4 ${isStudentCardsModalOpen ? 'print:hidden' : ''}`}>
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3">
           <div className="w-12 h-12 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center shrink-0">
             <Users className="w-6 h-6" />
           </div>
           <div>
             <span className="text-xs text-slate-500 font-semibold block">طلاب الفصل</span>
-            <span className="text-2xl font-black text-slate-900">{totalCount}</span>
+            <span className="text-2xl font-black text-slate-900">{formatScoreDisplay(totalCount, numeralMode)}</span>
           </div>
         </div>
 
@@ -1146,7 +1699,7 @@ export const TermCalculationView: React.FC<Props> = ({
           </div>
           <div>
             <span className="text-xs text-slate-500 font-semibold block">نسبة النجاح</span>
-            <span className="text-2xl font-black text-emerald-600">{passRate}%</span>
+            <span className="text-2xl font-black text-emerald-600">{formatScoreDisplay(passRate, numeralMode)}%</span>
           </div>
         </div>
 
@@ -1156,7 +1709,7 @@ export const TermCalculationView: React.FC<Props> = ({
           </div>
           <div>
             <span className="text-xs text-slate-500 font-semibold block">أعلى معدل</span>
-            <span className="text-2xl font-black text-amber-600">{maxScore}</span>
+            <span className="text-2xl font-black text-amber-600">{formatScoreDisplay(maxScore, numeralMode)}</span>
           </div>
         </div>
 
@@ -1166,15 +1719,15 @@ export const TermCalculationView: React.FC<Props> = ({
           </div>
           <div>
             <span className="text-xs text-slate-500 font-semibold block">معدل الفصل العام</span>
-            <span className="text-2xl font-black text-blue-600">{avgScore}</span>
+            <span className="text-2xl font-black text-blue-600">{formatScoreDisplay(avgScore, numeralMode)}</span>
           </div>
         </div>
       </div>
 
       {/* Term Grades Table - Excel Style with Warm Craft Theme */}
-      <div className="bg-[#FAF7EC] rounded-2xl border border-[#D5C8B2] shadow-xs overflow-hidden">
-        {/* Table Title Bar: Full width, Title on the right, Print & Export icons ONLY on the left without student count */}
-        <div className="w-full px-3.5 py-3 sm:px-5 sm:py-3.5 bg-[#F8F4EA] border-b border-[#D8CEBD] flex items-center justify-between gap-3 flex-nowrap no-print">
+      <div className={`bg-[#FAF7EC] rounded-2xl border border-[#D5C8B2] shadow-xs overflow-hidden print:overflow-visible ${isStudentCardsModalOpen ? 'print:hidden' : ''}`}>
+        {/* Table Title Bar: Full width, Title on the right, Numeral Toggle, Print & Export icons on the left */}
+        <div className="w-full px-3.5 py-3 sm:px-5 sm:py-3.5 bg-[#F8F4EA] border-b border-[#D8CEBD] flex items-center justify-between gap-3 flex-wrap no-print">
           {/* Right: Clean Term Title */}
           <div className="flex items-center min-w-0">
             <h3 className="text-sm sm:text-base lg:text-lg font-bold text-[#2F2822] truncate flex items-center gap-1.5">
@@ -1183,8 +1736,13 @@ export const TermCalculationView: React.FC<Props> = ({
             </h3>
           </div>
 
-          {/* Left: Opposite to the title - Clean Table, Student Cloud, Print icon & Download Excel icon */}
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {/* Left: Opposite to the title - Numeral Toggle, Clean Table, Student Cloud, Cards, Print & Export */}
+          <div className="flex items-center gap-1.5 sm:gap-2 max-w-full flex-wrap">
+            <NumeralModeToggle
+              mode={numeralMode}
+              onChange={handleNumeralModeChange}
+              accent="terracotta"
+            />
             {/* Fullscreen Clean Table View button */}
             <button
               type="button"
@@ -1231,10 +1789,21 @@ export const TermCalculationView: React.FC<Props> = ({
               </span>
             </button>
 
+            {/* Student Cards Modal Icon (Monthly Scores + Term Averages) */}
+            <button
+              type="button"
+              onClick={() => setIsStudentCardsModalOpen(true)}
+              className="p-2 sm:p-2.5 text-[#3B6554] hover:text-[#2D5042] bg-[#EEF5F1] hover:bg-[#DCEBE3] border border-[#A6C9B8] rounded-xl transition-all shadow-2xs flex items-center justify-center cursor-pointer active:scale-95 shrink-0"
+              title="عرض كروت الطلاب حسب الاسم (درجات الأشهر والمعدل)"
+              aria-label="كروت الطلاب التفصيلية (الأشهر والمعدل)"
+            >
+              <IdCard className="w-4.5 h-4.5 sm:w-5 sm:h-5 text-[#3B6554]" />
+            </button>
+
             {/* Print icon only */}
             <button
               type="button"
-              onClick={() => window.print()}
+              onClick={() => triggerPrint()}
               className="p-2 sm:p-2.5 text-[#334155] hover:text-[#2B6CB0] bg-white hover:bg-slate-100 border border-[#CBD5E1] rounded-xl transition-all shadow-2xs flex items-center justify-center cursor-pointer active:scale-95 shrink-0"
               title="طباعة كشف درجات الفصل"
               aria-label="طباعة كشف درجات الفصل"
@@ -1255,7 +1824,29 @@ export const TermCalculationView: React.FC<Props> = ({
           </div>
         </div>
 
-        <div ref={tableContainerRef} onScroll={checkNameColumnVisibility} className="overflow-x-auto">
+        {/* Printable Sheet Header */}
+        <div className="hidden print:block p-3 px-4 mb-2 border-b-2 border-slate-900 text-center">
+          <div className="flex items-center justify-between text-xs font-bold text-slate-800 mb-1">
+            <span>{profile.schoolName || 'المدرسة'}</span>
+            <span className="text-base font-black text-slate-900">
+              كشف درجات {currentTerm?.name || 'الفصل الدراسي'} {currentTerm?.subject ? `(${currentTerm.subject})` : ''}
+            </span>
+            <span>السنة الدراسية: {formatScoreDisplay(profile.academicYear?.trim() || getCurrentAcademicYear(), numeralMode)}</span>
+          </div>
+          {(currentTerm?.teacherName || profile.teacherName) && (
+            <div className="text-[11px] text-slate-600 font-semibold">
+              المعلم: {currentTerm?.teacherName || profile.teacherName}
+              {currentTerm?.subject ? ` • المادة: ${currentTerm.subject}` : ''}
+              {selectedGradeLevel !== 'ALL'
+                ? ` • الصف: ${selectedGradeLevel}`
+                : currentTerm?.gradeLevel
+                ? ` • الصف: ${currentTerm.gradeLevel}`
+                : ''}
+            </div>
+          )}
+        </div>
+
+        <div ref={tableContainerRef} onScroll={checkNameColumnVisibility} className="overflow-x-auto print:overflow-visible">
           <table className="w-full text-right border-collapse border border-[#CBD5E1] bg-white">
             <thead>
               <tr className="bg-[#F1F5F9] text-[#1E293B] text-xs font-bold">
@@ -1298,7 +1889,7 @@ export const TermCalculationView: React.FC<Props> = ({
                 </th>
 
                 {/* Grade Level Column Header with inline dynamic title & small triangle */}
-                <th className={`py-1.5 px-1 w-auto min-w-[50px] max-w-[85px] print:w-auto print:min-w-0 print:px-0 text-center align-middle bg-[#F1F5F9] border border-[#CBD5E1] ${columnSlants['gradeLevel'] === 'vertical' ? 'min-w-[40px]' : ''}`}>
+                <th className={`py-1.5 px-1.5 w-auto min-w-[70px] print:w-auto print:min-w-0 print:px-1 text-center align-middle bg-[#F1F5F9] border border-[#CBD5E1] ${columnSlants['gradeLevel'] === 'vertical' ? 'min-w-[40px]' : ''}`}>
                   <div className="flex flex-col items-center justify-center gap-1">
                     {/* Screen edit & filter */}
                     <div className="print:hidden flex items-center justify-center w-full">
@@ -1310,7 +1901,7 @@ export const TermCalculationView: React.FC<Props> = ({
 
                         {/* Relative container with title + small triangle + invisible native select */}
                         <div className="relative inline-flex items-center justify-center gap-1 px-1.5 py-0.5 rounded-lg bg-white/80 hover:bg-white border border-[#CBD5E1] hover:border-[#2B6CB0] shadow-2xs transition-all cursor-pointer group/grade w-full">
-                          <span className={`font-bold text-xs text-[#1E293B] whitespace-nowrap truncate ${getSlantClasses(columnSlants['gradeLevel'])}`}>
+                          <span className={`font-extrabold text-[11px] text-[#0F172A] whitespace-nowrap ${getSlantClasses(columnSlants['gradeLevel'])}`}>
                             {selectedGradeLevel === 'ALL' ? 'الصف' : selectedGradeLevel}
                           </span>
                           <ChevronDown className="w-3 h-3 text-slate-500 shrink-0 transition-transform group-hover/grade:translate-y-0.5" />
@@ -1333,7 +1924,7 @@ export const TermCalculationView: React.FC<Props> = ({
 
                     {/* Print Only Header: Strictly ONLY "الصف الدراسي" or selected grade without dropdown/arrow */}
                     <div className="hidden print:block text-center py-1">
-                      <span className={`font-bold text-xs text-[#1E293B] ${getSlantClasses(columnSlants['gradeLevel'])}`}>
+                      <span className={`font-extrabold text-[11px] text-[#0F172A] whitespace-nowrap ${getSlantClasses(columnSlants['gradeLevel'])}`}>
                         {selectedGradeLevel === 'ALL' ? 'الصف الدراسي' : selectedGradeLevel}
                       </span>
                     </div>
@@ -1406,33 +1997,62 @@ export const TermCalculationView: React.FC<Props> = ({
 
                 {/* Subject Column (اسم الدرس) */}
                 {showSubjectColumn && (
-                  <th className={`py-1.5 px-2 min-w-[75px] max-w-[110px] print:min-w-0 text-center align-middle bg-[#F1F5F9] border border-[#CBD5E1] text-[#1E293B] ${columnSlants['subject'] === 'vertical' ? 'min-w-[40px]' : ''}`}>
-                    <div className="flex items-center justify-center gap-1 font-bold">
-                      <span className={`text-xs ${getSlantClasses(columnSlants['subject'])}`}>اسم الدرس</span>
+                  <th className={`py-1.5 px-1.5 w-auto min-w-[60px] print:min-w-0 text-center align-middle bg-[#F1F5F9] border border-[#CBD5E1] text-[#0F172A] ${columnSlants['subject'] === 'vertical' ? 'min-w-[40px]' : ''}`}>
+                    <div className="flex flex-col items-center justify-center gap-0.5 font-extrabold">
                       <SlantButton slant={columnSlants['subject']} onToggle={() => toggleColumnSlant('subject')} />
+                      <StackedHeaderLabel
+                        label="اسم الدرس"
+                        isVertical={columnSlants['subject'] === 'vertical'}
+                        className={`text-[11px] font-extrabold text-[#0F172A] ${getSlantClasses(columnSlants['subject'])}`}
+                      />
                     </div>
                   </th>
                 )}
 
-                {/* Columns for each selected Monthly Model */}
+                {/* Columns for each selected Monthly Model AND/OR Source Term */}
                 {selectedModelsObj.map((model) => (
                   <th
                     key={model.id}
-                    className={`py-2 px-3 min-w-[130px] print:min-w-0 text-center bg-[#F1F5F9] border border-[#CBD5E1] text-[#1E293B] align-top ${columnSlants[model.id] === 'vertical' ? 'min-w-[50px]' : ''}`}
+                    className={`py-1.5 px-2 w-auto min-w-[78px] print:min-w-0 text-center bg-[#F1F5F9] border border-[#CBD5E1] text-[#0F172A] align-top ${columnSlants[model.id] === 'vertical' ? 'min-w-[46px]' : ''}`}
                   >
                     <div className="flex flex-col items-center justify-center gap-0.5">
-                      <div className="flex items-center justify-center gap-1 font-bold">
-                        <span className={getSlantClasses(columnSlants[model.id])}>درجة {model.name}</span>
-                        <SlantButton slant={columnSlants[model.id]} onToggle={() => toggleColumnSlant(model.id)} />
-                      </div>
+                      <SlantButton slant={columnSlants[model.id]} onToggle={() => toggleColumnSlant(model.id)} />
+                      <StackedHeaderLabel
+                        label={`درجة ${model.name}`}
+                        isVertical={columnSlants[model.id] === 'vertical'}
+                        className={`text-[11px] font-extrabold text-[#0F172A] ${getSlantClasses(columnSlants[model.id])}`}
+                      />
                       {model.subject && (
-                        <span className="text-[11px] font-extrabold text-[#2B6CB0] bg-[#EFF6FF] px-1.5 py-0.2 rounded border border-[#BFDBFE]">
+                        <span className="text-[10px] font-extrabold text-[#2B6CB0] bg-[#EFF6FF] px-1.5 py-0.2 rounded border border-[#BFDBFE] whitespace-nowrap">
                           {model.subject}
                         </span>
                       )}
                     </div>
-                    <div className="text-[10px] text-[#64748B] font-normal mt-0.5 print:hidden">
-                      (النهائية: {model.totalMaxScore})
+                    <div className="text-[10px] text-[#475569] font-bold mt-0.5 print:hidden whitespace-nowrap">
+                      (النهائية: {formatScoreDisplay(model.totalMaxScore, numeralMode)})
+                    </div>
+                  </th>
+                ))}
+                {selectedSourceTermsObj.map((srcTerm) => (
+                  <th
+                    key={srcTerm.id}
+                    className={`py-1.5 px-2 w-auto min-w-[78px] print:min-w-0 text-center bg-[#EEF5F1] border border-[#CBD5E1] text-[#143326] align-top ${columnSlants[srcTerm.id] === 'vertical' ? 'min-w-[46px]' : ''}`}
+                  >
+                    <div className="flex flex-col items-center justify-center gap-0.5">
+                      <SlantButton slant={columnSlants[srcTerm.id]} onToggle={() => toggleColumnSlant(srcTerm.id)} />
+                      <StackedHeaderLabel
+                        label={`درجة ${srcTerm.name}`}
+                        isVertical={columnSlants[srcTerm.id] === 'vertical'}
+                        className={`text-[11px] font-extrabold text-[#143326] ${getSlantClasses(columnSlants[srcTerm.id])}`}
+                      />
+                      {srcTerm.subject && (
+                        <span className="text-[10px] font-extrabold text-[#2E5243] bg-white px-1.5 py-0.2 rounded border border-[#B2D3C2] whitespace-nowrap">
+                          {srcTerm.subject}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[10px] text-[#3B6554] font-bold mt-0.5 print:hidden whitespace-nowrap">
+                      (معدل الفصل)
                     </div>
                   </th>
                 ))}
@@ -1441,7 +2061,7 @@ export const TermCalculationView: React.FC<Props> = ({
                 <th
                   id="term-calculated-average-col"
                   data-term-average-col="true"
-                  className={`py-2.5 px-3 min-w-[170px] print:min-w-0 border text-[#1E293B] text-center font-bold align-top transition-all duration-500 ${
+                  className={`py-2 px-2 min-w-[135px] print:min-w-0 border text-[#0F172A] text-center font-bold align-top transition-all duration-500 ${
                     highlightAverageCol
                       ? 'bg-amber-100 border-amber-500 ring-4 ring-amber-400 shadow-xl'
                       : 'bg-[#F1F5F9] border-[#CBD5E1]'
@@ -1454,13 +2074,27 @@ export const TermCalculationView: React.FC<Props> = ({
                   )}
                   {/* Screen Title */}
                   <div className="flex items-center justify-center gap-1 print:hidden">
-                    <Sparkles className="w-3.5 h-3.5 text-[#2B6CB0]" />
-                    <span className={getSlantClasses(columnSlants['finalTermScore'])}>درجة {currentTerm.name} المحسوبة</span>
+                    <Sparkles className="w-3.5 h-3.5 text-[#2B6CB0] shrink-0" />
+                    <StackedHeaderLabel
+                      label={`درجة ${currentTerm.name} المحسوبة`}
+                      isVertical={columnSlants['finalTermScore'] === 'vertical'}
+                      className={`text-[11px] font-extrabold text-[#0F172A] ${getSlantClasses(columnSlants['finalTermScore'])}`}
+                    />
                     <SlantButton slant={columnSlants['finalTermScore']} onToggle={() => toggleColumnSlant('finalTermScore')} />
                   </div>
                   <div className="text-[10px] text-[#64748B] font-normal mt-0.5 print:hidden">
-                    {(currentTerm.selectedModelIds || []).length > 1
-                      ? `(معدل ${(currentTerm.selectedModelIds || []).length} شهور تلقائياً)`
+                    {selectedModelsObj.length > 0 && selectedSourceTermsObj.length > 0
+                      ? currentTerm.calculationMode === 'sum'
+                        ? `(مجموع ${formatScoreDisplay(selectedModelsObj.length, numeralMode)} شهور و ${formatScoreDisplay(selectedSourceTermsObj.length, numeralMode)} فصول)`
+                        : `(معدل ${formatScoreDisplay(selectedModelsObj.length, numeralMode)} شهور و ${formatScoreDisplay(selectedSourceTermsObj.length, numeralMode)} فصول)`
+                      : selectedSourceTermsObj.length > 0
+                      ? currentTerm.calculationMode === 'sum'
+                        ? `(مجموع ${formatScoreDisplay(selectedSourceTermsObj.length, numeralMode)} فصول)`
+                        : `(معدل ${formatScoreDisplay(selectedSourceTermsObj.length, numeralMode)} فصول تلقائياً)`
+                      : selectedModelsObj.length > 1
+                      ? currentTerm.calculationMode === 'sum'
+                        ? `(مجموع ${formatScoreDisplay(selectedModelsObj.length, numeralMode)} شهور)`
+                        : `(معدل ${formatScoreDisplay(selectedModelsObj.length, numeralMode)} شهور تلقائياً)`
                       : '(الدرجة المعتمدة)'}
                   </div>
 
@@ -1487,11 +2121,11 @@ export const TermCalculationView: React.FC<Props> = ({
                       <Calculator className="w-3.5 h-3.5 text-[#854D0E]" />
                       <span>
                         {currentTerm.roundingMode === 'half_up'
-                          ? 'جبر: ≥0.5'
+                          ? `جبر: ≥${formatScoreDisplay(0.5, numeralMode)}`
                           : currentTerm.roundingMode === 'any_fraction'
-                          ? 'جبر: ≥0.1'
+                          ? `جبر: ≥${formatScoreDisplay(0.1, numeralMode)}`
                           : currentTerm.roundingMode === 'custom_threshold'
-                          ? `جبر: ≥${currentTerm.roundingThreshold}`
+                          ? `جبر: ≥${formatScoreDisplay(currentTerm.roundingThreshold, numeralMode)}`
                           : 'التحكم بالنسب العشرية'}
                       </span>
                     </button>
@@ -1519,9 +2153,9 @@ export const TermCalculationView: React.FC<Props> = ({
 
                 {/* Rating */}
                 {showRatingColumn && (
-                  <th className={`py-2.5 px-3 min-w-[100px] print:min-w-0 text-center align-top bg-[#F1F5F9] border border-[#CBD5E1] text-[#1E293B] animate-in fade-in ${columnSlants['gradeText'] === 'vertical' ? 'min-w-[45px]' : ''}`}>
+                  <th className={`py-2 px-2 min-w-[70px] print:min-w-0 text-center align-middle bg-[#F1F5F9] border border-[#CBD5E1] text-[#0F172A] animate-in fade-in ${columnSlants['gradeText'] === 'vertical' ? 'min-w-[42px]' : ''}`}>
                     <div className="flex items-center justify-center gap-1">
-                      <span className={getSlantClasses(columnSlants['gradeText'])}>التقدير</span>
+                      <span className={`text-[11px] font-extrabold ${getSlantClasses(columnSlants['gradeText'])}`}>التقدير</span>
                       <SlantButton slant={columnSlants['gradeText']} onToggle={() => toggleColumnSlant('gradeText')} />
                       <button
                         type="button"
@@ -1534,9 +2168,9 @@ export const TermCalculationView: React.FC<Props> = ({
                     </div>
                   </th>
                 )}
-                <th className={`py-2.5 px-3 min-w-[85px] print:min-w-0 text-center align-middle bg-[#F1F5F9] border border-[#CBD5E1] text-[#1E293B] ${columnSlants['status'] === 'vertical' ? 'min-w-[45px]' : ''}`}>
+                <th className={`py-2 px-2 min-w-[64px] print:min-w-0 text-center align-middle bg-[#F1F5F9] border border-[#CBD5E1] text-[#0F172A] ${columnSlants['status'] === 'vertical' ? 'min-w-[42px]' : ''}`}>
                   <div className="flex items-center justify-center gap-1">
-                    <span className={getSlantClasses(columnSlants['status'])}>الحالة</span>
+                    <span className={`text-[11px] font-extrabold ${getSlantClasses(columnSlants['status'])}`}>الحالة</span>
                     <SlantButton slant={columnSlants['status']} onToggle={() => toggleColumnSlant('status')} />
                   </div>
                 </th>
@@ -1544,7 +2178,7 @@ export const TermCalculationView: React.FC<Props> = ({
             </thead>
 
             <tbody className="text-sm">
-              {selectedModelsObj.length === 0 ? (
+              {activeSourceItems.length === 0 ? (
                 <tr>
                   <td
                     colSpan={(showRatingColumn ? 6 : 5) + (showSubjectColumn ? 1 : 0)}
@@ -1552,13 +2186,13 @@ export const TermCalculationView: React.FC<Props> = ({
                   >
                     <div className="max-w-md mx-auto space-y-2.5">
                       <div className="w-12 h-12 mx-auto rounded-2xl bg-[#FAEDE8] border border-[#ECD1C5] flex items-center justify-center text-[#944D30] shadow-2xs">
-                        <Calendar className="w-6 h-6" />
+                        {isAggregateTerms ? <Calculator className="w-6 h-6" /> : <Calendar className="w-6 h-6" />}
                       </div>
                       <p className="text-base font-black text-[#8C4325]">
-                        لم يتم تحديد أي شهر لاحتساب معدل ({currentTerm.name}) بعد
+                        {`لم يتم تحديد أي شهر أو فصل لاحتساب معدل (${currentTerm.name}) بعد`}
                       </p>
                       <p className="text-xs text-[#7A6E5F] leading-relaxed">
-                        قم بالضغط على مربعات الاختيار (☑ Checkbox) بالأعلى لتحديد الشهور الدراسية المراد استخراج المعدل النهائي لها، وستبقى اختياراتك محفوظة تلقائياً.
+                        قم بالضغط على مربعات الاختيار (☑ Checkbox) داخل مستطيل الأشهر أو مستطيل الفصول بالأعلى لتحديد العناصر المراد احتساب معدلها، وستبقى اختياراتك محفوظة تلقائياً.
                       </p>
                     </div>
                   </td>
@@ -1566,7 +2200,7 @@ export const TermCalculationView: React.FC<Props> = ({
               ) : filteredSummaries.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={(showRatingColumn ? 6 : 5) + selectedModelsObj.length + (showSubjectColumn ? 1 : 0)}
+                    colSpan={(showRatingColumn ? 6 : 5) + activeSourceItems.length + (showSubjectColumn ? 1 : 0)}
                     className="py-12 text-center text-[#64748B] text-sm border border-[#CBD5E1]"
                   >
                     لا توجد بيانات طلاب مطابقة في هذا الفصل.
@@ -1599,14 +2233,14 @@ export const TermCalculationView: React.FC<Props> = ({
                       }`}
                     >
                       <td className="py-2.5 px-3 text-center text-xs font-bold text-[#64748B] border border-[#CBD5E1] bg-[#F8FAFC]">
-                        {index + 1}
+                        {formatScoreDisplay(index + 1, numeralMode)}
                       </td>
 
                       <td className="py-2.5 px-4 font-bold text-[#1E293B] border border-[#CBD5E1]">
                         {student.name}
                       </td>
 
-                      <td className="py-2.5 px-3 text-xs text-[#475569] font-medium border border-[#CBD5E1] text-center">
+                      <td className="py-2 px-2 text-[11px] text-[#0F172A] font-bold border border-[#CBD5E1] text-center whitespace-nowrap">
                         {student.gradeLevel}
                       </td>
 
@@ -1620,25 +2254,27 @@ export const TermCalculationView: React.FC<Props> = ({
                       {showSubjectColumn && (
                         <td className="py-2.5 px-2 text-center border border-[#CBD5E1] text-xs font-bold text-[#1E293B]">
                           <span className="px-2 py-0.5 bg-amber-50 border border-amber-200 text-amber-900 rounded-md inline-block">
-                            {currentTerm.subject || selectedModelsObj[0]?.subject || '-'}
+                            {currentTerm.subject || selectedModelsObj[0]?.subject || selectedSourceTermsObj[0]?.subject || '-'}
                           </span>
                         </td>
                       )}
 
-                      {/* Display breakdown of each selected month */}
-                      {selectedModelsObj.map((model) => {
+                      {/* Display breakdown of each selected month AND/OR source term */}
+                      {activeSourceItems.map((item) => {
                         const mScore = student.monthlyScores.find(
-                          (ms) => ms.modelId === model.id
+                          (ms) => ms.modelId === item.id
                         )?.score;
 
                         return (
                           <td
-                            key={model.id}
-                            className="py-2.5 px-3 text-center border border-[#CBD5E1]"
+                            key={item.id}
+                            className={`py-2.5 px-3 text-center border border-[#CBD5E1] ${
+                              item.kind === 'term' ? 'bg-[#F8FBF9]' : ''
+                            }`}
                           >
                             {mScore !== null && mScore !== undefined ? (
                               <span className="font-bold text-[#1E293B] text-sm">
-                                {mScore}
+                                {formatScoreDisplay(mScore, numeralMode)}
                               </span>
                             ) : (
                               <span className="text-slate-400 text-xs">-</span>
@@ -1659,14 +2295,14 @@ export const TermCalculationView: React.FC<Props> = ({
                         {student.finalTermScore !== null ? (
                           <div className="flex flex-col items-center justify-center gap-0.5">
                             <span className="text-base font-black text-[#1E293B] px-3 py-0.5 bg-slate-100 rounded-lg inline-block min-w-[55px] border border-slate-200">
-                              {student.finalTermScore}
+                              {formatScoreDisplay(student.finalTermScore, numeralMode)}
                             </span>
                             {student.isRounded && student.rawTermScore !== null && student.rawTermScore !== undefined && (
                               <span
                                 className="text-[10px] text-[#854D0E] font-bold"
                                 title={`الدرجة قبل جبر الكسور كانت ${student.rawTermScore}`}
                               >
-                                (أصله: {student.rawTermScore})
+                                (أصله: {formatScoreDisplay(student.rawTermScore, numeralMode)})
                               </span>
                             )}
                           </div>
@@ -1720,12 +2356,12 @@ export const TermCalculationView: React.FC<Props> = ({
 
         <div className="p-3.5 bg-[#FAF8F5] border-t border-[#E8E4DA] flex items-center justify-between text-xs text-[#7A746B]">
           <div>
-            إجمالي الطلاب: <strong className="text-[#2E2B27] font-bold">{filteredSummaries.length}</strong> طالب
+            إجمالي الطلاب: <strong className="text-[#2E2B27] font-bold">{formatScoreDisplay(filteredSummaries.length, numeralMode)}</strong> طالب
           </div>
           <div>
             تم احتساب الدرجات آلياً اعتماداً على:{' '}
             <strong className="text-[#2E2B27] font-bold">
-              {selectedModelsObj.map((m) => m.name).join(' و ')}
+              {activeSourceItems.map((item) => item.name).join(' و ')}
             </strong>
           </div>
         </div>
@@ -1734,11 +2370,22 @@ export const TermCalculationView: React.FC<Props> = ({
       {/* Confirmation Modal for Term Deletion */}
       <ConfirmDeleteModal
         isOpen={isDeleteModalOpen}
-        title={`تأكيد حذف فصل (${currentTerm.name})`}
-        message={`هل أنت متأكد من الاستمرار في حذف فصل (${currentTerm.name})؟ سيتم حذف نتائج واحتساب هذا الفصل نهائياً.`}
-        confirmText={`نعم، استمر في حذف ${currentTerm.name}`}
-        onConfirm={() => onDeleteTerm(currentTerm.id)}
-        onCancel={() => setIsDeleteModalOpen(false)}
+        title={`تأكيد حذف فصل (${(termToDelete || currentTerm)?.name || ''})`}
+        message={`هل أنت متأكد من الاستمرار في حذف فصل (${(termToDelete || currentTerm)?.name || ''})؟ سيتم حذف نتائج واحتساب هذا الفصل نهائياً.`}
+        confirmText={`نعم، استمر في حذف ${(termToDelete || currentTerm)?.name || ''}`}
+        onConfirm={() => {
+          if (termToDelete) {
+            onDeleteTerm(termToDelete.id);
+            setTermToDelete(null);
+          } else if (currentTerm) {
+            onDeleteTerm(currentTerm.id);
+          }
+          setIsDeleteModalOpen(false);
+        }}
+        onCancel={() => {
+          setIsDeleteModalOpen(false);
+          setTermToDelete(null);
+        }}
       />
 
       {/* Modal for Adding a New Term */}
@@ -1755,6 +2402,7 @@ export const TermCalculationView: React.FC<Props> = ({
         initialSections={newTermSections.length > 0 ? newTermSections : currentTerm?.assignedSections}
         defaultName={defaultSuggestedTermName}
         profile={profile}
+        existingTerms={terms}
       />
 
       {/* Modal for Editing Term Name & Scope */}
@@ -1789,18 +2437,42 @@ export const TermCalculationView: React.FC<Props> = ({
               }}
               className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1 overscroll-contain"
             >
-              <div>
-                <label className="block text-xs font-bold text-[#2F2822] mb-1.5">
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-[#2F2822]">
                   اسم الفصل الدراسي:
                 </label>
                 <input
                   type="text"
                   value={editTermNameValue}
                   onChange={(e) => setEditTermNameValue(e.target.value)}
+                  list="edit-term-names-datalist"
                   placeholder="مثال: الفصل الأول، الفصل الثاني، السعي السنوي..."
                   className="w-full px-3.5 py-2.5 bg-white border border-[#D8CEBD] rounded-xl text-sm font-bold text-[#2F2822] focus:bg-white focus:ring-2 focus:ring-[#B86848] focus:outline-none"
                   autoFocus
                 />
+                <datalist id="edit-term-names-datalist">
+                  {allTermNameSuggestions.map((sName) => (
+                    <option key={sName} value={sName} />
+                  ))}
+                </datalist>
+
+                {/* Quick choice chips for edit modal */}
+                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                  {allTermNameSuggestions.slice(0, 8).map((chipName) => (
+                    <button
+                      key={chipName}
+                      type="button"
+                      onClick={() => setEditTermNameValue(chipName)}
+                      className={`px-2 py-0.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        editTermNameValue.trim() === chipName
+                          ? 'bg-[#B86848] text-white shadow-xs'
+                          : 'bg-white text-[#5C4D3C] border border-[#D8CEBD] hover:bg-[#F3EDE2]'
+                      }`}
+                    >
+                      {chipName}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1914,6 +2586,7 @@ export const TermCalculationView: React.FC<Props> = ({
         <CleanTermTableView
           term={currentTerm}
           monthlyModels={monthlyModels}
+          allTerms={terms}
           onClose={() => setIsCleanTableView(false)}
           showRatingColumn={showRatingColumn}
           showSubjectColumn={showSubjectColumn}
@@ -1921,6 +2594,23 @@ export const TermCalculationView: React.FC<Props> = ({
           selectedSection={selectedSection}
           onGradeChange={setSelectedGradeLevel}
           onSectionChange={setSelectedSection}
+          numeralMode={numeralMode}
+        />
+      )}
+
+      {/* Detailed Student Cards Modal (By Student Name: Subjects + Monthly Scores + Term Averages) */}
+      {isStudentCardsModalOpen && currentTerm && (
+        <TermStudentCardsModal
+          isOpen={isStudentCardsModalOpen}
+          onClose={() => setIsStudentCardsModalOpen(false)}
+          currentTerm={currentTerm}
+          terms={terms}
+          monthlyModels={monthlyModels}
+          profile={profile}
+          visibleStudents={filteredSummaries}
+          isAdministration={isAdministration}
+          numeralMode={numeralMode}
+          onNumeralModeChange={handleNumeralModeChange}
         />
       )}
     </div>

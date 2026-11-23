@@ -1,5 +1,4 @@
 import 'dart:developer';
-
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -20,10 +19,9 @@ import 'controllers/auth_controller.dart';
 import 'controllers/teacher_personal_controller.dart';
 import 'services/teacher_notification_service.dart';
 import 'views/home/home_screen.dart';
-import 'views/auth/auth_screen.dart';
 
 //  الدالة الاساسية او ستارت ابب
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final storageService = await StorageService.init();
   await TeacherNotificationService.initialize();
@@ -39,7 +37,8 @@ void main() async {
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => LocaleController(storageService)),
+        ChangeNotifierProvider(
+          create: (_) => LocaleController(storageService)),
         ChangeNotifierProvider(
           create: (_) => TeacherProfileController(storageService),
         ),

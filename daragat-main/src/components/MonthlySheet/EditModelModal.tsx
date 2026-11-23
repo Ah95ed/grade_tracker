@@ -8,7 +8,6 @@ import {
   Layers,
   Plus,
   Trash2,
-  AlertCircle,
   ArrowLeftRight,
   Sparkles,
 } from 'lucide-react';
@@ -239,17 +238,6 @@ export const EditModelModal: React.FC<Props> = ({
 
   if (!isOpen || !model) return null;
 
-  // Swap all sections with another teacher directly
-  const handleSwapWithTeacher = (otherTeacherName: string, otherSections: string[]) => {
-    const myCurrent = [...selectedSections];
-    setSelectedSections([...otherSections]);
-
-    // Also notify user
-    alert(
-      `تم نقل شُعب (${otherSections.join('، ') || 'المحددة'}) إلى الأستاذ (${teacherName || 'الحالي'})، وسيتم تعيين شُعب (${myCurrent.join('، ') || 'السابقة'}) للأستاذ (${otherTeacherName}) عند الحفظ!`
-    );
-  };
-
   // Add new section
   const handleAddNewSection = () => {
     const trimmed = newSectionInput.trim();
@@ -463,39 +451,6 @@ export const EditModelModal: React.FC<Props> = ({
                 )}
               </div>
             </div>
-
-            {/* تنبيه إذا وُجد أستاذ آخر لنفس الصف والمادة مع إمكانية التبديل المباشر */}
-            {otherTeachersForGradeAndSub.length > 0 && (
-              <div className="p-2.5 bg-white rounded-lg border border-amber-300 text-xs space-y-1.5">
-                <div className="flex items-center gap-1.5 font-bold text-amber-900">
-                  <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                  <span>أساتذة آخرون لنفس المادة والصف:</span>
-                </div>
-                {otherTeachersForGradeAndSub.map((ot) => (
-                  <div
-                    key={ot.teacherName}
-                    className="flex items-center justify-between gap-2 p-1.5 bg-amber-50/60 rounded border border-amber-200"
-                  >
-                    <div className="text-[11px] text-slate-800">
-                      • <strong>{ot.teacherName}</strong> (شُعب:{' '}
-                      <span className="font-bold text-indigo-900">
-                        {ot.sections.join('، ') || 'غير محدد'}
-                      </span>
-                      )
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleSwapWithTeacher(ot.teacherName, ot.sections)}
-                      className="px-2 py-0.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-[10px] font-black transition-colors cursor-pointer flex items-center gap-1"
-                      title={`تبديل كل الشُعب مع الأستاذ ${ot.teacherName}`}
-                    >
-                      <ArrowLeftRight className="w-2.5 h-2.5" />
-                      <span>تبديل الشُعب معه</span>
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
 
             {/* خيارات الشُعب بنقرة واحدة */}
             <div className="flex flex-wrap items-center gap-1.5">

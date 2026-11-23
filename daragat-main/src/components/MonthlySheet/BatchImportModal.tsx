@@ -28,9 +28,15 @@ import {
   HelpCircle,
   Sparkles,
   ShieldCheck,
+  Mic,
 } from 'lucide-react';
 import { CustomColumn, StudentRow } from '../../types';
 import { SmartCropModal } from './SmartCropModal';
+import {
+  VoiceStudentEntryPanel,
+  VoiceStudentEntryRow,
+  createEmptyVoiceRow,
+} from './VoiceStudentEntryPanel';
 import {
   isWrittenScoreColumn,
   isStandardSystemColumn,
@@ -297,7 +303,13 @@ export const BatchImportModal: React.FC<Props> = ({
   }, [existingStudents, savedCustomSections]);
 
   // Mode selection: 'manual' is the INITIAL DEFAULT choice!
-  const [activeTab, setActiveTab] = useState<'manual' | 'extract'>('manual');
+  const [activeTab, setActiveTab] = useState<'manual' | 'voice' | 'extract'>('manual');
+
+  // Voice Entry Mode State
+  const [voiceRows, setVoiceRows] = useState<VoiceStudentEntryRow[]>(() => [
+    createEmptyVoiceRow(),
+  ]);
+  const [voiceAutoStartTrigger, setVoiceAutoStartTrigger] = useState(0);
 
   // Manual Mode State: gradeLevel always starts unselected ('') so user must deliberately pick
   const [namesText, setNamesText] = useState('');
@@ -366,6 +378,7 @@ export const BatchImportModal: React.FC<Props> = ({
       setHasExtracted(false);
       // ALWAYS default to manual entry initially
       setActiveTab('manual');
+      setVoiceRows([createEmptyVoiceRow()]);
       setUpdateExisting(true);
       setAutoAddColumns(true);
       setIsCropOpen(false);
@@ -522,6 +535,57 @@ export const BatchImportModal: React.FC<Props> = ({
 
     onImport(newRows, { updateExisting });
     // Reset gradeLevel so next time it requires deliberate choice again
+    setGradeLevel('');
+    onClose();
+  };
+
+  const validVoiceRows = voiceRows.filter(
+    (r) => cleanSingleSpaces(r.name).length > 0
+  );
+
+  const handleConfirmVoice = () => {
+    if (validVoiceRows.length === 0) return;
+
+    const trimmedGrade = (gradeLevel || '').trim();
+    if (!trimmedGrade) {
+      setGradeValidationError(
+        '⚠️ يجب تحديد الصف الدراسي أولاً قبل إضافة الطلاب لمنع خلط الأسماء بين الصفوف.'
+      );
+      return;
+    }
+
+    const trimmedSection = (section || '').trim() || 'أ';
+    saveNewSection(trimmedSection);
+
+    if (trimmedGrade) {
+      try {
+        const raw = localStorage.getItem('gradebook_user_grades');
+        const existing: string[] = raw ? JSON.parse(raw) : [];
+        if (!existing.includes(trimmedGrade)) {
+          localStorage.setItem(
+            'gradebook_user_grades',
+            JSON.stringify([...existing, trimmedGrade])
+          );
+        }
+      } catch {}
+    }
+
+    const newRows: Partial<StudentRow>[] = validVoiceRows.map((item) => {
+      const parsedNum =
+        item.score.trim() !== '' && !Number.isNaN(Number(item.score))
+          ? Number(item.score)
+          : null;
+      return {
+        name: cleanSingleSpaces(item.name),
+        gradeLevel: normalizeGradeLevel(trimmedGrade, [defaultGrade]),
+        section: normalizeSection(trimmedSection, [defaultSection]),
+        writtenRawScore: parsedNum,
+        scores: {},
+        notes: '',
+      };
+    });
+
+    onImport(newRows, { updateExisting });
     setGradeLevel('');
     onClose();
   };
@@ -1219,11 +1283,11 @@ export const BatchImportModal: React.FC<Props> = ({
 
         {/* Method Selector Tabs: Compact Segmented Bar with Direct Instant Access */}
         <div className="shrink-0 px-3 py-2 sm:px-5 sm:py-2.5 bg-[#F5EFE3] border-b border-[#D8CEBD]">
-          <div className="flex bg-[#E4DAC8] p-1 rounded-xl gap-1 max-w-xl mx-auto shadow-inner">
+          <div className="flex flex-wrap sm:flex-nowrap bg-[#E4DAC8] p-1 rounded-xl gap-1 max-w-2xl mx-auto shadow-inner">
             <button
               type="button"
               onClick={() => setActiveTab('manual')}
-              className={`flex-1 py-2 px-2.5 rounded-lg text-xs sm:text-sm font-black flex items-center justify-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
+              className={`flex-1 py-2 px-2.5 rounded-lg text-xs sm:text-sm font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
                 activeTab === 'manual'
                   ? 'bg-white text-[#8C6544] shadow-sm border border-[#BA916C]/40'
                   : 'text-[#6B5E51] hover:text-[#2F2822] hover:bg-white/40'
@@ -1235,8 +1299,24 @@ export const BatchImportModal: React.FC<Props> = ({
 
             <button
               type="button"
+              onClick={() => {
+                setActiveTab('voice');
+                setVoiceAutoStartTrigger((prev) => prev + 1);
+              }}
+              className={`flex-1 py-2 px-2.5 rounded-lg text-xs sm:text-sm font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+                activeTab === 'voice'
+                  ? 'bg-white text-emerald-800 shadow-sm border border-emerald-500/40'
+                  : 'text-[#6B5E51] hover:text-[#2F2822] hover:bg-white/40'
+              }`}
+            >
+              <Mic className={`w-4 h-4 shrink-0 ${activeTab === 'voice' ? 'text-emerald-600' : 'text-[#6B5E51]'}`} />
+              <span>إدخال صوتي</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => setActiveTab('extract')}
-              className={`flex-1 py-2 px-2.5 rounded-lg text-xs sm:text-sm font-black flex items-center justify-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
+              className={`flex-1 py-2 px-2.5 rounded-lg text-xs sm:text-sm font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
                 activeTab === 'extract'
                   ? 'bg-white text-[#2B6CB0] shadow-sm border border-[#5692BE]/40'
                   : 'text-[#6B5E51] hover:text-[#2F2822] hover:bg-white/40'
@@ -1255,14 +1335,27 @@ export const BatchImportModal: React.FC<Props> = ({
             <div className="space-y-3 animate-in fade-in duration-150">
               {/* Names & Scores Input Area - Clearly visible and immediately reachable */}
               <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-xs text-[#554A3E]">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[#554A3E]">
                   <span className="font-bold text-[#2F2822] flex items-center gap-1.5">
                     <ClipboardList className="w-4 h-4 text-[#BA916C]" />
                     <span>حقل إضافة ولصق أسماء ودرجات الطلاب (طالب في كل سطر):</span>
                   </span>
-                  <span className="text-[#7A6E61] text-[11px] font-medium hidden sm:inline">
-                    يدعم النسخ واللصق المباشر من Excel أو Word
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTab('voice');
+                        setVoiceAutoStartTrigger((prev) => prev + 1);
+                      }}
+                      className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg font-bold text-[11px] flex items-center gap-1 cursor-pointer transition-colors whitespace-nowrap"
+                    >
+                      <Mic className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>إدخال صوتي</span>
+                    </button>
+                    <span className="text-[#7A6E61] text-[11px] font-medium hidden sm:inline">
+                      يدعم النسخ واللصق المباشر من Excel أو Word
+                    </span>
+                  </div>
                 </div>
 
                 <div>
@@ -1352,6 +1445,19 @@ export const BatchImportModal: React.FC<Props> = ({
                 </div>
               )}
             </div>
+          )}
+
+          {/* VIEW 1B: VOICE ENTRY (TWO COLUMNS: NAME & NUMERIC SCORE, ZERO KEYBOARD) */}
+          {activeTab === 'voice' && (
+            <VoiceStudentEntryPanel
+              rows={voiceRows}
+              onChangeRows={setVoiceRows}
+              isActiveTab={isOpen && activeTab === 'voice'}
+              autoStartTrigger={voiceAutoStartTrigger}
+              updateExisting={updateExisting}
+              onChangeUpdateExisting={setUpdateExisting}
+              allReferenceStudents={allReferenceStudents}
+            />
           )}
 
           {/* VIEW 2: EXTRACTION FROM CAMERA OR DEVICE */}
@@ -2046,6 +2152,16 @@ export const BatchImportModal: React.FC<Props> = ({
             >
               <Check className="w-4 h-4" />
               <span>إدخال {parsedManualItems.length} طالب إلى السجل</span>
+            </button>
+          ) : activeTab === 'voice' ? (
+            <button
+              type="button"
+              onClick={handleConfirmVoice}
+              disabled={validVoiceRows.length === 0}
+              className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl font-bold text-xs sm:text-sm shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+            >
+              <Check className="w-4 h-4" />
+              <span>إدخال {validVoiceRows.length} طالب إلى السجل</span>
             </button>
           ) : (
             hasExtracted ? (

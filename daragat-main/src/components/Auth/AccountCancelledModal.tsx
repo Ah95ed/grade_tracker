@@ -24,8 +24,8 @@ export const AccountCancelledModal: React.FC<Props> = ({
 
   if (!isOpen) return null;
 
-  const displayPhone = SUPPORT_PHONE_NUMBER || '07706118982';
-  const whatsappNumber = SUPPORT_WHATSAPP_NUMBER || '9647706118982';
+  const displayPhone = SUPPORT_PHONE_NUMBER || '07706118992';
+  const whatsappNumber = SUPPORT_WHATSAPP_NUMBER || '9647706118992';
   const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(
     `مرحباً إدارة التطبيق، تم انتهاء/إلغاء حسابي (${userEmail || ''}) وأود التواصل معكم لإعادة الاشتراك وتفعيل الحساب.`
   )}`;

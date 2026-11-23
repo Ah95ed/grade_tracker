@@ -9,7 +9,12 @@ import {
   FinalScoreOperation,
   FinalScoreOperationType,
 } from '../types';
-import { isGradeLevelMatch } from './gradeAndSectionMatcher';
+import {
+  isGradeLevelMatch,
+  isSubjectMatch,
+  isSectionMatch,
+} from './gradeAndSectionMatcher';
+import { canonicalizeArabic } from './arabicNameMatcher';
 
 /**
  * Applies a mathematical operation (divide, multiply, add, subtract) on a score.
@@ -582,15 +587,312 @@ export function getRatingDetails(score: number | null, maxScore: number = 100): 
 }
 
 /**
- * Calculates term grade for all students across the selected monthly models.
- * If 1 model selected: Final = that model's score
- * If 2 models selected: Final = (Model1 + Model2) / 2
- * If >2 models selected: Final = Sum / count
+ * Orders terms so that any term referencing existing terms (selectedTermIds)
+ * is placed immediately after the last of its selected source terms.
+ */
+export function orderTermsWithAggregates(termsList: TermModel[]): TermModel[] {
+  if (!termsList || termsList.length <= 1) return termsList || [];
+
+  const isAggTerm = (t: TermModel) =>
+    t.sourceType === 'terms' || Boolean(t.selectedTermIds && t.selectedTermIds.length > 0);
+
+  const regularTerms = termsList.filter((t) => !isAggTerm(t));
+  const aggregateTerms = termsList.filter((t) => isAggTerm(t));
+
+  if (aggregateTerms.length === 0) return termsList;
+
+  const result: TermModel[] = [...regularTerms];
+  const unattachedAggregates: TermModel[] = [];
+
+  for (const agg of aggregateTerms) {
+    const selectedIds = agg.selectedTermIds || [];
+    let lastAnchorIndex = -1;
+
+    for (let i = 0; i < result.length; i++) {
+      if (selectedIds.includes(result[i].id)) {
+        lastAnchorIndex = i;
+      }
+    }
+
+    if (lastAnchorIndex >= 0) {
+      // Insert after the anchor AND after any other aggregate already attached to the same or earlier anchor
+      let insertIdx = lastAnchorIndex + 1;
+      while (insertIdx < result.length && isAggTerm(result[insertIdx])) {
+        const existingAggIds = result[insertIdx].selectedTermIds || [];
+        const sharesAnchor = existingAggIds.some((id) => selectedIds.includes(id));
+        if (!sharesAnchor) break;
+        insertIdx++;
+      }
+      result.splice(insertIdx, 0, agg);
+    } else {
+      unattachedAggregates.push(agg);
+    }
+  }
+
+  return [...result, ...unattachedAggregates];
+}
+
+/**
+ * Calculates term grade for all students across the selected monthly models,
+ * and/or selected existing terms when term.selectedTermIds is populated.
  */
 export function calculateTermSummaries(
   term: TermModel,
-  allModels: MonthlyModel[]
+  allModels: MonthlyModel[],
+  allTerms?: TermModel[],
+  visitedTermIds?: Set<string>
 ): StudentTermSummary[] {
+  const selectedTermIds = term.selectedTermIds || [];
+  const hasSelectedTerms = term.sourceType === 'terms' || selectedTermIds.length > 0;
+
+  // Handle term-of-terms (or hybrid models + terms) mode
+  if (hasSelectedTerms) {
+    if (selectedTermIds.length === 0 && (term.selectedModelIds || []).length === 0) {
+      return [];
+    }
+
+    const visited = new Set(visitedTermIds || []);
+    visited.add(term.id);
+
+    const sourceTerms = (allTerms || []).filter(
+      (t) => selectedTermIds.includes(t.id) && t.id !== term.id && !visited.has(t.id)
+    );
+    const directModels = allModels.filter((m) =>
+      (term.selectedModelIds || []).includes(m.id)
+    );
+
+    if (sourceTerms.length === 0 && directModels.length === 0) {
+      return [];
+    }
+
+    // Compute summaries for each source term with strict scoping
+    const sourceTermResults = sourceTerms.map((srcTerm) => {
+      let effectiveModelIds = srcTerm.selectedModelIds || [];
+      if (
+        effectiveModelIds.length === 0 &&
+        (!srcTerm.selectedTermIds || srcTerm.selectedTermIds.length === 0) &&
+        typeof localStorage !== 'undefined'
+      ) {
+        try {
+          const saved = localStorage.getItem(`daragat_term_selected_models_${srcTerm.id}`);
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed)) effectiveModelIds = parsed;
+          }
+        } catch {}
+      }
+
+      const effectiveSrcTerm: TermModel =
+        effectiveModelIds.length !== (srcTerm.selectedModelIds || []).length
+          ? { ...srcTerm, selectedModelIds: effectiveModelIds }
+          : srcTerm;
+
+      const scopedModelsForSrc = allModels.filter((m) => {
+        const matchGrade =
+          !srcTerm.gradeLevel || isGradeLevelMatch(m.gradeLevel || '', srcTerm.gradeLevel);
+        const matchSubject =
+          !srcTerm.subject || isSubjectMatch(m.subject, srcTerm.subject);
+        const matchTeacher =
+          !srcTerm.teacherName ||
+          !m.teacherName ||
+          canonicalizeArabic(m.teacherName) === canonicalizeArabic(srcTerm.teacherName);
+        return matchGrade && matchSubject && matchTeacher;
+      });
+
+      let summaries = calculateTermSummaries(
+        effectiveSrcTerm,
+        scopedModelsForSrc.length > 0 ? scopedModelsForSrc : allModels,
+        allTerms,
+        visited
+      );
+
+      if (srcTerm.assignedSections && srcTerm.assignedSections.length > 0) {
+        summaries = summaries.filter((s) =>
+          srcTerm.assignedSections!.some((sec) => isSectionMatch(s.section || 'أ', sec))
+        );
+      }
+
+      return {
+        srcTerm: effectiveSrcTerm,
+        summaries,
+      };
+    });
+
+    // Gather unique students across all source terms and any directly selected monthly models
+    const studentMap = new Map<
+      string,
+      {
+        name: string;
+        gradeLevel: string;
+        section: string;
+      }
+    >();
+
+    for (const model of directModels) {
+      for (const s of model.students) {
+        if (term.gradeLevel && s.gradeLevel && !isGradeLevelMatch(s.gradeLevel, term.gradeLevel)) {
+          continue;
+        }
+        if (
+          term.assignedSections &&
+          term.assignedSections.length > 0 &&
+          !term.assignedSections.some((sec) => isSectionMatch(s.section || 'أ', sec))
+        ) {
+          continue;
+        }
+        const key = canonicalizeArabic(s.name.trim());
+        if (!studentMap.has(key)) {
+          studentMap.set(key, {
+            name: s.name,
+            gradeLevel: s.gradeLevel,
+            section: s.section,
+          });
+        }
+      }
+    }
+
+    for (const { summaries } of sourceTermResults) {
+      for (const s of summaries) {
+        if (term.gradeLevel && s.gradeLevel && !isGradeLevelMatch(s.gradeLevel, term.gradeLevel)) {
+          continue;
+        }
+        if (
+          term.assignedSections &&
+          term.assignedSections.length > 0 &&
+          !term.assignedSections.some((sec) => isSectionMatch(s.section || 'أ', sec))
+        ) {
+          continue;
+        }
+        const key = canonicalizeArabic(s.name.trim());
+        if (!studentMap.has(key)) {
+          studentMap.set(key, {
+            name: s.name,
+            gradeLevel: s.gradeLevel,
+            section: s.section,
+          });
+        }
+      }
+    }
+
+    const aggregateSummaries: StudentTermSummary[] = [];
+
+    studentMap.forEach((meta, studentCanon) => {
+      const combinedScores: {
+        modelId: string;
+        modelName: string;
+        score: number | null;
+        maxScore: number;
+      }[] = [];
+
+      let sum = 0;
+      let validCount = 0;
+      let sumMaxScore = 0;
+      let maxMaxScore = 0;
+
+      // 1. Direct monthly models (if any)
+      for (const model of directModels) {
+        const st = model.students.find(
+          (s) =>
+            canonicalizeArabic(s.name.trim()) === studentCanon ||
+            s.name.trim().toLowerCase() === meta.name.trim().toLowerCase()
+        );
+        const score = st ? calculateStudentMonthlyTotal(st, model) : null;
+        const mMax = Number(model.totalMaxScore) || 100;
+
+        combinedScores.push({
+          modelId: model.id,
+          modelName: model.name,
+          score,
+          maxScore: mMax,
+        });
+
+        sumMaxScore += mMax;
+        maxMaxScore = Math.max(maxMaxScore, mMax);
+
+        if (score !== null && !isNaN(score)) {
+          sum += score;
+          validCount++;
+        }
+      }
+
+      // 2. Source terms
+      for (const { srcTerm, summaries } of sourceTermResults) {
+        const found = summaries.find(
+          (s) =>
+            canonicalizeArabic(s.name.trim()) === studentCanon ||
+            s.name.trim().toLowerCase() === meta.name.trim().toLowerCase()
+        );
+        const score = found ? found.finalTermScore : null;
+        const srcMax = found?.termMaxScore || 100;
+
+        combinedScores.push({
+          modelId: srcTerm.id,
+          modelName: srcTerm.name,
+          score,
+          maxScore: srcMax,
+        });
+
+        sumMaxScore += srcMax;
+        maxMaxScore = Math.max(maxMaxScore, srcMax);
+
+        if (score !== null && !isNaN(score)) {
+          sum += score;
+          validCount++;
+        }
+      }
+
+      const totalItemsCount = directModels.length + sourceTerms.length;
+      let rawTermScore: number | null = null;
+      let finalTermScore: number | null = null;
+      let isRounded = false;
+
+      if (term.calculationMode === 'sum') {
+        rawTermScore = validCount > 0 ? Math.round(sum * 100) / 100 : null;
+      } else if (validCount > 0) {
+        const divisor = totalItemsCount > 0 ? totalItemsCount : 1;
+        rawTermScore = Math.round((sum / divisor) * 100) / 100;
+      }
+
+      const termMaxScore =
+        term.calculationMode === 'sum'
+          ? sumMaxScore || 100
+          : maxMaxScore || 100;
+
+      if (rawTermScore !== null) {
+        if (term.roundingMode && term.roundingMode !== 'none') {
+          finalTermScore = applyScoreRounding(
+            rawTermScore,
+            term.roundingMode,
+            term.roundingThreshold ?? 0.5,
+            termMaxScore
+          );
+          isRounded = finalTermScore !== rawTermScore;
+        } else {
+          finalTermScore = rawTermScore;
+        }
+      }
+
+      const rating = getRatingDetails(finalTermScore, termMaxScore);
+
+      aggregateSummaries.push({
+        studentId: meta.name.trim(),
+        name: meta.name,
+        gradeLevel: meta.gradeLevel,
+        section: meta.section,
+        monthlyScores: combinedScores,
+        rawTermScore,
+        finalTermScore,
+        isRounded,
+        termMaxScore,
+        gradeText: rating.text,
+        gradeColor: rating.color,
+        status: rating.status,
+      });
+    });
+
+    return aggregateSummaries;
+  }
+
   const selectedModels = allModels.filter((m) =>
     term.selectedModelIds.includes(m.id)
   );
@@ -674,10 +976,10 @@ export function calculateTermSummaries(
       }
     }
 
-    const termMaxScore = selectedModels.reduce(
-      (max, m) => Math.max(max, Number(m.totalMaxScore) || 100),
-      100
-    );
+    const termMaxScore =
+      term.calculationMode === 'sum'
+        ? selectedModels.reduce((sumMax, m) => sumMax + (Number(m.totalMaxScore) || 100), 0)
+        : selectedModels.reduce((max, m) => Math.max(max, Number(m.totalMaxScore) || 0), 0) || 100;
 
     // Apply rounding rules if configured on term or inherited from models
     const effectiveRoundingMode =
@@ -815,10 +1117,8 @@ export function calculateMultiTermSummaries(
       }
     }
 
-    const combinedMaxScore = termBreakdowns.reduce(
-      (max, t) => Math.max(max, t.termMaxScore || 100),
-      100
-    );
+    const combinedMaxScore =
+      termBreakdowns.reduce((max, t) => Math.max(max, t.termMaxScore || 0), 0) || 100;
 
     let rawAverageScore: number | null = null;
     let finalAverageScore: number | null = null;

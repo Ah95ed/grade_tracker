@@ -3,6 +3,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
 import '../../controllers/teacher_personal_controller.dart';
 import '../../models/teacher_personal.dart';
+import '../exam_builder/exam_builder_view.dart';
 
 /// Comprehensive modal dialog for Teacher Personal Workspace (Section 2)
 /// Encapsulates: Weekly Class Schedule, Notes & Lesson Prep, and Alerts/Reminders
@@ -22,7 +23,7 @@ class _TeacherPersonalWorkspaceDialogState
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
   }
 
   @override
@@ -107,6 +108,7 @@ class _TeacherPersonalWorkspaceDialogState
                     Tab(icon: Icon(Icons.calendar_view_week_rounded), text: 'الجدول الأسبوعي'),
                     Tab(icon: Icon(Icons.sticky_note_2_rounded), text: 'الملاحظات والتحضير'),
                     Tab(icon: Icon(Icons.notifications_active_rounded), text: 'المواعيد والتنبيهات'),
+                    Tab(icon: Icon(Icons.quiz_rounded), text: 'كتابة الأسئلة'),
                   ],
                 ),
               ),
@@ -119,6 +121,7 @@ class _TeacherPersonalWorkspaceDialogState
                     _buildScheduleTab(),
                     _buildNotesTab(),
                     _buildAlertsTab(),
+                    const ExamBuilderView(isStandalone: false),
                   ],
                 ),
               ),

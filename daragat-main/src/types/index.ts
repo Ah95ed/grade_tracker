@@ -116,6 +116,8 @@ export interface TermModel {
   notes?: string;
   roundingMode?: RoundingMode;
   roundingThreshold?: number;
+  sourceType?: 'models' | 'terms'; // 'models' (default) from monthly models, 'terms' from existing terms
+  selectedTermIds?: string[]; // IDs of source terms when sourceType === 'terms'
 }
 
 export type InstitutionType = 'school' | 'university';
@@ -200,6 +202,10 @@ export interface StudentSimpleCard {
   gradeLevel: string;
   section: string;
   termScores: Record<string, number | null>;
+  termScoreDetails?: Record<
+    string,
+    { raw: number | null; final: number | null; isRounded: boolean }
+  >;
 }
 
 export interface ClassSectionCard {

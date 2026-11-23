@@ -155,11 +155,39 @@
   .no-print {
     display: none !important;
   }
-  
+
+  html,
   body {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
     background: white !important;
     background-image: none !important;
+    background-attachment: scroll !important;
     color: black !important;
+  }
+
+  .overflow-x-auto,
+  .overflow-y-auto,
+  .overflow-hidden,
+  .craft-card,
+  .student-table-card {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+  }
+
+  table {
+    page-break-inside: auto;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 
   table input {
@@ -196,15 +224,47 @@
     margin: 0 !important;
     inset: auto !important;
     display: block !important;
+    overflow: visible !important;
+    height: auto !important;
   }
 
   .single-card-modal-content {
     box-shadow: none !important;
     border: none !important;
     max-width: 100% !important;
+    max-height: none !important;
+    height: auto !important;
+    overflow: visible !important;
     padding: 0 !important;
     margin: 0 !important;
     background: transparent !important;
+  }
+
+  body.printing-personal-schedule #root > div > :not(.personal-schedule-modal-backdrop) {
+    display: none !important;
+  }
+
+  .exam-paper-sheet {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    box-shadow: none !important;
+    border: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .exam-paper-sheet input,
+  .exam-paper-sheet textarea {
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .exam-paper-sheet input::placeholder,
+  .exam-paper-sheet textarea::placeholder {
+    color: transparent !important;
+    opacity: 0 !important;
   }
 }
 

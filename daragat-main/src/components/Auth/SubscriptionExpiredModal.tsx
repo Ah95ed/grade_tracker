@@ -4,7 +4,6 @@ import {
   PhoneCall,
   MessageCircle,
   Sparkles,
-  Infinity as InfinityIcon,
   LogOut,
   ShieldCheck,
   CheckCircle2,
@@ -14,6 +13,7 @@ import {
   AlertTriangle,
   Laptop,
   Smartphone,
+  Calendar,
 } from 'lucide-react';
 import {
   AppUser,
@@ -65,6 +65,23 @@ export const SubscriptionExpiredModal: React.FC<Props> = ({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  useEffect(() => {
+    if (!isOpen || canDismiss) return;
+    let cancelled = false;
+    checkLiveSubscription(user)
+      .then((res) => {
+        if (cancelled) return;
+        if (res.active && res.updatedUser) {
+          onSubscriptionActivated?.(res.updatedUser);
+          if (onClose) onClose();
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, canDismiss, user.uid, user.email]);
+
   if (!isOpen) return null;
 
   // The account is locked if subscription expired, or if pending after 1 day grace period
@@ -84,11 +101,13 @@ export const SubscriptionExpiredModal: React.FC<Props> = ({
         setTimeout(() => {
           onSubscriptionActivated?.(res.updatedUser!);
           if (onClose) onClose();
-        }, 1200);
+        }, 900);
       } else {
         setCheckStatusMsg({
           type: 'error',
-          text: 'لم يتم تفعيل الحساب بعد من قِبل الإدارة في قاعدة البيانات. يرجى التواصل عبر الواتساب لتأكيد الدفع والتفعيل الفوري.',
+          text:
+            res.message ||
+            'لم يتم تفعيل الحساب بعد من قِبل الإدارة في قاعدة البيانات. يرجى التواصل عبر الواتساب لتأكيد الدفع والتفعيل الفوري.',
         });
       }
     } catch {
@@ -102,10 +121,10 @@ export const SubscriptionExpiredModal: React.FC<Props> = ({
   };
 
   const whatsappMessage = encodeURIComponent(
-    `السلام عليكم، أود تفعيل حسابي في نظام دفتر درجات المعلم.\nالاسم: ${user.displayName || 'معلم'}\nالبريد الإلكتروني: ${user.email}\nرقم المعرف: ${user.uid}\nنوع الحساب: حساب معلم (مطلوب تفعيل الاشتراك)`
+    `السلام عليكم، أود تفعيل اشتراكي السنوي في نظام دفتر درجات المعلم (12,000 اثنا عشر ألف دينار لسنة كاملة).\nالاسم: ${user.displayName || 'معلم'}\nالبريد الإلكتروني: ${user.email}\nرقم المعرف: ${user.uid}\nنوع الحساب: حساب معلم (طلب تفعيل اشتراك سنوي)`
   );
 
-  const whatsappPhone = SUPPORT_WHATSAPP_NUMBER || '9647706118982';
+  const whatsappPhone = SUPPORT_WHATSAPP_NUMBER || '9647706118992';
   // روابط مخصصة ذكية: تطبيق واتساب للموبايل، وواتساب ويب للكمبيوتر
   const mobileWhatsappAppUrl = `whatsapp://send?phone=${whatsappPhone}&text=${whatsappMessage}`;
   const webWhatsappUrl = `https://web.whatsapp.com/send?phone=${whatsappPhone}&text=${whatsappMessage}`;
@@ -142,11 +161,17 @@ export const SubscriptionExpiredModal: React.FC<Props> = ({
             )}
           </div>
           <h2 className="text-xl sm:text-2xl font-black tracking-tight">
-            {isExpired && !canDismiss ? 'يلزم تفعيل الاشتراك للمتابعة' : 'تفاصيل الاشتراك في النظام'}
+            {isExpired && !canDismiss
+              ? user.subscriptionType === 'yearly' && user.expiresAt && Date.now() >= new Date(user.expiresAt).getTime()
+                ? 'انتهى اشتراكك السنوي — يرجى التجديد'
+                : 'يلزم تفعيل الاشتراك للمتابعة'
+              : 'تفاصيل الاشتراك في النظام'}
           </h2>
           <p className="text-xs sm:text-sm text-slate-100 mt-1 max-w-xs mx-auto leading-relaxed">
             {isExpired && !canDismiss
-              ? `انتهت الفترة التجريبية المجانية (3 أيام) لحسابك (${user.email}). يرجى تفعيل اشتراكك لمتابعة استخدام البرنامج.`
+              ? user.subscriptionType === 'yearly' && user.expiresAt && Date.now() >= new Date(user.expiresAt).getTime()
+                ? `انتهت مدة اشتراكك السنوي لحسابك (${user.email}). يرجى تجديد الاشتراك السنوي (12,000 دينار لسنة كاملة) لمتابعة استخدام البرنامج.`
+                : `انتهت الفترة التجريبية المجانية لحسابك (${user.email}). يرجى تفعيل اشتراكك السنوي (12,000 دينار لسنة كاملة) لمتابعة استخدام البرنامج.`
               : `خطة الاشتراك الرسمية المعتمدة لدفتر رصد الدرجات (${user.email})`}
           </p>
 
@@ -162,31 +187,36 @@ export const SubscriptionExpiredModal: React.FC<Props> = ({
 
         {/* Content Body */}
         <div className="p-6 space-y-5">
-          {/* Single Lifetime Plan Card */}
+          {/* Single Yearly Plan Card (12,000 IQD for a full year) */}
           <div className="relative p-5 rounded-2xl bg-gradient-to-br from-amber-50/90 via-amber-100/50 to-orange-50 border-2 border-amber-400 shadow-sm">
             <div className="flex items-center justify-between gap-2 mb-3">
               <div className="flex items-center gap-2">
                 <span className="p-2 bg-amber-500 text-white rounded-xl shadow-xs">
-                  <InfinityIcon className="w-5 h-5" />
+                  <Calendar className="w-5 h-5" />
                 </span>
                 <div>
                   <h3 className="text-base sm:text-lg font-black text-amber-950">
-                    اشتراك مدى الحياة
+                    اشتراك سنوي (سنة كاملة)
                   </h3>
                   <p className="text-[11px] text-amber-800 font-semibold">
-                    تفعيل دائم لمرة واحدة وبدون أي تجديد شهري أو سنوي
+                    تفعيل شامل لجميع ميزات البرنامج لسنة كاملة (365 يوماً)
                   </p>
                 </div>
               </div>
 
               {/* Price Tag */}
               <div className="text-left shrink-0 bg-white px-3.5 py-1.5 rounded-xl border border-amber-300 shadow-2xs">
-                <span className="text-xl sm:text-2xl font-black text-[#2E485C] font-mono">
-                  10,000
-                </span>
-                <span className="text-xs font-bold text-amber-900 mr-1">
-                  دينار
-                </span>
+                <div className="flex items-baseline gap-1 justify-end">
+                  <span className="text-xl sm:text-2xl font-black text-[#2E485C] font-mono">
+                    12,000
+                  </span>
+                  <span className="text-xs font-bold text-amber-900">
+                    دينار
+                  </span>
+                </div>
+                <div className="text-[10px] font-black text-emerald-700 text-center">
+                  لسنة كاملة
+                </div>
               </div>
             </div>
 
@@ -194,7 +224,7 @@ export const SubscriptionExpiredModal: React.FC<Props> = ({
             <div className="pt-3 border-t border-amber-200/80 space-y-2 text-xs text-amber-950 font-bold">
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>دفعة واحدة فقط مدى الحياة (لا توجد أي رسوم إضافية).</span>
+                <span>اشتراك سنوي بقيمة 12,000 دينار فقط لسنة دراسية كاملة.</span>
               </div>
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />

@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { X, Users, Check, Sparkles, GraduationCap, Lock, BookOpen, Plus, Trash2, User, AlertCircle, Info, Layers, ArrowLeftRight } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { X, Users, Check, Sparkles, GraduationCap, Lock, BookOpen, Plus, Trash2, User, AlertCircle, Info, Layers, ArrowLeftRight, ArrowUpRight, PenLine } from 'lucide-react';
 import { MonthlyModel, StudentRow } from '../../types';
 import {
   STANDARD_GRADE_LEVELS,
@@ -11,6 +11,7 @@ import {
 } from '../../utils/gradeAndSectionMatcher';
 import { canonicalizeArabic } from '../../utils/arabicNameMatcher';
 import { loadProfile } from '../../utils/storage';
+import { getCurrentAcademicYear } from '../../utils/dateUtils';
 import { AppUser, getCurrentUser } from '../../utils/auth';
 
 const TARGET_ADMIN_EMAIL = 'asmaomar5566@gmail.com';
@@ -29,8 +30,11 @@ interface Props {
   allModels: MonthlyModel[];
   onCreate: (newModel: MonthlyModel) => void;
   profileSubject?: string;
+  profileAcademicYear?: string;
   currentUser?: AppUser | null;
   onOpenSectionsSwap?: (grade?: string, subject?: string) => void;
+  onOpenProfileForSubject?: () => void;
+  reopenFromProfileNonce?: number;
 }
 
 export const CreateModelModal: React.FC<Props> = ({
@@ -40,8 +44,11 @@ export const CreateModelModal: React.FC<Props> = ({
   allModels,
   onCreate,
   profileSubject,
+  profileAcademicYear,
   currentUser,
   onOpenSectionsSwap,
+  onOpenProfileForSubject,
+  reopenFromProfileNonce = 0,
 }) => {
   // Check if current user is admin or school administration (الإدارة)
   const isCustomSubjectEnabled = useMemo(() => {
@@ -95,6 +102,49 @@ export const CreateModelModal: React.FC<Props> = ({
   const [subjectName, setSubjectName] = useState(() => (isIdarahOrAdmin(teacherSubject) || isCustomSubjectEnabled ? '' : teacherSubject));
   const [gradeLevelInput, setGradeLevelInput] = useState('');
   const [showValidation, setShowValidation] = useState(false);
+
+  const modelNamesHistoryKey = useMemo(() => {
+    const user = currentUser || getCurrentUser();
+    return user?.uid
+      ? `gradebook_model_names_history_${user.uid}`
+      : 'gradebook_model_names_history';
+  }, [currentUser]);
+
+  const [savedModelNamesHistory, setSavedModelNamesHistory] = useState<string[]>(() => {
+    try {
+      const user = currentUser || getCurrentUser();
+      const k = user?.uid
+        ? `gradebook_model_names_history_${user.uid}`
+        : 'gradebook_model_names_history';
+      const raw = localStorage.getItem(k);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
+
+  // Collect distinct model names created/saved previously by the user
+  const savedModelNames = useMemo(() => {
+    const list: string[] = [];
+    const seen = new Set<string>();
+
+    const addName = (n?: string) => {
+      const trimmed = n?.trim();
+      if (!trimmed) return;
+      const canon = canonicalizeArabic(trimmed);
+      if (!seen.has(canon)) {
+        seen.add(canon);
+        list.push(trimmed);
+      }
+    };
+
+    allModels.forEach((m) => addName(m.name));
+    if (currentModel?.name) addName(currentModel.name);
+    savedModelNamesHistory.forEach(addName);
+
+    return list;
+  }, [allModels, currentModel, savedModelNamesHistory, isOpen]);
 
   // Admin / School administration custom subjects state (filter out any stale "إدارة")
   const [customSubjects, setCustomSubjects] = useState<string[]>(() => {
@@ -312,35 +362,60 @@ export const CreateModelModal: React.FC<Props> = ({
   // Autocompletion datalist uses only grades added/entered by the user
   const previousGrades = addedGrades;
 
+  const lastReopenNonceRef = useRef<number>(reopenFromProfileNonce);
+  const prevIsOpenRef = useRef<boolean>(false);
+
   useEffect(() => {
-    if (isOpen) {
-      setModelName(defaultNewName);
-      setTotalMaxInput('');
+    const wasOpen = prevIsOpenRef.current;
+    prevIsOpenRef.current = isOpen;
+    if (!isOpen || wasOpen) return;
+
+    const isReturningFromProfile =
+      reopenFromProfileNonce > 0 && reopenFromProfileNonce !== lastReopenNonceRef.current;
+
+    if (isReturningFromProfile) {
+      lastReopenNonceRef.current = reopenFromProfileNonce;
       const defaultSub = isIdarahOrAdmin(teacherSubject) || isCustomSubjectEnabled ? '' : teacherSubject;
       setSubjectName(defaultSub);
       setTeacherNameInput(isCustomSubjectEnabled ? '' : profileTeacher);
-      // In Admin mode: Start with completely clean sections so previous teacher's sections aren't leaked!
-      setSelectedSections([]);
-      setNewSectionInput('');
-      setShowAddSectionInput(false);
-
-      // Always start with a completely empty grade field on new creation
-      setGradeLevelInput('');
       setShowValidation(false);
-      setNewSubjectInput('');
-      setShowAddSubjectInput(false);
-
-      if (isCustomSubjectEnabled) {
-        try {
-          const raw = localStorage.getItem(customSubjectsStorageKey) || localStorage.getItem(ADMIN_CUSTOM_SUBJECTS_KEY);
-          if (raw) {
-            const parsed: string[] = JSON.parse(raw);
-            setCustomSubjects(parsed.filter((s) => !isIdarahOrAdmin(s)));
-          }
-        } catch {}
-      }
+      return;
     }
-  }, [isOpen, defaultNewName, teacherSubject, profileTeacher, isCustomSubjectEnabled, customSubjectsStorageKey, currentModel]);
+
+    setModelName(defaultNewName);
+    setTotalMaxInput('');
+    const defaultSub = isIdarahOrAdmin(teacherSubject) || isCustomSubjectEnabled ? '' : teacherSubject;
+    setSubjectName(defaultSub);
+    setTeacherNameInput(isCustomSubjectEnabled ? '' : profileTeacher);
+    // In Admin mode: Start with completely clean sections so previous teacher's sections aren't leaked!
+    setSelectedSections([]);
+    setNewSectionInput('');
+    setShowAddSectionInput(false);
+
+    // Always start with a completely empty grade field on new creation
+    setGradeLevelInput('');
+    setShowValidation(false);
+    setNewSubjectInput('');
+    setShowAddSubjectInput(false);
+
+    try {
+      const rawNames = localStorage.getItem(modelNamesHistoryKey);
+      if (rawNames) {
+        const parsedNames = JSON.parse(rawNames);
+        if (Array.isArray(parsedNames)) setSavedModelNamesHistory(parsedNames);
+      }
+    } catch {}
+
+    if (isCustomSubjectEnabled) {
+      try {
+        const raw = localStorage.getItem(customSubjectsStorageKey) || localStorage.getItem(ADMIN_CUSTOM_SUBJECTS_KEY);
+        if (raw) {
+          const parsed: string[] = JSON.parse(raw);
+          setCustomSubjects(parsed.filter((s) => !isIdarahOrAdmin(s)));
+        }
+      } catch {}
+    }
+  }, [isOpen, reopenFromProfileNonce, defaultNewName, teacherSubject, profileTeacher, isCustomSubjectEnabled, customSubjectsStorageKey, modelNamesHistoryKey, currentModel]);
 
   // Select a teacher and auto-load ONLY their specific sections if already registered
   const handleSelectTeacher = (teacher: string) => {
@@ -543,6 +618,12 @@ export const CreateModelModal: React.FC<Props> = ({
         ? finalTotalMax
         : Math.min(modelToInherit?.writtenMaxScore || finalTotalMax, finalTotalMax);
 
+    const resolvedAcademicYear =
+      profileAcademicYear?.trim() ||
+      loadProfile()?.academicYear?.trim() ||
+      modelToInherit?.academicYear ||
+      getCurrentAcademicYear();
+
     const newModel: MonthlyModel = {
       id: newId,
       name: modelName.trim(),
@@ -550,7 +631,7 @@ export const CreateModelModal: React.FC<Props> = ({
       gradeLevel: finalGrade,
       teacherName: finalTeacher || undefined,
       assignedSections: selectedSections.length > 0 ? selectedSections : undefined,
-      academicYear: modelToInherit?.academicYear || '2024-2025',
+      academicYear: resolvedAcademicYear,
       totalMaxScore: finalTotalMax,
       writtenWeight: modelToInherit?.writtenWeight ?? null,
       writtenMaxScore: finalWrittenMax,
@@ -562,6 +643,21 @@ export const CreateModelModal: React.FC<Props> = ({
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
+
+    // Save model name to user's history so it appears as a quick option below "اسم النموذج" next time
+    const trimmedModelName = modelName.trim();
+    if (trimmedModelName) {
+      try {
+        const raw = localStorage.getItem(modelNamesHistoryKey);
+        const existing: string[] = raw ? JSON.parse(raw) : [];
+        const canon = canonicalizeArabic(trimmedModelName);
+        if (!existing.some((n) => canonicalizeArabic(n) === canon)) {
+          const nextHistory = [...existing, trimmedModelName];
+          localStorage.setItem(modelNamesHistoryKey, JSON.stringify(nextHistory));
+          setSavedModelNamesHistory(nextHistory);
+        }
+      } catch {}
+    }
 
     onCreate(newModel);
     onClose();
@@ -606,6 +702,7 @@ export const CreateModelModal: React.FC<Props> = ({
             </div>
             <input
               type="text"
+              list="create-model-names-list"
               value={modelName}
               onChange={(e) => {
                 setModelName(e.target.value);
@@ -620,10 +717,54 @@ export const CreateModelModal: React.FC<Props> = ({
               }`}
               autoFocus
             />
+            <datalist id="create-model-names-list">
+              {savedModelNames.map((n) => (
+                <option key={n} value={n} />
+              ))}
+            </datalist>
             {showValidation && !isModelNameValid && (
               <p className="text-[10px] text-rose-600 font-bold mt-1">
                 ⚠️ يرجى كتابة اسم النموذج (حقل إجباري)
               </p>
+            )}
+
+            {/* تظهر أسماء النماذج المضافة سابقاً كخيارات سريعة أسفل الحقل */}
+            {savedModelNames.length > 0 && (
+              <div className="mt-2 p-2.5 bg-[#FAF7EC] rounded-xl border border-[#D8CEBD] space-y-1.5 shadow-2xs">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-[#4A3D30]">
+                  <Check className="w-3.5 h-3.5 text-[#5692BE]" />
+                  <span>أسماء النماذج المضافة سابقاً (اضغط للاختيار):</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5 pt-0.5">
+                  {savedModelNames.map((nameOption) => {
+                    const isSelected =
+                      canonicalizeArabic(modelName.trim()) === canonicalizeArabic(nameOption);
+                    return (
+                      <button
+                        key={nameOption}
+                        type="button"
+                        onClick={() => {
+                          setModelName(nameOption);
+                          if (showValidation) setShowValidation(false);
+                        }}
+                        className={`text-xs px-3 py-1.5 rounded-lg border font-bold transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 ${
+                          isSelected
+                            ? 'bg-[#5692BE] text-white border-[#3D7299] ring-2 ring-[#5692BE]/30'
+                            : 'bg-white text-[#2F2822] border-[#D8CEBD] hover:bg-[#F2ECE0] hover:border-[#B8A896]'
+                        }`}
+                      >
+                        <span className={isSelected ? 'text-white font-bold' : 'text-[#5692BE] font-bold'}>
+                          +
+                        </span>
+                        <span>{nameOption}</span>
+                        {isSelected && (
+                          <Check className="w-3.5 h-3.5 text-white stroke-[3] mr-0.5" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             )}
           </div>
 
@@ -671,31 +812,66 @@ export const CreateModelModal: React.FC<Props> = ({
                   <BookOpen className="w-3.5 h-3.5 text-[#5692BE]" />
                   <span>اسم المادة:</span>
                 </label>
-                <span className="text-[10px] text-[#2C5F8A] font-bold bg-[#EBF3FA] border border-[#C5DCEF] px-2 py-0.5 rounded-md flex items-center gap-1">
-                  <Lock className="w-2.5 h-2.5" />
-                  <span>من بيانات المعلم والمدرسة (مقفل)</span>
-                </span>
+                {isSubjectValid ? (
+                  <span className="text-[10px] text-[#2C5F8A] font-bold bg-[#EBF3FA] border border-[#C5DCEF] px-2 py-0.5 rounded-md flex items-center gap-1">
+                    <Lock className="w-2.5 h-2.5" />
+                    <span>من بيانات المعلم والمدرسة (مقفل)</span>
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-amber-900 font-bold bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-md flex items-center gap-1">
+                    <PenLine className="w-2.5 h-2.5 text-amber-700" />
+                    <span>لم يتم إدخال المادة بعد</span>
+                  </span>
+                )}
               </div>
-              <div className="relative">
-                <input
-                  type="text"
-                  readOnly
-                  value={effectiveSubject || 'يرجى تحديد المادة في بيانات المعلم والمدرسة'}
-                  className="w-full pr-3 pl-16 py-1.5 sm:py-2 bg-slate-100 border border-slate-300 rounded-xl font-bold text-[#2F2822] text-xs sm:text-sm cursor-not-allowed select-none shadow-2xs"
-                  title="اسم المادة مطابق للمادة المحددة في بيانات المعلم والمدرسة ولا توجد خيارات أخرى له"
-                />
-                <div className="absolute left-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1 text-[11px] text-slate-500 font-bold pointer-events-none">
-                  <Lock className="w-3 h-3 text-slate-400" />
-                  <span>ثابت</span>
-                </div>
-              </div>
-              <p className="text-[11px] text-[#6B5E51] mt-1 font-medium">
-                اسم المادة مطابق تلقائياً لحقل «المادة الدراسية» في بيانات المعلم والمدرسة ({effectiveSubject || 'غير محدد'}) ومقفل لمنع خلط المواد.
-              </p>
-              {showValidation && !isSubjectValid && (
-                <p className="text-[10px] text-rose-600 font-bold mt-1">
-                  ⚠️ يرجى كتابة المادة الدراسية في صفحة «بيانات المعلم والمدرسة» لتظهر هنا تلقائياً
-                </p>
+
+              {isSubjectValid ? (
+                <>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      readOnly
+                      value={effectiveSubject}
+                      className="w-full pr-3 pl-16 py-1.5 sm:py-2 bg-slate-100 border border-slate-300 rounded-xl font-bold text-[#2F2822] text-xs sm:text-sm cursor-not-allowed select-none shadow-2xs"
+                      title="اسم المادة مطابق للمادة المحددة في بيانات المعلم والمدرسة ولا توجد خيارات أخرى له"
+                    />
+                    <div className="absolute left-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1 text-[11px] text-slate-500 font-bold pointer-events-none">
+                      <Lock className="w-3 h-3 text-slate-400" />
+                      <span>ثابت</span>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-[#6B5E51] mt-1 font-medium">
+                    اسم المادة مطابق تلقائياً لحقل «المادة الدراسية» في بيانات المعلم والمدرسة ({effectiveSubject}) ومقفل لمنع خلط المواد.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onOpenProfileForSubject?.();
+                    }}
+                    className={`w-full px-3 py-2.5 rounded-xl border-2 text-right transition-all cursor-pointer flex items-center justify-between gap-2 shadow-xs active:scale-[0.99] ${
+                      showValidation
+                        ? 'bg-rose-50 hover:bg-rose-100/80 border-rose-400 text-rose-950 ring-2 ring-rose-300/60'
+                        : 'bg-amber-50 hover:bg-amber-100 border-amber-400 text-amber-950 ring-2 ring-amber-300/40'
+                    }`}
+                    title="اضغط للانتقال إلى بيانات المعلم والمدرسة وإدخال اسم المادة"
+                  >
+                    <span className="flex items-center gap-2 font-bold text-xs sm:text-sm">
+                      <PenLine className="w-4 h-4 text-amber-700 shrink-0" />
+                      <span>اضغط هنا لإدخال اسم المادة</span>
+                    </span>
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500 text-white text-[11px] font-black shrink-0 shadow-2xs">
+                      <span>بيانات المعلم والمدرسة</span>
+                      <ArrowUpRight className="w-3.5 h-3.5" />
+                    </span>
+                  </button>
+                  <p className="text-[11px] text-amber-900 mt-1.5 font-semibold leading-relaxed">
+                    لم تدخل اسم المادة بعد في بيانات المعلم والمدرسة. اضغط على الزر أعلاه لتفتح لك شاشة «بيانات المعلم والمدرسة» مع تمييز حقل المادة، وبعد الحفظ ستعود هذه النافذة تلقائياً وبها اسم المادة.
+                  </p>
+                </>
               )}
             </div>
           ) : (

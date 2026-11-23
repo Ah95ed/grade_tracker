@@ -11,6 +11,7 @@ import {
   calculateTermSummaries,
   getRatingDetails,
   getStudentMonthlyScoreBreakdown,
+  orderTermsWithAggregates,
 } from '../../utils/gradeCalculations';
 import {
   normalizeGradeLevel,
@@ -23,6 +24,8 @@ import {
 } from '../../utils/gradeAndSectionMatcher';
 import { canonicalizeArabic } from '../../utils/arabicNameMatcher';
 import { getCurrentUser } from '../../utils/auth';
+import { triggerPrint } from '../../utils/printHelper';
+import { getCurrentAcademicYear } from '../../utils/dateUtils';
 import {
   Printer,
   FileSpreadsheet,
@@ -41,12 +44,20 @@ import {
 import { ReportCardItem } from './ReportCardItem';
 import { StudentCardModal } from './StudentCardModal';
 import { PrintSettingsModal } from './PrintSettingsModal';
+import { StackedHeaderLabel } from '../Common/StackedHeaderLabel';
 import {
   StudentIndividualCardItem,
   StudentCardData,
   StudentSubjectScoreDetail,
 } from './StudentIndividualCardItem';
 import { SingleStudentCardModal } from './SingleStudentCardModal';
+import { NumeralModeToggle } from '../Common/NumeralModeToggle';
+import {
+  NumeralMode,
+  NUMERAL_MODE_STORAGE_KEY,
+  formatScoreDisplay,
+  getSavedNumeralMode,
+} from '../../utils/numeralFormat';
 
 interface Props {
   monthlyModels: MonthlyModel[];
@@ -54,6 +65,8 @@ interface Props {
   profile: TeacherProfile;
   onUpdateProfile?: (profile: TeacherProfile) => void;
   onNavigateToTerms?: () => void;
+  numeralMode?: NumeralMode;
+  onNumeralModeChange?: (mode: NumeralMode) => void;
 }
 
 export const ReportCardsView: React.FC<Props> = ({
@@ -62,9 +75,23 @@ export const ReportCardsView: React.FC<Props> = ({
   profile,
   onUpdateProfile,
   onNavigateToTerms,
+  numeralMode: propNumeralMode,
+  onNumeralModeChange: propOnNumeralModeChange,
 }) => {
-  // Display Mode: 'by_subject' (اسم المادة في الأعلى وأسماء الطلاب بالداخل) | 'by_student' (اسم الطالب في الأعلى وأسماء المواد بالداخل)
-  const [cardGroupingMode, setCardGroupingMode] = useState<'by_subject' | 'by_student'>('by_subject');
+  // User numeral preference synced with App/Monthly/Term views
+  const [internalNumeralMode, setInternalNumeralMode] = useState<NumeralMode>(() => getSavedNumeralMode());
+  const numeralMode: NumeralMode = propNumeralMode ?? internalNumeralMode;
+
+  const handleNumeralModeChange = (mode: NumeralMode) => {
+    setInternalNumeralMode(mode);
+    try {
+      localStorage.setItem(NUMERAL_MODE_STORAGE_KEY, mode);
+    } catch {}
+    propOnNumeralModeChange?.(mode);
+  };
+
+  // Display Mode: 'by_student' (اسم الطالب في الأعلى وأسماء المواد بالداخل - الافتراضي) | 'by_subject' (اسم المادة في الأعلى وأسماء الطلاب بالداخل)
+  const [cardGroupingMode, setCardGroupingMode] = useState<'by_subject' | 'by_student'>('by_student');
 
   // Search and Filter states
   const [searchQuery, setSearchQuery] = useState('');
@@ -129,19 +156,67 @@ export const ReportCardsView: React.FC<Props> = ({
 
   // Derive common academic year and subject
   const defaultAcademicYear =
-    profile.academicYear || monthlyModels[0]?.academicYear || '2024 - 2025';
+    profile.academicYear?.trim() || monthlyModels[0]?.academicYear || getCurrentAcademicYear();
   const defaultSubject =
     profile.subject || monthlyModels[0]?.subject || 'المادة الدراسية';
+
+  // Helper to resolve effective selectedModelIds for a term (matches TermCalculationView fallback)
+  const getEffectiveTermModelIds = (term: TermModel): string[] => {
+    if (term.selectedModelIds && term.selectedModelIds.length > 0) {
+      return term.selectedModelIds;
+    }
+    try {
+      const saved = localStorage.getItem(`daragat_term_selected_models_${term.id}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return [];
+  };
 
   // Assemble student card data across all terms defined in "المعدل"
   const studentCards = useMemo(() => {
     if (terms.length === 0) return [];
 
-    // Calculate summaries for each term
-    const termResults = terms.map((term) => ({
-      term,
-      summaries: calculateTermSummaries(term, monthlyModels),
-    }));
+    // Calculate summaries for each term using the exact same scoping & rounding rules as TermCalculationView
+    const termResults = terms.map((term) => {
+      const hasSourceTerms =
+        term.sourceType === 'terms' || Boolean(term.selectedTermIds && term.selectedTermIds.length > 0);
+      if (hasSourceTerms) {
+        return {
+          term,
+          summaries: calculateTermSummaries(term, monthlyModels, terms),
+        };
+      }
+
+      const effectiveIds = getEffectiveTermModelIds(term);
+      const effectiveTerm: TermModel =
+        effectiveIds.length !== (term.selectedModelIds || []).length
+          ? { ...term, selectedModelIds: effectiveIds }
+          : term;
+
+      const scopedModels = monthlyModels.filter((m) => {
+        const matchGrade =
+          !term.gradeLevel || isGradeLevelMatch(m.gradeLevel || '', term.gradeLevel);
+        const matchSubject =
+          !term.subject || isSubjectMatch(m.subject, term.subject);
+        const matchTeacher =
+          !term.teacherName ||
+          !m.teacherName ||
+          canonicalizeArabic(m.teacherName) === canonicalizeArabic(term.teacherName);
+        return matchGrade && matchSubject && matchTeacher;
+      });
+
+      return {
+        term: effectiveTerm,
+        summaries: calculateTermSummaries(
+          effectiveTerm,
+          scopedModels.length > 0 ? scopedModels : monthlyModels,
+          terms
+        ),
+      };
+    });
 
     // Collect all unique students
     const map = new Map<
@@ -152,6 +227,10 @@ export const ReportCardsView: React.FC<Props> = ({
         gradeLevel: string;
         section: string;
         termScores: Record<string, number | null>;
+        termScoreDetails: Record<
+          string,
+          { raw: number | null; final: number | null; isRounded: boolean }
+        >;
       }
     >();
 
@@ -166,6 +245,7 @@ export const ReportCardsView: React.FC<Props> = ({
             gradeLevel: s.gradeLevel || '',
             section: s.section || '',
             termScores: {},
+            termScoreDetails: {},
           });
         } else {
           const item = map.get(key)!;
@@ -186,17 +266,33 @@ export const ReportCardsView: React.FC<Props> = ({
             gradeLevel: s.gradeLevel || '',
             section: s.section || '',
             termScores: {},
+            termScoreDetails: {},
           });
         }
       }
     }
 
-    // 3. Assign each term's final score for each student (only for terms matching the student's grade)
+    // 3. Assign each term's final & raw scores for each student (only for terms matching the student's grade & assigned sections)
     map.forEach((student, key) => {
+      const studentCanon = canonicalizeArabic(student.name);
       termResults.forEach(({ term, summaries }) => {
-        if (!term.gradeLevel || !student.gradeLevel || isGradeLevelMatch(term.gradeLevel, student.gradeLevel)) {
-          const found = summaries.find((s) => s.name.trim().toLowerCase() === key);
+        const matchGrade =
+          !term.gradeLevel || !student.gradeLevel || isGradeLevelMatch(term.gradeLevel, student.gradeLevel);
+        const matchSection =
+          !term.assignedSections?.length ||
+          !student.section ||
+          term.assignedSections.some((sec) => isSectionMatch(sec, student.section));
+
+        if (matchGrade && matchSection) {
+          const found =
+            summaries.find((s) => s.name.trim().toLowerCase() === key) ||
+            summaries.find((s) => canonicalizeArabic(s.name) === studentCanon);
           student.termScores[term.id] = found?.finalTermScore ?? null;
+          student.termScoreDetails[term.id] = {
+            raw: found?.rawTermScore ?? null,
+            final: found?.finalTermScore ?? null,
+            isRounded: Boolean(found?.isRounded),
+          };
         }
       });
     });
@@ -337,14 +433,24 @@ export const ReportCardsView: React.FC<Props> = ({
             if (isGradeLevelMatch(st.gradeLevel || '', g) && isSectionMatch(st.section || '', sec)) {
               // Map term scores specifically for terms of this subject and teacher
               const termScoresForCard: Record<string, number | null> = {};
+              const termScoreDetailsForCard: Record<
+                string,
+                { raw: number | null; final: number | null; isRounded: boolean }
+              > = {};
               subjectTerms.forEach((t) => {
                 if (isGradeLevelMatch(t.gradeLevel || '', g)) {
                   const matchTeacher =
                     !t.teacherName ||
                     !teacher ||
                     canonicalizeArabic(t.teacherName) === canonicalizeArabic(teacher);
-                  if (matchTeacher) {
+                  const matchSection =
+                    !t.assignedSections?.length ||
+                    t.assignedSections.some((s) => isSectionMatch(s, sec));
+                  if (matchTeacher && matchSection) {
                     termScoresForCard[t.id] = st.termScores[t.id] ?? null;
+                    if (st.termScoreDetails?.[t.id]) {
+                      termScoreDetailsForCard[t.id] = st.termScoreDetails[t.id];
+                    }
                   }
                 }
               });
@@ -352,6 +458,7 @@ export const ReportCardsView: React.FC<Props> = ({
               classStudents.push({
                 ...st,
                 termScores: termScoresForCard,
+                termScoreDetails: termScoreDetailsForCard,
               });
             }
           });
@@ -501,104 +608,252 @@ export const ReportCardsView: React.FC<Props> = ({
     const cards: StudentCardData[] = [];
 
     studentMap.forEach((studentInfo, key) => {
+      const studentCanon = canonicalizeArabic(studentInfo.name);
       const subjectDetails: StudentSubjectScoreDetail[] = [];
       let totalSum = 0;
+      let totalMaxSum = 0;
       let subjectsCount = 0;
 
       for (const subj of distinctSubjects) {
-        const modelsOfSubject = monthlyModels.filter(
+        const modelsOfSubject = monthlyModels.filter((m) => {
+          const mSubj = m.subject?.trim() || profile.subject?.trim() || 'المادة الدراسية';
+          if (!isSubjectMatch(mSubj, subj)) return false;
+          const matchGrade =
+            !m.gradeLevel ||
+            !studentInfo.gradeLevel ||
+            isGradeLevelMatch(m.gradeLevel, studentInfo.gradeLevel);
+          if (!matchGrade) return false;
+          if (m.assignedSections && m.assignedSections.length > 0 && studentInfo.section) {
+            return m.assignedSections.some((sec) => isSectionMatch(sec, studentInfo.section));
+          }
+          return true;
+        });
+
+        const matchingModelForTeacher = modelsOfSubject.find(
           (m) =>
-            (m.subject?.trim() || profile.subject?.trim() || 'المادة الدراسية') === subj
+            !m.assignedSections?.length ||
+            m.assignedSections.some((sec) => isSectionMatch(sec, studentInfo.section))
         );
+        const teacherForSubj =
+          matchingModelForTeacher?.teacherName ||
+          modelsOfSubject.find((m) => Boolean(m.teacherName?.trim()))?.teacherName ||
+          terms.find(
+            (t) =>
+              isSubjectMatch(t.subject, subj) &&
+              (!t.gradeLevel || !studentInfo.gradeLevel || isGradeLevelMatch(t.gradeLevel, studentInfo.gradeLevel)) &&
+              (!t.assignedSections?.length || !studentInfo.section || t.assignedSections.some((sec) => isSectionMatch(sec, studentInfo.section))) &&
+              Boolean(t.teacherName?.trim())
+          )?.teacherName ||
+          (!isAdministration && profile.subject && isSubjectMatch(profile.subject, subj) ? profile.teacherName : undefined);
 
         const termScores: Record<string, number | null> = {};
+        const termScoreDetails: Record<
+          string,
+          { raw: number | null; final: number | null; isRounded: boolean }
+        > = {};
+        let subjectMaxScore = 0;
 
-        // Filter terms relevant to this student's grade level
+        // Filter terms relevant to this student's grade level and section
         const relevantTermsForStudent = terms.filter(
-          (t) => !t.gradeLevel || !studentInfo.gradeLevel || isGradeLevelMatch(t.gradeLevel, studentInfo.gradeLevel)
+          (t) =>
+            (!t.gradeLevel ||
+              !studentInfo.gradeLevel ||
+              isGradeLevelMatch(t.gradeLevel, studentInfo.gradeLevel)) &&
+            (!t.assignedSections?.length ||
+              !studentInfo.section ||
+              t.assignedSections.some((sec) => isSectionMatch(sec, studentInfo.section)))
         );
 
         if (relevantTermsForStudent.length > 0) {
           relevantTermsForStudent.forEach((term) => {
-            const termModelIdsForSubj = term.selectedModelIds.filter((id) =>
+            // Respect term.subject and term.teacherName if explicitly specified
+            if (term.subject && !isSubjectMatch(term.subject, subj)) {
+              termScores[term.id] = null;
+              return;
+            }
+            if (
+              term.teacherName &&
+              teacherForSubj &&
+              canonicalizeArabic(term.teacherName) !== canonicalizeArabic(teacherForSubj)
+            ) {
+              termScores[term.id] = null;
+              return;
+            }
+
+            const isAggTerm = (t: TermModel) =>
+              t.sourceType === 'terms' || Boolean(t.selectedTermIds && t.selectedTermIds.length > 0);
+
+            if (isAggTerm(term)) {
+              const validSourceIds = (term.selectedTermIds || []).filter((srcId) => {
+                const src = relevantTermsForStudent.find(
+                  (rt) => rt.id === srcId && !isAggTerm(rt)
+                );
+                if (!src) return false;
+                if (src.subject && !isSubjectMatch(src.subject, subj)) return false;
+                if (
+                  src.teacherName &&
+                  teacherForSubj &&
+                  canonicalizeArabic(src.teacherName) !== canonicalizeArabic(teacherForSubj)
+                ) {
+                  return false;
+                }
+                return true;
+              });
+
+              const effectiveIds = getEffectiveTermModelIds(term);
+              const termModelIdsForSubj = effectiveIds.filter((id) =>
+                modelsOfSubject.some((m) => m.id === id)
+              );
+              const relevantHybridModels = modelsOfSubject.filter((m) =>
+                termModelIdsForSubj.includes(m.id)
+              );
+
+              if (validSourceIds.length > 0 || relevantHybridModels.length > 0) {
+                const aggTermForSubj: TermModel = {
+                  ...term,
+                  selectedModelIds: relevantHybridModels.map((m) => m.id),
+                  selectedTermIds: validSourceIds,
+                };
+                const summaries = calculateTermSummaries(
+                  aggTermForSubj,
+                  modelsOfSubject,
+                  relevantTermsForStudent
+                );
+                const found =
+                  summaries.find((s) => s.name.trim().toLowerCase() === key) ||
+                  summaries.find((s) => canonicalizeArabic(s.name) === studentCanon);
+
+                if (found) {
+                  termScores[term.id] = found.finalTermScore;
+                  termScoreDetails[term.id] = {
+                    raw: found.rawTermScore ?? null,
+                    final: found.finalTermScore,
+                    isRounded: Boolean(found.isRounded),
+                  };
+                  if (found.termMaxScore > 0) {
+                    subjectMaxScore = Math.max(subjectMaxScore, found.termMaxScore);
+                  }
+                } else {
+                  termScores[term.id] = null;
+                }
+              } else {
+                termScores[term.id] = null;
+              }
+              return;
+            }
+
+            const effectiveIds = getEffectiveTermModelIds(term);
+            const termModelIdsForSubj = effectiveIds.filter((id) =>
               modelsOfSubject.some((m) => m.id === id)
             );
             const targetModelIds =
-              termModelIdsForSubj.length > 0
-                ? termModelIdsForSubj
-                : term.selectedModelIds;
+              termModelIdsForSubj.length > 0 ? termModelIdsForSubj : effectiveIds;
 
             const relevantModels = modelsOfSubject.filter((m) =>
               targetModelIds.includes(m.id)
             );
 
             if (relevantModels.length > 0) {
-              let sum = 0;
-              let count = 0;
-              for (const m of relevantModels) {
-                const st = (m.students || []).find(
-                  (s) => s.name?.trim().toLowerCase() === key
-                );
-                if (st) {
-                  const bd = getStudentMonthlyScoreBreakdown(st, m);
-                  if (bd.finalScore !== null && !isNaN(bd.finalScore)) {
-                    sum += bd.finalScore;
-                    count++;
-                  }
+              const termForSubj: TermModel = {
+                ...term,
+                selectedModelIds: relevantModels.map((m) => m.id),
+              };
+              const summaries = calculateTermSummaries(termForSubj, relevantModels);
+              const found =
+                summaries.find((s) => s.name.trim().toLowerCase() === key) ||
+                summaries.find((s) => canonicalizeArabic(s.name) === studentCanon);
+
+              if (found) {
+                termScores[term.id] = found.finalTermScore;
+                termScoreDetails[term.id] = {
+                  raw: found.rawTermScore ?? null,
+                  final: found.finalTermScore,
+                  isRounded: Boolean(found.isRounded),
+                };
+                if (found.termMaxScore > 0) {
+                  subjectMaxScore = Math.max(subjectMaxScore, found.termMaxScore);
                 }
+              } else {
+                termScores[term.id] = null;
               }
-              termScores[term.id] = count > 0 ? Math.round((sum / count) * 10) / 10 : null;
             } else {
               termScores[term.id] = null;
             }
           });
         } else {
           // If no terms defined yet for this grade, display monthly model scores
-          modelsOfSubject
-            .filter((m) => !m.gradeLevel || !studentInfo.gradeLevel || isGradeLevelMatch(m.gradeLevel, studentInfo.gradeLevel))
-            .forEach((m) => {
-              const st = (m.students || []).find(
-                (s) => s.name?.trim().toLowerCase() === key
-              );
-              if (st) {
-                const bd = getStudentMonthlyScoreBreakdown(st, m);
-                termScores[m.id] = bd.finalScore;
-              }
-            });
+          modelsOfSubject.forEach((m) => {
+            const st =
+              (m.students || []).find((s) => s.name?.trim().toLowerCase() === key) ||
+              (m.students || []).find((s) => canonicalizeArabic(s.name || '') === studentCanon);
+            if (st) {
+              const bd = getStudentMonthlyScoreBreakdown(st, m);
+              termScores[m.id] = bd.finalScore;
+              termScoreDetails[m.id] = {
+                raw: bd.rawScore,
+                final: bd.finalScore,
+                isRounded: bd.isRounded,
+              };
+              const mMax = Number(m.totalMaxScore) || 100;
+              subjectMaxScore = Math.max(subjectMaxScore, mMax);
+            }
+          });
         }
 
-        const validScores = Object.values(termScores).filter(
-          (v): v is number => v !== null && !isNaN(v)
-        );
+        if (subjectMaxScore <= 0 && modelsOfSubject.length > 0) {
+          subjectMaxScore =
+            modelsOfSubject.reduce(
+              (max, m) => Math.max(max, Number(m.totalMaxScore) || 0),
+              0
+            ) || 100;
+        }
+        const effectiveSubjectMax = subjectMaxScore > 0 ? subjectMaxScore : 100;
+
+        // Avoid double-counting: prefer aggregate/hybrid terms when present for this subject, else regular term / model scores
+        const isAggTermCheck = (t: TermModel) =>
+          t.sourceType === 'terms' || Boolean(t.selectedTermIds && t.selectedTermIds.length > 0);
+        const aggregateScores = relevantTermsForStudent
+          .filter(
+            (t) =>
+              isAggTermCheck(t) &&
+              termScores[t.id] !== null &&
+              termScores[t.id] !== undefined &&
+              !isNaN(termScores[t.id] as number)
+          )
+          .map((t) => termScores[t.id] as number);
+
+        const regularScores = Object.entries(termScores)
+          .filter(([id, v]) => {
+            if (v === null || v === undefined || isNaN(v)) return false;
+            const tObj = relevantTermsForStudent.find((t) => t.id === id);
+            return !tObj || !isAggTermCheck(tObj);
+          })
+          .map(([, v]) => v as number);
+
+        const validScores = aggregateScores.length > 0 ? aggregateScores : regularScores;
         const finalScore =
           validScores.length > 0
-            ? Math.round(
-                (validScores.reduce((acc, cur) => acc + cur, 0) / validScores.length) * 10
-              ) / 10
+            ? validScores.length === 1
+              ? validScores[0]
+              : Math.round(
+                  (validScores.reduce((acc, cur) => acc + cur, 0) / validScores.length) * 100
+                ) / 100
             : null;
 
-        const rating = getRatingDetails(finalScore, 100);
-        const isPass = finalScore !== null && finalScore >= 50;
+        const rating = getRatingDetails(finalScore, effectiveSubjectMax);
+        const isPass = rating.status === 'passed';
 
         if (finalScore !== null) {
           totalSum += finalScore;
+          totalMaxSum += effectiveSubjectMax;
           subjectsCount++;
         }
-
-        const matchingModelForTeacher = modelsOfSubject.find((m) =>
-          !m.assignedSections?.length ||
-          m.assignedSections.some((sec) => isSectionMatch(sec, studentInfo.section))
-        );
-        const teacherForSubj =
-          matchingModelForTeacher?.teacherName ||
-          modelsOfSubject.find((m) => Boolean(m.teacherName?.trim()))?.teacherName ||
-          terms.find((t) => isSubjectMatch(t.subject, subj) && Boolean(t.teacherName?.trim()))?.teacherName ||
-          (!isAdministration && profile.subject && isSubjectMatch(profile.subject, subj) ? profile.teacherName : undefined);
 
         subjectDetails.push({
           subjectName: subj,
           teacherName: teacherForSubj,
           termScores,
+          termScoreDetails,
           finalScore,
           ratingText: rating.text,
           ratingBadgeBg: rating.badgeBg,
@@ -608,11 +863,13 @@ export const ReportCardsView: React.FC<Props> = ({
       }
 
       const overallAverage =
-        subjectsCount > 0 ? Math.round((totalSum / subjectsCount) * 10) / 10 : null;
-      const overallRating = getRatingDetails(overallAverage, 100);
+        subjectsCount > 0 ? Math.round((totalSum / subjectsCount) * 100) / 100 : null;
+      const overallMaxScore =
+        subjectsCount > 0 && totalMaxSum > 0 ? totalMaxSum / subjectsCount : 100;
+      const overallRating = getRatingDetails(overallAverage, overallMaxScore);
       const isOverallPass =
         overallAverage !== null &&
-        overallAverage >= 50 &&
+        overallRating.status === 'passed' &&
         subjectDetails.every((s) => s.finalScore === null || s.isPass);
 
       cards.push({
@@ -655,8 +912,16 @@ export const ReportCardsView: React.FC<Props> = ({
 
   // Export single class card to Excel
   const handleExportClassExcel = (card: ClassSectionCard) => {
-    const cardTerms = terms.filter(
-      (t) => !t.gradeLevel || isGradeLevelMatch(t.gradeLevel, card.gradeLevel)
+    const cardTerms = orderTermsWithAggregates(
+      terms.filter((t) => {
+        const matchGrade = !t.gradeLevel || isGradeLevelMatch(t.gradeLevel, card.gradeLevel);
+        const matchSub = !card.subject || !t.subject || isSubjectMatch(t.subject, card.subject);
+        const matchTeacher =
+          !card.teacherName ||
+          !t.teacherName ||
+          canonicalizeArabic(t.teacherName) === canonicalizeArabic(card.teacherName);
+        return matchGrade && matchSub && matchTeacher;
+      })
     );
 
     const headers = [
@@ -703,9 +968,11 @@ export const ReportCardsView: React.FC<Props> = ({
 
   // Export all visible cards to Excel (CSV with UTF-8 BOM)
   const handleExportAllExcel = () => {
-    const applicableTerms = selectedGradeLevel !== 'ALL'
-      ? terms.filter((t) => !t.gradeLevel || isGradeLevelMatch(t.gradeLevel, selectedGradeLevel))
-      : terms;
+    const applicableTerms = orderTermsWithAggregates(
+      selectedGradeLevel !== 'ALL'
+        ? terms.filter((t) => !t.gradeLevel || isGradeLevelMatch(t.gradeLevel, selectedGradeLevel))
+        : terms
+    );
 
     if (cardGroupingMode === 'by_student') {
       const headers = [
@@ -713,6 +980,7 @@ export const ReportCardsView: React.FC<Props> = ({
         'اسم الطالب',
         'المرحلة / الصف',
         'الشعبة',
+        'السنة الدراسية',
         'المادة الدراسية',
         ...applicableTerms.map((t) => `درجة ${t.name}`),
         'التقدير',
@@ -737,6 +1005,7 @@ export const ReportCardsView: React.FC<Props> = ({
             `"${stCard.name}"`,
             `"${stCard.gradeLevel || '—'}"`,
             `"${stCard.section || '—'}"`,
+            `"${defaultAcademicYear}"`,
             `"${sub.subjectName}"`,
             ...scores,
             `"${sub.ratingText}"`,
@@ -823,29 +1092,26 @@ export const ReportCardsView: React.FC<Props> = ({
 
   // Print all visible cards
   const handlePrintAll = () => {
-    setSelectedCardForModal(null);
-    setSelectedStudentForModal(null);
-    setTimeout(() => {
-      window.print();
-    }, 150);
+    triggerPrint(() => {
+      setSelectedCardForModal(null);
+      setSelectedStudentForModal(null);
+    });
   };
 
   // Print single class card
   const handlePrintSingleClass = (card: ClassSectionCard) => {
-    setSelectedCardForModal(card);
-    setSelectedStudentForModal(null);
-    setTimeout(() => {
-      window.print();
-    }, 150);
+    triggerPrint(() => {
+      setSelectedCardForModal(card);
+      setSelectedStudentForModal(null);
+    });
   };
 
   // Print single student card
   const handlePrintSingleStudent = (card: StudentCardData) => {
-    setSelectedStudentForModal(card);
-    setSelectedCardForModal(null);
-    setTimeout(() => {
-      window.print();
-    }, 150);
+    triggerPrint(() => {
+      setSelectedStudentForModal(card);
+      setSelectedCardForModal(null);
+    });
   };
 
   // If no terms exist yet in the system
@@ -1023,7 +1289,7 @@ export const ReportCardsView: React.FC<Props> = ({
               <h2 className="text-sm sm:text-base font-black text-white flex items-center gap-2">
                 <span>فصول الدرجات المعتمدة في المعدل</span>
                 <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-white/20 text-white border border-white/30">
-                  {terms.length} {terms.length === 1 ? 'فصل' : 'فصول'}
+                  {formatScoreDisplay(terms.length, numeralMode)} {terms.length === 1 ? 'فصل' : 'فصول'}
                 </span>
               </h2>
               <p className="text-xs text-white/90 mt-0.5">
@@ -1035,12 +1301,20 @@ export const ReportCardsView: React.FC<Props> = ({
 
         {/* Display the names of the terms created in the "المعدل" page */}
         <div className="flex flex-wrap items-center gap-2 pt-1">
-          {terms.map((t) => (
+          {orderTermsWithAggregates(terms).map((t) => (
             <div
               key={t.id}
-              className="px-3.5 py-1.5 rounded-xl bg-white/15 border border-white/25 text-white font-bold text-xs sm:text-sm flex items-center gap-2 shadow-2xs select-none"
+              className={`px-3.5 py-1.5 rounded-xl border text-white font-bold text-xs sm:text-sm flex items-center gap-2 shadow-2xs select-none ${
+                t.sourceType === 'terms'
+                  ? 'bg-[#2C4E3F] border-emerald-300/60'
+                  : 'bg-white/15 border-white/25'
+              }`}
             >
-              <span className="w-2 h-2 rounded-full bg-amber-300"></span>
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  t.sourceType === 'terms' ? 'bg-emerald-300' : 'bg-amber-300'
+                }`}
+              ></span>
               <span>{t.name}</span>
             </div>
           ))}
@@ -1056,18 +1330,6 @@ export const ReportCardsView: React.FC<Props> = ({
           <div className="flex items-center bg-[#EBE1CF] p-1 rounded-xl border border-[#D4C4AA]">
             <button
               type="button"
-              onClick={() => setCardGroupingMode('by_subject')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                cardGroupingMode === 'by_subject'
-                  ? 'bg-[#4E7A68] text-white shadow-xs font-black'
-                  : 'text-[#4A3B2C] hover:text-[#2F2822]'
-              }`}
-            >
-              <Layers className="w-3.5 h-3.5" />
-              <span>حسب المادة (المادة في الأعلى)</span>
-            </button>
-            <button
-              type="button"
               onClick={() => setCardGroupingMode('by_student')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
                 cardGroupingMode === 'by_student'
@@ -1077,6 +1339,18 @@ export const ReportCardsView: React.FC<Props> = ({
             >
               <User className="w-3.5 h-3.5" />
               <span>حسب اسم الطالب (اسم الطالب في الأعلى)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setCardGroupingMode('by_subject')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                cardGroupingMode === 'by_subject'
+                  ? 'bg-[#4E7A68] text-white shadow-xs font-black'
+                  : 'text-[#4A3B2C] hover:text-[#2F2822]'
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>حسب المادة (المادة في الأعلى)</span>
             </button>
           </div>
         </div>
@@ -1192,10 +1466,16 @@ export const ReportCardsView: React.FC<Props> = ({
             </button>
           </div>
 
+          <NumeralModeToggle
+            mode={numeralMode}
+            onChange={handleNumeralModeChange}
+            accent="emerald"
+          />
+
           <span className="text-xs font-semibold text-slate-600 hidden sm:inline px-1">
             {cardGroupingMode === 'by_subject'
-              ? `${filteredClassCards.length} كارت صف • ${totalFilteredStudents} طالب`
-              : `${filteredStudentCards.length} كارت طالب`}
+              ? `${formatScoreDisplay(filteredClassCards.length, numeralMode)} كارت صف • ${formatScoreDisplay(totalFilteredStudents, numeralMode)} طالب`
+              : `${formatScoreDisplay(filteredStudentCards.length, numeralMode)} كارت طالب`}
           </span>
 
           {/* Export Excel Button for all filtered cards */}
@@ -1262,6 +1542,7 @@ export const ReportCardsView: React.FC<Props> = ({
                   subject={defaultSubject}
                   printSettings={printSettings}
                   searchQuery={searchQuery}
+                  numeralMode={numeralMode}
                   onPreview={() => setSelectedCardForModal(card)}
                   onPrint={() => handlePrintSingleClass(card)}
                   onExportExcel={() => handleExportClassExcel(card)}
@@ -1283,6 +1564,7 @@ export const ReportCardsView: React.FC<Props> = ({
                   academicYear={defaultAcademicYear}
                   printSettings={printSettings}
                   isAdministration={isAdministration}
+                  numeralMode={numeralMode}
                   onPreview={() => setSelectedStudentForModal(studentCard)}
                   onPrint={() => handlePrintSingleStudent(studentCard)}
                 />
@@ -1296,7 +1578,7 @@ export const ReportCardsView: React.FC<Props> = ({
           <div className="bg-slate-50 p-3.5 border-b border-slate-300 flex items-center justify-between">
             <div className="flex items-center gap-3 text-xs font-bold text-slate-800">
               <span>
-                السنة الدراسية: <strong className="text-slate-900">{defaultAcademicYear}</strong>
+                السنة الدراسية: <strong className="text-slate-900">{formatScoreDisplay(defaultAcademicYear, numeralMode)}</strong>
               </span>
               <span>•</span>
               <span>
@@ -1313,8 +1595,8 @@ export const ReportCardsView: React.FC<Props> = ({
             </div>
             <span className="text-xs text-slate-600 font-bold">
               {cardGroupingMode === 'by_subject'
-                ? `${totalFilteredStudents} طالب في ${filteredClassCards.length} كارت صف`
-                : `${filteredStudentCards.length} طالب`}
+                ? `${formatScoreDisplay(totalFilteredStudents, numeralMode)} طالب في ${formatScoreDisplay(filteredClassCards.length, numeralMode)} كارت صف`
+                : `${formatScoreDisplay(filteredStudentCards.length, numeralMode)} طالب`}
             </span>
           </div>
 
@@ -1326,8 +1608,16 @@ export const ReportCardsView: React.FC<Props> = ({
                 </div>
               ) : (
                 filteredClassCards.map((card) => {
-                  const cardTerms = terms.filter(
-                    (t) => !t.gradeLevel || isGradeLevelMatch(t.gradeLevel, card.gradeLevel)
+                  const cardTerms = orderTermsWithAggregates(
+                    terms.filter((t) => {
+                      const matchGrade = !t.gradeLevel || isGradeLevelMatch(t.gradeLevel, card.gradeLevel);
+                      const matchSub = !card.subject || !t.subject || isSubjectMatch(t.subject, card.subject);
+                      const matchTeacher =
+                        !card.teacherName ||
+                        !t.teacherName ||
+                        canonicalizeArabic(t.teacherName) === canonicalizeArabic(card.teacherName);
+                      return matchGrade && matchSub && matchTeacher;
+                    })
                   );
                   return (
                     <div key={card.id} className="p-4">
@@ -1340,7 +1630,7 @@ export const ReportCardsView: React.FC<Props> = ({
                             الشعبة: {card.section || 'غير محدد'}
                           </span>
                           <span className="text-slate-600 font-normal mr-2">
-                            ({card.students.length} طالب)
+                            ({formatScoreDisplay(card.students.length, numeralMode)} طالب)
                           </span>
                         </div>
                       </div>
@@ -1357,8 +1647,8 @@ export const ReportCardsView: React.FC<Props> = ({
                               </th>
                             ) : (
                               cardTerms.map((t) => (
-                                <th key={t.id} className="py-2.5 px-3 border-r border-slate-300 text-center min-w-[90px]">
-                                  درجة {t.name}
+                                <th key={t.id} className="py-2 px-2 border-r border-slate-300 text-center w-auto min-w-[66px] text-[11px] font-extrabold text-slate-900">
+                                  <StackedHeaderLabel label={`درجة ${t.name}`} />
                                 </th>
                               ))
                             )}
@@ -1373,7 +1663,7 @@ export const ReportCardsView: React.FC<Props> = ({
                               }`}
                             >
                               <td className="py-2 px-3 border-r border-slate-300 text-slate-500 font-semibold text-center">
-                                {sIdx + 1}
+                                {formatScoreDisplay(sIdx + 1, numeralMode)}
                               </td>
                               <td className="py-2 px-3 border-r border-slate-300 text-right font-bold text-slate-900">
                                 {student.name}
@@ -1385,13 +1675,26 @@ export const ReportCardsView: React.FC<Props> = ({
                               ) : (
                                 cardTerms.map((t) => {
                                   const score = student.termScores[t.id];
+                                  const detail = student.termScoreDetails?.[t.id];
                                   return (
                                     <td
                                       key={t.id}
                                       className="py-2 px-3 border-r border-slate-300 text-center font-bold text-slate-900"
                                     >
                                       {score !== null && score !== undefined ? (
-                                        score
+                                        <div className="flex flex-col items-center justify-center leading-tight">
+                                          <span>{formatScoreDisplay(score, numeralMode)}</span>
+                                          {detail?.isRounded &&
+                                            detail.raw !== null &&
+                                            detail.raw !== undefined && (
+                                              <span
+                                                className="text-[10px] text-[#854D0E] font-bold mt-0.5 no-print"
+                                                title={`الدرجة قبل التقريب كانت ${detail.raw}`}
+                                              >
+                                                (أصله: {formatScoreDisplay(detail.raw, numeralMode)})
+                                              </span>
+                                            )}
+                                        </div>
                                       ) : (
                                         <span className="text-slate-400 font-normal">—</span>
                                       )}
@@ -1422,8 +1725,10 @@ export const ReportCardsView: React.FC<Props> = ({
                 });
 
                 return Array.from(studentsByGrade.entries()).map(([gradeName, studentsInGrade]) => {
-                  const gradeTerms = terms.filter(
-                    (t) => !t.gradeLevel || isGradeLevelMatch(t.gradeLevel, gradeName)
+                  const gradeTerms = orderTermsWithAggregates(
+                    terms.filter(
+                      (t) => !t.gradeLevel || isGradeLevelMatch(t.gradeLevel, gradeName)
+                    )
                   );
                   const unifiedGradeTerms: { key: string; displayName: string; termIds: string[] }[] = [];
                   const gradeTermMap = new Map<string, { key: string; displayName: string; termIds: string[] }>();
@@ -1447,7 +1752,7 @@ export const ReportCardsView: React.FC<Props> = ({
                     <div key={gradeName} className="p-4">
                       <div className="bg-[#FAF7EC] px-3.5 py-2 rounded-t-xl border border-slate-300 border-b-0 flex items-center justify-between">
                         <span className="bg-[#4E7A68] text-white px-2.5 py-1 rounded-lg text-xs font-bold">
-                          الصف: {gradeName} ({studentsInGrade.length} طالب)
+                          الصف: {gradeName} ({formatScoreDisplay(studentsInGrade.length, numeralMode)} طالب)
                         </span>
                       </div>
                       <table className="w-full text-center border-collapse border border-slate-300 text-xs bg-white rounded-b-xl overflow-hidden shadow-2xs">
@@ -1458,17 +1763,17 @@ export const ReportCardsView: React.FC<Props> = ({
                               اسم الطالب
                             </th>
                             <th className="py-2.5 px-2.5 border-r border-slate-300">الشعبة</th>
-                            <th className="py-2.5 px-3 border-r border-slate-300 text-right min-w-[120px]">
+                            <th className="py-2 px-2 border-r border-slate-300 text-right min-w-[100px] text-[11px] font-extrabold">
                               المادة
                             </th>
                             {unifiedGradeTerms.length === 0 ? (
-                              <th className="py-2.5 px-3 border-r border-slate-300 text-center text-slate-400">
+                              <th className="py-2 px-2 border-r border-slate-300 text-center text-slate-400 text-[11px]">
                                 الفصول
                               </th>
                             ) : (
                               unifiedGradeTerms.map((col) => (
-                                <th key={col.key} className="py-2.5 px-3 border-r border-slate-300 text-center min-w-[90px]">
-                                  درجة {col.displayName}
+                                <th key={col.key} className="py-2 px-2 border-r border-slate-300 text-center w-auto min-w-[66px] text-[11px] font-extrabold text-slate-900">
+                                  <StackedHeaderLabel label={`درجة ${col.displayName}`} />
                                 </th>
                               ))
                             )}
@@ -1486,7 +1791,7 @@ export const ReportCardsView: React.FC<Props> = ({
                                 }`}
                               >
                                 <td className="py-2 px-3 border-r border-slate-300 text-slate-500 font-semibold text-center">
-                                  {counter++}
+                                  {formatScoreDisplay(counter++, numeralMode)}
                                 </td>
                                 <td className="py-2 px-3 border-r border-slate-300 text-right font-black text-slate-900">
                                   {sIdx === 0 ? st.name : <span className="text-slate-400 font-normal">↳</span>}
@@ -1504,10 +1809,14 @@ export const ReportCardsView: React.FC<Props> = ({
                                 ) : (
                                   unifiedGradeTerms.map((col) => {
                                     let score: number | null = null;
+                                    let scoreDetail:
+                                      | { raw: number | null; final: number | null; isRounded: boolean }
+                                      | undefined;
                                     for (const tid of col.termIds) {
                                       const s = sub.termScores[tid];
                                       if (s !== null && s !== undefined && !isNaN(s)) {
                                         score = s;
+                                        scoreDetail = sub.termScoreDetails?.[tid];
                                         break;
                                       }
                                     }
@@ -1517,7 +1826,19 @@ export const ReportCardsView: React.FC<Props> = ({
                                         className="py-2 px-3 border-r border-slate-300 text-center font-bold text-slate-900"
                                       >
                                         {score !== null && score !== undefined ? (
-                                          score
+                                          <div className="flex flex-col items-center justify-center leading-tight">
+                                            <span>{formatScoreDisplay(score, numeralMode)}</span>
+                                            {scoreDetail?.isRounded &&
+                                              scoreDetail.raw !== null &&
+                                              scoreDetail.raw !== undefined && (
+                                                <span
+                                                  className="text-[10px] text-[#854D0E] font-bold mt-0.5 no-print"
+                                                  title={`الدرجة قبل التقريب كانت ${scoreDetail.raw}`}
+                                                >
+                                                  (أصله: {formatScoreDisplay(scoreDetail.raw, numeralMode)})
+                                                </span>
+                                              )}
+                                          </div>
                                         ) : (
                                           <span className="text-slate-400 font-normal">—</span>
                                         )}
@@ -1566,6 +1887,7 @@ export const ReportCardsView: React.FC<Props> = ({
           academicYear={defaultAcademicYear}
           subject={defaultSubject}
           printSettings={printSettings}
+          numeralMode={numeralMode}
         />
       )}
 
@@ -1582,6 +1904,7 @@ export const ReportCardsView: React.FC<Props> = ({
           academicYear={defaultAcademicYear}
           printSettings={printSettings}
           isAdministration={isAdministration}
+          numeralMode={numeralMode}
         />
       )}
 
@@ -1601,6 +1924,7 @@ export const ReportCardsView: React.FC<Props> = ({
           academicYear={defaultAcademicYear}
           subject={defaultSubject}
           isAdministration={isAdministration}
+          numeralMode={numeralMode}
           onStartPrint={() => {
             setIsPrintSettingsOpen(false);
             handlePrintAll();

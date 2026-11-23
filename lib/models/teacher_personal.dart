@@ -1,3 +1,5 @@
+import 'exam_paper.dart';
+
 /// Supported weekdays for teacher schedule (Section 2.1)
 enum WeekdayKey { sun, mon, tue, wed, thu, fri, sat }
 
@@ -385,23 +387,27 @@ class TeacherPersonalWorkspace {
   final List<ClassWeeklySchedule> schedules;
   final List<TeacherNote> notes;
   final List<TeacherAlert> alerts;
+  final ExamBuilderData? exams;
 
   const TeacherPersonalWorkspace({
     this.schedules = const [],
     this.notes = const [],
     this.alerts = const [],
+    this.exams,
   });
 
   Map<String, dynamic> toJson() => {
         'schedules': schedules.map((s) => s.toJson()).toList(),
         'notes': notes.map((n) => n.toJson()).toList(),
         'alerts': alerts.map((a) => a.toJson()).toList(),
+        'exams': exams?.toJson(),
       };
 
   factory TeacherPersonalWorkspace.fromJson(Map<String, dynamic> json) {
     final rawSchedules = json['schedules'] as List<dynamic>? ?? [];
     final rawNotes = json['notes'] as List<dynamic>? ?? [];
     final rawAlerts = json['alerts'] as List<dynamic>? ?? [];
+    final rawExams = json['exams'] as Map<String, dynamic>?;
     return TeacherPersonalWorkspace(
       schedules: rawSchedules
           .map((s) => ClassWeeklySchedule.fromJson(s as Map<String, dynamic>))
@@ -412,6 +418,7 @@ class TeacherPersonalWorkspace {
       alerts: rawAlerts
           .map((a) => TeacherAlert.fromJson(a as Map<String, dynamic>))
           .toList(),
+      exams: rawExams != null ? ExamBuilderData.fromJson(rawExams) : null,
     );
   }
 }

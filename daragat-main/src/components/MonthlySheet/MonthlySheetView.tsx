@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   MonthlyModel,
   StudentRow,
@@ -25,6 +25,8 @@ import {
   resolveColumnSemantics,
   isCoreTableField,
 } from '../../utils/columnSemanticMatcher';
+import { triggerPrint } from '../../utils/printHelper';
+import { getCurrentAcademicYear } from '../../utils/dateUtils';
 import {
   Plus,
   UserPlus,
@@ -48,6 +50,7 @@ import {
   User,
   ChevronDown,
   ChevronLeft,
+  ChevronRight,
   AlertTriangle,
   Table,
   Sparkles,
@@ -62,6 +65,8 @@ import {
   ArrowDownAZ,
   ArrowUpZA,
   ArrowUpDown,
+  Mic,
+  MicOff,
 } from 'lucide-react';
 import { InteractiveClassroomView } from './InteractiveClassroomView';
 import { CleanTableView } from './CleanTableView';
@@ -78,6 +83,7 @@ import { AttendanceRecordModal } from './AttendanceRecordModal';
 import { ClassCumulativeAttendanceModal } from './ClassCumulativeAttendanceModal';
 import { StudentFloatingCloud, ActiveStudentCloudInfo } from '../Common/StudentFloatingCloud';
 import { ColumnSlant, getSlantClasses, getNextSlant, SlantButton } from '../Common/ColumnSlantToggle';
+import { StackedHeaderLabel } from '../Common/StackedHeaderLabel';
 import {
   cleanSingleSpaces,
   canonicalizeArabic,
@@ -94,6 +100,9 @@ import {
 } from '../../utils/gradeAndSectionMatcher';
 import { AppUser } from '../../utils/auth';
 import { GradeNumericKeypad, formatScoreDisplay } from './GradeNumericKeypad';
+import { VoiceScoreBar } from './VoiceScoreBar';
+import { NumeralModeToggle } from '../Common/NumeralModeToggle';
+import { NumeralMode, NUMERAL_MODE_STORAGE_KEY, getSavedNumeralMode } from '../../utils/numeralFormat';
 
 interface Props {
   models: MonthlyModel[];
@@ -105,6 +114,10 @@ interface Props {
   onAddModel: (newModel: MonthlyModel) => void;
   profile: TeacherProfile;
   currentUser?: AppUser | null;
+  onOpenProfileForSubject?: () => void;
+  reopenCreateModelNonce?: number;
+  numeralMode?: NumeralMode;
+  onNumeralModeChange?: (mode: NumeralMode) => void;
 }
 
 export const MonthlySheetView: React.FC<Props> = ({
@@ -117,11 +130,23 @@ export const MonthlySheetView: React.FC<Props> = ({
   onAddModel,
   profile,
   currentUser,
+  onOpenProfileForSubject,
+  reopenCreateModelNonce = 0,
+  numeralMode: propNumeralMode,
+  onNumeralModeChange: propOnNumeralModeChange,
 }) => {
   const currentModel = models.find((m) => m.id === activeModelId) || models[0];
 
   const [isBatchImportOpen, setIsBatchImportOpen] = useState(false);
   const [isCreateModelOpen, setIsCreateModelOpen] = useState(false);
+  const lastReopenNonceRef = useRef<number>(reopenCreateModelNonce);
+
+  useEffect(() => {
+    if (reopenCreateModelNonce > 0 && reopenCreateModelNonce !== lastReopenNonceRef.current) {
+      lastReopenNonceRef.current = reopenCreateModelNonce;
+      setIsCreateModelOpen(true);
+    }
+  }, [reopenCreateModelNonce]);
   const [editingModelForRename, setEditingModelForRename] = useState<MonthlyModel | null>(null);
   const [isSectionsSwapOpen, setIsSectionsSwapOpen] = useState(false);
   const [swapInitialGrade, setSwapInitialGrade] = useState<string | undefined>();
@@ -519,8 +544,30 @@ export const MonthlySheetView: React.FC<Props> = ({
     });
   };
 
-  // Floating student info cloud badge when horizontally scrolling table
+  // Month Cards horizontal scroll container and navigation handlers
+  const monthCardsContainerRef = React.useRef<HTMLDivElement | null>(null);
+
+  const handleScrollMonths = (direction: 'left' | 'right') => {
+    if (!monthCardsContainerRef.current) return;
+    const scrollAmount = 300;
+    const delta = direction === 'left' ? -scrollAmount : scrollAmount;
+    monthCardsContainerRef.current.scrollBy({ left: delta, behavior: 'smooth' });
+  };
+
+  // Scroll active model card into view when currentModel.id changes
+  React.useEffect(() => {
+    if (!monthCardsContainerRef.current || !currentModel?.id) return;
+    const cardEl = monthCardsContainerRef.current.querySelector(
+      `[data-model-id="${currentModel.id}"]`
+    ) as HTMLElement | null;
+    if (cardEl) {
+      cardEl.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    }
+  }, [currentModel?.id]);
+
+  // Floating student info cloud badge when horizontally scrolling table or clicking score cells
   const [activeStudentCloud, setActiveStudentCloud] = useState<ActiveStudentCloudInfo | null>(null);
+  const [isCloudForceVisible, setIsCloudForceVisible] = useState(false);
   const activeRowRef = React.useRef<HTMLTableRowElement | null>(null);
   const tableContainerRef = React.useRef<HTMLDivElement | null>(null);
   const [isNameColumnVisible, setIsNameColumnVisible] = useState(true);
@@ -566,6 +613,7 @@ export const MonthlySheetView: React.FC<Props> = ({
         // تختفي السحابة إذا وصل صف الطالب حد الحقول التي بها اسم الجدول والمعدل والكروت، أو إذا اختفى صف الطالب من الشاشة إلى الأسفل
         if (rect.top <= headerBottom || rect.top >= window.innerHeight) {
           setActiveStudentCloud(null);
+          setIsCloudForceVisible(false);
           return;
         }
 
@@ -597,8 +645,10 @@ export const MonthlySheetView: React.FC<Props> = ({
       if (tableContainerRef.current?.contains(target)) return;
       if (target.closest?.('[data-student-floating-cloud="true"]')) return;
       if (target.closest?.('[data-floating-cloud-toggle="true"]')) return;
+      if (target.closest?.('#grade-numeric-keypad') || target.closest?.('[data-keypad-container="true"]')) return;
 
       setActiveStudentCloud(null);
+      setIsCloudForceVisible(false);
     };
 
     document.addEventListener('pointerdown', handlePointerDownOutside);
@@ -609,8 +659,14 @@ export const MonthlySheetView: React.FC<Props> = ({
 
   const handleScoreCellFocus = (
     e: React.FocusEvent<HTMLElement> | React.MouseEvent<HTMLElement>,
-    student: StudentRow
+    student: StudentRow,
+    forceShowCloud = false
   ) => {
+    const target = e.target as HTMLElement | null;
+    if (target && !target.hasAttribute('data-score-cell')) {
+      setActiveKeypadCell(null);
+    }
+    setIsCloudForceVisible(forceShowCloud);
     const rowEl = (e.currentTarget.closest('tr') || e.currentTarget) as HTMLTableRowElement;
     if (rowEl) {
       activeRowRef.current = rowEl;
@@ -752,22 +808,18 @@ export const MonthlySheetView: React.FC<Props> = ({
   }, [models, currentModel?.gradeLevel]);
 
   // User's numeral system preference ('EN' for 1 2 3 vs 'AR' for ١ ٢ ٣)
-  const [numeralMode, setNumeralMode] = useState<'EN' | 'AR'>(() => {
-    try {
-      return (localStorage.getItem('gradebook_numeral_mode') as 'EN' | 'AR') || 'EN';
-    } catch {
-      return 'EN';
-    }
-  });
+  const [internalNumeralMode, setInternalNumeralMode] = useState<NumeralMode>(() => getSavedNumeralMode());
+  const numeralMode: NumeralMode = propNumeralMode ?? internalNumeralMode;
 
-  const handleNumeralModeChange = (mode: 'EN' | 'AR') => {
-    setNumeralMode(mode);
+  const handleNumeralModeChange = (mode: NumeralMode) => {
+    setInternalNumeralMode(mode);
     try {
-      localStorage.setItem('gradebook_numeral_mode', mode);
+      localStorage.setItem(NUMERAL_MODE_STORAGE_KEY, mode);
     } catch {}
+    propOnNumeralModeChange?.(mode);
   };
 
-  // Active Numeric Keypad Cell state for Mobile/Touch score entry
+  // Active Numeric Keypad Cell state for Mobile/Touch & Voice score entry
   const [activeKeypadCell, setActiveKeypadCell] = useState<{
     studentId: string;
     columnType: 'written' | 'custom';
@@ -775,12 +827,18 @@ export const MonthlySheetView: React.FC<Props> = ({
     columnName: string;
     maxScore: number;
   } | null>(null);
+  const [isVoiceScoreMode, setIsVoiceScoreMode] = useState(false);
+  const [isKeypadExpanded, setIsKeypadExpanded] = useState(false);
 
   const scrollToStudentCell = React.useCallback((studentId: string, colKey: string) => {
     setTimeout(() => {
       const targetEl =
         document.getElementById(`score-input-${studentId}-${colKey}`) ||
         document.getElementById(`student-row-${studentId}`);
+      const rowEl = document.getElementById(`student-row-${studentId}`) as HTMLTableRowElement | null;
+      if (rowEl) {
+        activeRowRef.current = rowEl;
+      }
       if (targetEl) {
         const rect = targetEl.getBoundingClientRect();
         const currentScrollY = window.pageYOffset || document.documentElement.scrollTop;
@@ -794,6 +852,150 @@ export const MonthlySheetView: React.FC<Props> = ({
       }
     }, 60);
   }, []);
+
+  const syncStudentCloud = React.useCallback((student: StudentRow) => {
+    const rowEl = document.getElementById(`student-row-${student.id}`) as HTMLTableRowElement | null;
+    if (rowEl) {
+      activeRowRef.current = rowEl;
+      const rect = rowEl.getBoundingClientRect();
+      const rowHeight = rect.height || 40;
+      setActiveStudentCloud({
+        studentId: student.id,
+        name: student.name,
+        section: student.section,
+        rowTop: rect.top,
+        initialRowTop: rect.top,
+        rowHeight: rowHeight,
+      });
+    } else {
+      setActiveStudentCloud({
+        studentId: student.id,
+        name: student.name,
+        section: student.section,
+        rowTop: 180,
+        initialRowTop: 180,
+        rowHeight: 40,
+      });
+    }
+    checkNameColumnVisibility();
+  }, [checkNameColumnVisibility]);
+
+  // عند التبديل أو الانتقال لأي طالب عبر لوحة المفاتيح، يتم تحديث وإظهار المستطيل الأسود فوراً باسم الطالب
+  useEffect(() => {
+    if (!activeKeypadCell) return;
+    const student = filteredStudents.find((s) => s.id === activeKeypadCell.studentId);
+    if (student) {
+      syncStudentCloud(student);
+
+      const timer1 = setTimeout(() => {
+        const rowEl = document.getElementById(`student-row-${student.id}`) as HTMLTableRowElement | null;
+        if (rowEl) {
+          activeRowRef.current = rowEl;
+          const rect = rowEl.getBoundingClientRect();
+          setActiveStudentCloud({
+            studentId: student.id,
+            name: student.name,
+            section: student.section,
+            rowTop: rect.top,
+            initialRowTop: rect.top,
+            rowHeight: rect.height || 40,
+          });
+        }
+      }, 100);
+
+      const timer2 = setTimeout(() => {
+        const rowEl = document.getElementById(`student-row-${student.id}`) as HTMLTableRowElement | null;
+        if (rowEl) {
+          activeRowRef.current = rowEl;
+          const rect = rowEl.getBoundingClientRect();
+          setActiveStudentCloud({
+            studentId: student.id,
+            name: student.name,
+            section: student.section,
+            rowTop: rect.top,
+            initialRowTop: rect.top,
+            rowHeight: rect.height || 40,
+          });
+        }
+      }, 280);
+
+      return () => {
+        clearTimeout(timer1);
+        clearTimeout(timer2);
+      };
+    }
+  }, [activeKeypadCell?.studentId, filteredStudents, syncStudentCloud]);
+
+  // إخفاء لوحة المفاتيح المخصصة فوراً إذا قام المستخدم بتحديد أو التركيز على أي حقل آخر في الصفحة
+  // غير حقول إدخال الدرجات داخل الجدول (تقتصر حصرياً على data-score-cell="true")
+  useEffect(() => {
+    if (!activeKeypadCell) return;
+
+    const handleFocusOutsideScoreCells = (event: FocusEvent | PointerEvent | MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+
+      // 1. إذا كان التفاعل داخل لوحة المفاتيح نفسها، لا تفعل شيئاً (كي تعمل أزرار الأرقام والمسح والتنقل)
+      if (target.closest('#grade-numeric-keypad') || target.closest('[data-keypad-container="true"]')) {
+        return;
+      }
+
+      // 2. إذا كان الحقل هو حقل إدخال درجات الجدول حصراً (data-score-cell="true")، استمر دون إخفاء
+      const isScoreCell =
+        target.getAttribute('data-score-cell') === 'true' ||
+        Boolean(target.closest('[data-score-cell="true"]'));
+      if (isScoreCell) {
+        return;
+      }
+
+      // 3. إذا قام المستخدم بتحديد أو النقر على أي حقل آخر في الصفحة:
+      // (مثل: اسم الطالب، الصف، الشعبة، حقل البحث، نوافذ التعديل، خانات الأرقام في الإعدادات أو غيرها)
+      const isAnyOtherInputField =
+        target.matches('input, textarea, select, [contenteditable="true"]') ||
+        Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
+
+      if (isAnyOtherInputField) {
+        setActiveKeypadCell(null);
+      }
+    };
+
+    document.addEventListener('focusin', handleFocusOutsideScoreCells, true);
+    document.addEventListener('pointerdown', handleFocusOutsideScoreCells, true);
+
+    return () => {
+      document.removeEventListener('focusin', handleFocusOutsideScoreCells, true);
+      document.removeEventListener('pointerdown', handleFocusOutsideScoreCells, true);
+    };
+  }, [activeKeypadCell]);
+
+  // إخفاء لوحة المفاتيح وإيقاف الإدخال الصوتي عند فتح أي نافذة منبثقة أو نمط عرض مختلف
+  useEffect(() => {
+    if (
+      isBatchImportOpen ||
+      isCreateModelOpen ||
+      isSectionsSwapOpen ||
+      isClassCumulativeAttendanceOpen ||
+      isRoundingModalOpen ||
+      isFinalOperationModalOpen ||
+      isRenameColumnsModalOpen ||
+      isCleanTableView ||
+      viewMode !== 'table'
+    ) {
+      setActiveKeypadCell(null);
+      setIsVoiceScoreMode(false);
+      setIsKeypadExpanded(false);
+    }
+  }, [
+    isBatchImportOpen,
+    isCreateModelOpen,
+    isSectionsSwapOpen,
+    isClassCumulativeAttendanceOpen,
+    isRoundingModalOpen,
+    isFinalOperationModalOpen,
+    isRenameColumnsModalOpen,
+    isCleanTableView,
+    viewMode,
+  ]);
 
   if (!currentModel) {
     return (
@@ -829,7 +1031,10 @@ export const MonthlySheetView: React.FC<Props> = ({
             allModels={models}
             onCreate={handleModelCreated}
             profileSubject={profile.subject}
+            profileAcademicYear={profile.academicYear}
             currentUser={currentUser}
+            onOpenProfileForSubject={onOpenProfileForSubject}
+            reopenFromProfileNonce={reopenCreateModelNonce}
           />
 
           <BatchImportModal
@@ -842,7 +1047,7 @@ export const MonthlySheetView: React.FC<Props> = ({
                 name: 'الشهر الأول',
                 subject: profile.subject || 'عام',
                 gradeLevel: detectedGrade,
-                academicYear: profile.academicYear || '2024 - 2025',
+                academicYear: profile.academicYear?.trim() || getCurrentAcademicYear(),
                 totalMaxScore: 100,
                 writtenMaxScore: 100,
                 writtenWeight: null,
@@ -951,6 +1156,9 @@ export const MonthlySheetView: React.FC<Props> = ({
       columnName: writtenExamLabel || 'درجة التحريري بالورقة',
       maxScore: currentModel.writtenMaxScore || 100,
     });
+    if (!isVoiceScoreMode) {
+      setIsKeypadExpanded(true);
+    }
     scrollToStudentCell(student.id, 'written');
   };
 
@@ -962,7 +1170,72 @@ export const MonthlySheetView: React.FC<Props> = ({
       columnName: col.name,
       maxScore: col.maxScore,
     });
+    if (!isVoiceScoreMode) {
+      setIsKeypadExpanded(true);
+    }
     scrollToStudentCell(student.id, col.id);
+  };
+
+  const handleToggleVoiceForColumn = (
+    columnType: 'written' | 'custom',
+    col?: CustomColumn
+  ) => {
+    const isSameColumnAlreadyActive =
+      isVoiceScoreMode &&
+      activeKeypadCell?.columnType === columnType &&
+      (columnType === 'written' || activeKeypadCell?.columnId === col?.id);
+
+    if (isSameColumnAlreadyActive) {
+      setIsVoiceScoreMode(false);
+      setIsKeypadExpanded(false);
+      setActiveKeypadCell(null);
+      return;
+    }
+
+    setIsVoiceScoreMode(true);
+    setIsKeypadExpanded(false);
+
+    const targetStudent =
+      (activeKeypadCell &&
+        filteredStudents.find((s) => s.id === activeKeypadCell.studentId)) ||
+      filteredStudents[0] ||
+      null;
+
+    if (targetStudent) {
+      if (columnType === 'written') {
+        setActiveKeypadCell({
+          studentId: targetStudent.id,
+          columnType: 'written',
+          columnName: writtenExamLabel || 'درجة التحريري بالورقة',
+          maxScore: currentModel.writtenMaxScore || 100,
+        });
+        scrollToStudentCell(targetStudent.id, 'written');
+      } else if (col) {
+        setActiveKeypadCell({
+          studentId: targetStudent.id,
+          columnType: 'custom',
+          columnId: col.id,
+          columnName: col.name,
+          maxScore: col.maxScore,
+        });
+        scrollToStudentCell(targetStudent.id, col.id);
+      }
+    }
+  };
+
+  const handleVoiceScoreValueChange = (
+    target: { studentId: string; columnType: 'written' | 'custom'; columnId?: string },
+    newVal: number | null
+  ) => {
+    if (target.columnType === 'written') {
+      handleUpdateStudent(target.studentId, { writtenRawScore: newVal });
+    } else if (target.columnId) {
+      handleUpdateStudentCustomScore(
+        target.studentId,
+        target.columnId,
+        newVal === null ? '' : String(newVal)
+      );
+    }
   };
 
   const handleKeypadNext = () => {
@@ -2007,6 +2280,8 @@ export const MonthlySheetView: React.FC<Props> = ({
     const exportGradeLabel = gradeLevelLabel === 'الصف' ? 'الصف الدراسي' : gradeLevelLabel;
     const exportSectionLabel = 'الشعبة';
     const exportWrittenLabel = 'التحريري';
+    const effectiveAcademicYear =
+      profile.academicYear?.trim() || currentModel.academicYear || getCurrentAcademicYear();
     const effectiveTotalMax = getEffectiveTotalMax(currentModel);
     const finalOpLabel = getOperationLabel(currentModel.finalScoreOperation);
     const exportFinalScoreLabel = finalOpLabel
@@ -2018,6 +2293,7 @@ export const MonthlySheetView: React.FC<Props> = ({
       studentNameLabel,
       exportGradeLabel,
       exportSectionLabel,
+      'السنة الدراسية',
       exportWrittenLabel,
       ...(isRelative && customSum > 0 ? [`درجة التحريري المحسوبة (من ${effectiveWrittenWeight})`] : []),
       ...(currentModel.customColumns || []).map((c) => `${c.name} (من ${c.maxScore})`),
@@ -2041,6 +2317,7 @@ export const MonthlySheetView: React.FC<Props> = ({
         `"${st.name}"`,
         `"${st.gradeLevel}"`,
         `"${st.section}"`,
+        `"${effectiveAcademicYear}"`,
         st.writtenRawScore ?? '',
         ...(isRelative && customSum > 0 ? [writtenCalc ?? ''] : []),
         ...(currentModel.customColumns || []).map((c) => st.scores[c.id] ?? ''),
@@ -2089,14 +2366,23 @@ export const MonthlySheetView: React.FC<Props> = ({
       confirmColor: 'bg-[#557A95] hover:bg-[#476A84]',
       icon: <Printer className="w-5 h-5 text-[#557A95]" />,
       onConfirm: () => {
-        setActionPrompt(null);
-        setTimeout(() => window.print(), 100);
+        triggerPrint(() => {
+          setActionPrompt(null);
+        });
       },
     });
   };
 
   return (
-    <div className={`space-y-3.5 transition-all ${activeKeypadCell ? 'pb-80 sm:pb-72' : ''}`}>
+    <div
+      className={`space-y-3.5 transition-all ${
+        activeKeypadCell && (!isVoiceScoreMode || isKeypadExpanded)
+          ? 'pb-80 sm:pb-72'
+          : isVoiceScoreMode
+          ? 'pb-40 sm:pb-36'
+          : ''
+      }`}
+    >
       {viewMode === 'interactive' ? (
         <InteractiveClassroomView
           model={currentModel}
@@ -2138,135 +2424,38 @@ export const MonthlySheetView: React.FC<Props> = ({
             )}
           </div>
 
-          {/* 2. Model Tabs Card with Month Buttons & Dropdown Filters */}
-          <div className="craft-card p-3 sm:p-4 rounded-2xl shadow-xs no-print">
-            <div className="flex items-center gap-2.5 overflow-x-auto pb-1 max-w-full">
-              {displayedModels.map((model) => {
-                const isActive = model.id === currentModel.id;
-                return (
-                  <div key={model.id} className="relative inline-flex shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onSelectModel(model.id);
-                        if (model.gradeLevel) {
-                          setSelectedGradeLevel(model.gradeLevel);
-                        }
-                        setSelectedSection('ALL');
-                      }}
-                      onDoubleClick={() => setEditingModelForRename(model)}
-                      className={`px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 flex-wrap ${
-                        isActive
-                          ? 'bg-[#BA916C] text-white border border-[#9E7752] shadow-sm'
-                          : 'bg-[#EBDDC8] hover:bg-[#E0CFB8] text-[#3D2E21] border border-[#CBB69F]'
-                      }`}
-                      title={
-                        isActive
-                          ? 'انقر لتحديد أو نقرتين لتعديل الاسم والصف والمادة والأستاذ'
-                          : `${model.name}${model.gradeLevel ? ` ${model.gradeLevel}` : ''}${model.subject ? ` ${model.subject}` : ''}${model.teacherName ? ` ${model.teacherName}` : ''}`
-                      }
-                    >
-                      <span>{model.name}</span>
-                      {model.gradeLevel && (
-                        <span className={`text-[10px] sm:text-xs font-black px-1.5 py-0.5 rounded ${
-                          isActive
-                            ? 'bg-white/25 text-white border border-white/30'
-                            : 'bg-white/60 text-[#3D2E21] border border-[#CBB69F]'
-                        }`}>
-                          {model.gradeLevel}
-                        </span>
-                      )}
-                      {model.subject && (
-                        <span className={`text-[10px] sm:text-xs font-black px-1.5 py-0.5 rounded ${
-                          isActive
-                            ? 'bg-black/20 text-amber-100 border border-white/20'
-                            : 'bg-black/10 text-[#544030] border border-[#D5C2AA]'
-                        }`}>
-                          {model.subject}
-                        </span>
-                      )}
-                      {model.teacherName && (
-                        <span className={`text-[10px] sm:text-xs font-bold px-1.5 py-0.5 rounded ${
-                          isActive
-                            ? 'bg-white/30 text-white border border-white/40'
-                            : 'bg-indigo-100/80 text-indigo-950 border border-indigo-300'
-                        }`}>
-                          {model.teacherName}
-                        </span>
-                      )}
-                      {model.assignedSections && model.assignedSections.length > 0 && (
-                        <span className={`text-[9px] font-bold px-1 py-0.2 rounded ${
-                          isActive
-                            ? 'bg-black/25 text-amber-200'
-                            : 'bg-slate-200/90 text-slate-700 border border-slate-300'
-                        }`}>
-                          ({model.assignedSections.join('، ')})
-                        </span>
-                      )}
-                    </button>
+          {/* 2. Model Cards Slider with Month Square Cards & Horizontal Navigation */}
+          <div className="craft-card p-3.5 sm:p-5 rounded-2xl shadow-xs no-print border border-[#D8CEBD] bg-[#FDFCFA]">
+            {/* Top Toolbar: Section Title + Compact Filter Box + Horizontal Navigation Arrows */}
+            <div className="flex items-center justify-between pb-3 mb-3 border-b border-[#E6DCB8]/60 flex-wrap gap-2">
+              {/* Title & Count Badge */}
+              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                <span className="w-2.5 h-2.5 rounded-full bg-[#BA916C]"></span>
+                <h3 className="text-xs sm:text-sm md:text-base font-black text-[#2F2822] whitespace-nowrap">
+                  نماذج وأشهر كشف الدرجات
+                </h3>
+                <span className="text-[10px] sm:text-xs font-bold px-1.5 sm:px-2 py-0.5 rounded-full bg-[#EBDDC8] text-[#544030] whitespace-nowrap">
+                  {formatScoreDisplay(displayedModels.length, numeralMode)} من {formatScoreDisplay(models.length, numeralMode)}
+                </span>
+              </div>
 
-                    {/* Blue Pencil Edit button sitting on top-right of the active model button */}
-                    {isActive && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEditingModelForRename(model);
-                        }}
-                        className="absolute -top-2.5 -right-2 sm:-right-2.5 w-6 h-6 rounded-full bg-[#5692BE] hover:bg-[#437A9F] text-white flex items-center justify-center shadow-md transition-transform hover:scale-110 active:scale-95 cursor-pointer z-10"
-                        title={`تعديل اسم نموذج ${model.name} والمادة`}
-                        aria-label={`تعديل اسم نموذج ${model.name}`}
-                      >
-                        <Pencil className="w-3 h-3" />
-                      </button>
-                    )}
+              {/* Controls Group: Filter Box + Navigation Arrows on the same line */}
+              <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0 flex-wrap">
+                {/* Rectangular Box with "تصفية" on top border containing only the two dropdowns */}
+                {(availableGradesForFilter.length > 0 || availableSubjectsForFilter.length > 0) && (
+                  <div className="relative border border-[#CBB69F] rounded-xl px-1.5 sm:px-2 py-1 inline-flex items-center gap-1 sm:gap-1.5 bg-[#FAF7F0]/80 mt-1 sm:mt-0">
+                    {/* Centered label on the top border */}
+                    <span className="absolute -top-2 left-1/2 -translate-x-1/2 bg-[#FDFCFA] px-1 text-[10px] font-black text-[#8C7662] leading-none whitespace-nowrap select-none">
+                      تصفية
+                    </span>
 
-                    {/* Red Trash button sitting on top of the active model button */}
-                    {isActive && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          requestDeleteModel(model.id);
-                        }}
-                        className="absolute -top-2.5 -left-2 sm:-left-2.5 w-6 h-6 rounded-full bg-red-600 hover:bg-red-700 text-white flex items-center justify-center shadow-md transition-transform hover:scale-110 active:scale-95 cursor-pointer z-10"
-                        title={`حذف نموذج ${model.name}`}
-                        aria-label={`حذف نموذج ${model.name}`}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
-
-              {displayedModels.length === 0 && (
-                <div className="text-xs text-[#7A6A58] py-2 px-3 font-semibold text-center w-full">
-                  لا توجد نماذج أشهر مطابقة للصف أو المادة المحددة في الفرز.
-                </div>
-              )}
-            </div>
-
-            {/* Two Dropdown Menus for filtering the Month buttons above */}
-            {(availableGradesForFilter.length > 0 || availableSubjectsForFilter.length > 0) && (
-              <div className="pt-2.5 mt-2.5 border-t border-[#CBB69F]/50 flex items-center justify-between gap-3 flex-wrap text-xs">
-                <div className="flex items-center gap-2.5 sm:gap-3.5 flex-wrap">
-                  <span className="text-xs font-bold text-[#6D4C2F] flex items-center gap-1.5 shrink-0">
-                    <Filter className="w-3.5 h-3.5 text-[#BA916C]" />
-                    <span>تصفية أزرار الأشهر:</span>
-                  </span>
-
-                  {/* 1. قائمة منبثقة للصف الدراسي */}
-                  {availableGradesForFilter.length > 0 && (
-                    <div className="flex items-center gap-1.5">
-                      <label className="text-[11px] font-bold text-[#7A6A58] shrink-0 flex items-center gap-1">
-                        <GraduationCap className="w-3.5 h-3.5 text-[#BA916C]" />
-                        <span>الصف:</span>
-                      </label>
+                    {/* 1. قائمة منبثقة للصف الدراسي (بدون نص) */}
+                    {availableGradesForFilter.length > 0 && (
                       <select
                         value={selectedGradeFilter}
                         onChange={(e) => setSelectedGradeFilter(e.target.value)}
-                        className="px-2.5 py-1.5 bg-white border border-[#CBB69F] rounded-xl text-xs font-bold text-[#3D2E21] focus:ring-2 focus:ring-[#BA916C] focus:outline-none cursor-pointer shadow-2xs hover:border-[#BA916C] transition-colors"
+                        className="px-1.5 py-0.5 sm:px-2 sm:py-1 bg-white border border-[#D8CEBD] rounded-lg text-[11px] font-bold text-[#3D2E21] focus:ring-1 focus:ring-[#BA916C] focus:outline-none cursor-pointer shadow-2xs hover:border-[#BA916C] transition-colors max-w-[105px] sm:max-w-[130px] truncate"
+                        title="تصفية حسب الصف"
                       >
                         <option value="ALL">جميع الصفوف ({models.length})</option>
                         {availableGradesForFilter.map((grade) => {
@@ -2280,20 +2469,15 @@ export const MonthlySheetView: React.FC<Props> = ({
                           );
                         })}
                       </select>
-                    </div>
-                  )}
+                    )}
 
-                  {/* 2. قائمة منبثقة لمادة الدرس */}
-                  {availableSubjectsForFilter.length > 0 && (
-                    <div className="flex items-center gap-1.5">
-                      <label className="text-[11px] font-bold text-[#7A6A58] shrink-0 flex items-center gap-1">
-                        <BookOpen className="w-3.5 h-3.5 text-[#BA916C]" />
-                        <span>مادة الدرس:</span>
-                      </label>
+                    {/* 2. قائمة منبثقة لمادة الدرس (بدون نص) */}
+                    {availableSubjectsForFilter.length > 0 && (
                       <select
                         value={selectedSubjectFilter}
                         onChange={(e) => setSelectedSubjectFilter(e.target.value)}
-                        className="px-2.5 py-1.5 bg-white border border-[#CBB69F] rounded-xl text-xs font-bold text-[#3D2E21] focus:ring-2 focus:ring-[#BA916C] focus:outline-none cursor-pointer shadow-2xs hover:border-[#BA916C] transition-colors"
+                        className="px-1.5 py-0.5 sm:px-2 sm:py-1 bg-white border border-[#D8CEBD] rounded-lg text-[11px] font-bold text-[#3D2E21] focus:ring-1 focus:ring-[#BA916C] focus:outline-none cursor-pointer shadow-2xs hover:border-[#BA916C] transition-colors max-w-[95px] sm:max-w-[120px] truncate"
+                        title="تصفية حسب المادة"
                       >
                         <option value="ALL">جميع المواد</option>
                         {availableSubjectsForFilter.map((subj) => {
@@ -2308,225 +2492,423 @@ export const MonthlySheetView: React.FC<Props> = ({
                           );
                         })}
                       </select>
-                    </div>
-                  )}
+                    )}
 
-                  {/* زر إعادة ضبط سريع إذا كانت الفلترة مفعلة */}
-                  {(selectedGradeFilter !== 'ALL' || selectedSubjectFilter !== 'ALL') && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedGradeFilter('ALL');
-                        setSelectedSubjectFilter('ALL');
-                      }}
-                      className="text-[11px] text-[#7A6A58] hover:text-[#3D2E21] bg-white/70 hover:bg-white border border-[#CBB69F] px-2 py-1 rounded-lg font-bold flex items-center gap-1 cursor-pointer transition-colors"
-                      title="إعادة ضبط الفرز وإظهار جميع النماذج"
-                    >
-                      <X className="w-3 h-3 text-red-500" />
-                      <span>عرض الكل</span>
-                    </button>
-                  )}
-                </div>
+                    {/* زر إلغاء الفرز السريع إذا كانت الفلترة مفعلة */}
+                    {(selectedGradeFilter !== 'ALL' || selectedSubjectFilter !== 'ALL') && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedGradeFilter('ALL');
+                          setSelectedSubjectFilter('ALL');
+                        }}
+                        className="w-5 h-5 rounded-md bg-red-50 hover:bg-red-100 text-red-600 flex items-center justify-center transition-colors cursor-pointer shrink-0"
+                        title="إلغاء التصفية وعرض الكل"
+                        aria-label="إلغاء التصفية"
+                      >
+                        <X className="w-3 h-3 stroke-[2.5]" />
+                      </button>
+                    )}
+                  </div>
+                )}
 
-                <div className="text-[11px] font-bold text-[#7A6A58]">
-                  المعروض: {displayedModels.length} من {models.length}
+                {/* Navigation Arrows for Horizontal Scrolling */}
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => handleScrollMonths('right')}
+                    className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-white hover:bg-[#EBDDC8] active:bg-[#DFCBB4] border border-[#CBB69F] text-[#4A3828] flex items-center justify-center transition-all shadow-2xs hover:shadow-xs active:scale-95 cursor-pointer"
+                    title="التمرير لليمين (النماذج السابقة)"
+                    aria-label="التمرير لليمين"
+                  >
+                    <ChevronRight className="w-4 h-4 stroke-[2.5]" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleScrollMonths('left')}
+                    className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-white hover:bg-[#EBDDC8] active:bg-[#DFCBB4] border border-[#CBB69F] text-[#4A3828] flex items-center justify-center transition-all shadow-2xs hover:shadow-xs active:scale-95 cursor-pointer"
+                    title="التمرير لليسار (النماذج التالية)"
+                    aria-label="التمرير لليسار"
+                  >
+                    <ChevronLeft className="w-4 h-4 stroke-[2.5]" />
+                  </button>
                 </div>
               </div>
-            )}
+            </div>
+
+            {/* Scrollable Container with Side Navigation Buttons */}
+            <div className="relative group/scroll">
+              {/* Floating scroll arrows on container sides for desktop */}
+              <button
+                type="button"
+                onClick={() => handleScrollMonths('right')}
+                className="hidden md:flex absolute -right-2 top-1/2 -translate-y-1/2 z-10 w-9 h-9 rounded-full bg-white/95 hover:bg-white text-[#3D2E21] border border-[#CBB69F] shadow-md items-center justify-center transition-all hover:scale-110 active:scale-95 cursor-pointer"
+                title="تصفح لليمين"
+              >
+                <ChevronRight className="w-5 h-5 stroke-[2.5]" />
+              </button>
+              <button
+                type="button"
+                onClick={() => handleScrollMonths('left')}
+                className="hidden md:flex absolute -left-2 top-1/2 -translate-y-1/2 z-10 w-9 h-9 rounded-full bg-white/95 hover:bg-white text-[#3D2E21] border border-[#CBB69F] shadow-md items-center justify-center transition-all hover:scale-110 active:scale-95 cursor-pointer"
+                title="تصفح لليسار"
+              >
+                <ChevronLeft className="w-5 h-5 stroke-[2.5]" />
+              </button>
+
+              <div
+                ref={monthCardsContainerRef}
+                className="flex items-stretch gap-3.5 overflow-x-auto pb-3 pt-1 px-1 scroll-smooth max-w-full"
+                style={{ scrollbarWidth: 'thin' }}
+              >
+                {displayedModels.map((model) => {
+                  const isActive = model.id === currentModel.id;
+                  const assignedSectionsList =
+                    model.assignedSections && model.assignedSections.length > 0
+                      ? model.assignedSections.join('، ')
+                      : 'جميع الشُعب';
+
+                  return (
+                    <div
+                      key={model.id}
+                      data-model-id={model.id}
+                      onClick={() => {
+                        onSelectModel(model.id);
+                        if (model.gradeLevel) {
+                          setSelectedGradeLevel(model.gradeLevel);
+                        }
+                        setSelectedSection('ALL');
+                      }}
+                      className={`w-64 sm:w-72 shrink-0 rounded-2xl p-4 flex flex-col justify-between transition-all duration-200 cursor-pointer select-none border-2 text-right relative ${
+                        isActive
+                          ? 'bg-[#FFFDF9] border-[#BA916C] shadow-md ring-2 ring-[#BA916C]/25'
+                          : 'bg-[#F9F6F0] hover:bg-[#F3EFE6] border-[#D8CEBD] hover:border-[#BA916C]/60 shadow-2xs hover:shadow-xs'
+                      }`}
+                    >
+                      {/* Top Action Header (Status & Edit / Delete Buttons) */}
+                      <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#EADFCB]">
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className={`w-2 h-2 rounded-full ${
+                              isActive ? 'bg-[#BA916C] animate-pulse' : 'bg-slate-400'
+                            }`}
+                          ></span>
+                          <span className="text-[11px] font-bold text-[#8C7662]">
+                            كشف درجات
+                          </span>
+                        </div>
+                        <div
+                          className="flex items-center gap-1"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => setEditingModelForRename(model)}
+                            className="w-7 h-7 rounded-lg bg-[#5692BE]/10 hover:bg-[#5692BE] text-[#33658A] hover:text-white flex items-center justify-center transition-all cursor-pointer shadow-2xs"
+                            title="تعديل هذا النموذج"
+                            aria-label={`تعديل ${model.name}`}
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => requestDeleteModel(model.id)}
+                            className="w-7 h-7 rounded-lg bg-red-50 hover:bg-red-600 text-red-600 hover:text-white flex items-center justify-center transition-all cursor-pointer shadow-2xs"
+                            title="حذف هذا النموذج"
+                            aria-label={`حذف ${model.name}`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Main Title / Month Name */}
+                      <div className="mb-2.5">
+                        <h4 className="text-base sm:text-lg font-black text-[#2F2822] leading-tight flex items-center gap-1.5">
+                          <span>{model.name}</span>
+                          {isActive && (
+                            <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-[#BA916C] text-white">
+                              المعروض حالياً
+                            </span>
+                          )}
+                        </h4>
+                      </div>
+
+                      {/* Info Badges (Grade, Subject, Teacher, Sections) */}
+                      <div className="flex flex-col gap-1.5 mb-3 text-xs">
+                        {/* الصف والمادة */}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {model.gradeLevel ? (
+                            <span className="px-2 py-0.5 rounded-lg text-xs font-black bg-blue-50 text-blue-900 border border-blue-200/90 flex items-center gap-1">
+                              <GraduationCap className="w-3.5 h-3.5 text-blue-700" />
+                              <span>{model.gradeLevel}</span>
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-lg text-xs font-medium text-slate-500 bg-slate-100">
+                              الصف غير محدد
+                            </span>
+                          )}
+
+                          {model.subject ? (
+                            <span className="px-2 py-0.5 rounded-lg text-xs font-black bg-emerald-50 text-emerald-900 border border-emerald-200/90 flex items-center gap-1">
+                              <BookOpen className="w-3.5 h-3.5 text-emerald-700" />
+                              <span>{model.subject}</span>
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-lg text-xs font-medium text-slate-500 bg-slate-100">
+                              المادة غير محددة
+                            </span>
+                          )}
+                        </div>
+
+                        {/* الأستاذ */}
+                        <div className="px-2 py-1 rounded-lg text-xs font-bold bg-indigo-50/90 text-indigo-950 border border-indigo-200/80 flex items-center gap-1.5">
+                          <User className="w-3.5 h-3.5 text-indigo-700 shrink-0" />
+                          <span className="truncate">
+                            الأستاذ: <strong className="font-black">{model.teacherName || 'غير محدد'}</strong>
+                          </span>
+                        </div>
+
+                        {/* الشُعب */}
+                        <div className="px-2 py-1 rounded-lg text-xs font-bold bg-amber-50/90 text-[#544030] border border-amber-200/80 flex items-center justify-between gap-1">
+                          <span className="text-[#8C7662] font-semibold text-[11px]">الشُعب:</span>
+                          <span className="font-black text-[#2F2822]">{assignedSectionsList}</span>
+                        </div>
+                      </div>
+
+                      {/* Quick Action Buttons on Card */}
+                      <div
+                        className="flex flex-col gap-1.5 pt-2 border-t border-[#EADFCB]/80"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setEditingModelForRename(model)}
+                          className="w-full py-1.5 px-2.5 text-xs font-bold text-[#6D4C2F] hover:text-[#4A2818] bg-[#EBDDC8] hover:bg-[#DFCBB4] border border-[#CBB69F] rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs active:scale-[0.98]"
+                          title="تعديل الاسم والمادة والأستاذ لهذا النموذج"
+                        >
+                          <Pencil className="w-3 h-3 text-[#BA916C]" />
+                          <span>تعديل الاسم والمادة والأستاذ</span>
+                        </button>
+
+                        {(currentUser?.userRole === 'admin_school' || Boolean(model.teacherName)) && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSwapInitialGrade(model.gradeLevel);
+                              setSwapInitialSubject(model.subject);
+                              setIsSectionsSwapOpen(true);
+                            }}
+                            className="w-full py-1.5 px-2.5 text-xs font-black text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs active:scale-[0.98]"
+                            title="تبديل أو إعادة توزيع الشُعب بين الأساتذة"
+                          >
+                            <ArrowLeftRight className="w-3 h-3 text-indigo-600" />
+                            <span>تبديل الشُعب بين الأساتذة</span>
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Bottom Active Indicator Banner */}
+                      <div className="mt-2.5 pt-2 text-center border-t border-dashed border-[#D8CEBD]/60">
+                        {isActive ? (
+                          <div className="inline-flex items-center gap-1.5 text-xs font-black text-[#3E6D52]">
+                            <CheckCircle2 className="w-4 h-4 text-[#3E6D52]" />
+                            <span>معروض حالياً في الجدول</span>
+                          </div>
+                        ) : (
+                          <div className="text-[11px] font-bold text-[#8C7662] hover:text-[#2F2822] transition-colors">
+                            انقر لعرض درجات هذا الشهر ←
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {displayedModels.length === 0 && (
+                  <div className="text-xs text-[#7A6A58] py-8 px-4 font-semibold text-center w-full bg-white/60 rounded-xl border border-dashed border-[#D8CEBD]">
+                    لا توجد نماذج أشهر مطابقة للصف أو المادة المحددة في الفرز.
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* 3. Main Gradebook Card - Header with Title, "+ إضافة حقل" button, Print/Export */}
-          <div className="craft-card rounded-2xl shadow-xs overflow-hidden">
-            {/* Table Title Bar */}
-            <div className="w-full px-3.5 py-3 sm:px-5 sm:py-3.5 bg-[#F8F4EA] border-b border-[#D8CEBD] flex items-center justify-between gap-3 flex-wrap sm:flex-nowrap no-print">
-              {/* Right: Title, Month Name, inline Edit button, and Class/Section badge */}
-              <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0 flex-wrap">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="text-sm sm:text-base lg:text-lg font-bold text-[#2F2822] truncate flex items-center gap-1.5 flex-wrap">
-                    <span>كشف درجات:</span>
-                    <span className="text-[#4A82A8] font-black">{currentModel.name}</span>
-                    {currentModel.gradeLevel && (
-                      <span className="text-[#3A6C8F] font-black text-xs sm:text-sm bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-lg">
-                        {currentModel.gradeLevel}
-                      </span>
-                    )}
-                    {currentModel.subject && (
-                      <span className="text-emerald-800 font-extrabold text-xs sm:text-sm bg-emerald-100/90 border border-emerald-300 px-2 py-0.5 rounded-lg">
-                        {currentModel.subject}
-                      </span>
-                    )}
-                    {currentModel.teacherName && (
-                      <span className="text-indigo-900 font-extrabold text-xs sm:text-sm bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-lg flex items-center gap-1">
-                        <User className="w-3.5 h-3.5 text-indigo-700" />
-                        <span>الأستاذ: {currentModel.teacherName}</span>
-                      </span>
-                    )}
-                    {currentModel.assignedSections && currentModel.assignedSections.length > 0 && (
-                      <span className="text-amber-900 font-bold text-xs bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-lg">
-                        الشُعب: {currentModel.assignedSections.join('، ')}
-                      </span>
-                    )}
-                  </h3>
-                  {/* تعديل الاسم والمادة والأستاذ بنفس السطر بشكل أنيق ومدمج */}
+          <div className="craft-card rounded-2xl shadow-xs overflow-hidden print:overflow-visible">
+            {/* Table Title & Action Bar */}
+            <div className="w-full px-3.5 py-3 sm:px-5 sm:py-3.5 bg-[#F8F4EA] border-b border-[#D8CEBD] space-y-2.5 no-print">
+              {/* Top Row: Title ("كشف درجات") on the right, Action Icons on the left */}
+              <div className="flex items-center justify-between gap-2.5 flex-wrap">
+                <h3 className="text-sm sm:text-base lg:text-lg font-bold text-[#2F2822] flex items-center gap-1.5 flex-wrap min-w-0">
+                  <span>كشف درجات:</span>
+                  <span className="text-[#4A82A8] font-black">{currentModel.name}</span>
+                </h3>
+
+                {/* Action Icons: Clean View, Classroom View, Rename Columns, Import, Merge Grade, Print & Download Excel */}
+                <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap max-w-full">
+                  {/* Fullscreen Clean Table View button (الجدول الصافي مع التمرير الأفقي بدون أي أزرار) */}
                   <button
                     type="button"
-                    onClick={() => setEditingModelForRename(currentModel)}
-                    className="px-2 py-0.5 text-[11px] font-bold text-[#6D4C2F] hover:text-[#4A2818] bg-[#EBDDC8] hover:bg-[#E0CFB8] border border-[#CBB69F] rounded-lg transition-all flex items-center gap-1 cursor-pointer shrink-0 shadow-2xs"
-                    title="تعديل اسم هذا النموذج أو المادة أو الأستاذ"
+                    onClick={() => setIsCleanTableView(true)}
+                    className="px-2.5 py-1.5 sm:py-2 text-[#4A2818] hover:text-[#2F2822] bg-[#FAF2EB] hover:bg-[#F2E4D8] border border-[#D8BEB0] rounded-xl transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer active:scale-95 shrink-0"
+                    title="عرض الجدول بملء الشاشة مع التمرير الأفقي وبدون أي أزرار"
+                    aria-label="عرض الجدول بملء الشاشة"
                   >
-                    <Pencil className="w-2.5 h-2.5 text-[#BA916C]" />
-                    <span>تعديل الاسم والمادة والأستاذ</span>
+                    <Maximize2 className="w-4 h-4 text-[#BA916C]" />
+                    <span className="text-xs font-bold hidden sm:inline">عرض الجدول الصافي (أفقي)</span>
                   </button>
 
-                  {/* زر تبديل وتعديل الشُعب بين الأساتذة (خاص بالإدارة أو عند تعدد الأساتذة) */}
-                  {(currentUser?.userRole === 'admin_school' || Boolean(currentModel.teacherName)) && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSwapInitialGrade(currentModel.gradeLevel);
-                        setSwapInitialSubject(currentModel.subject);
-                        setIsSectionsSwapOpen(true);
-                      }}
-                      className="px-2 py-0.5 text-[11px] font-black text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-all flex items-center gap-1 cursor-pointer shrink-0 shadow-2xs active:scale-95"
-                      title="تبديل أو إعادة توزيع الشُعب بين الأساتذة عند وجود خطأ في التعيين"
-                    >
-                      <ArrowLeftRight className="w-2.5 h-2.5 text-indigo-600" />
-                      <span>تبديل الشُعب بين الأساتذة</span>
-                    </button>
-                  )}
-                </div>
+                  {/* Switch to Interactive Classroom View button */}
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('interactive')}
+                    className="px-2.5 py-1.5 sm:py-2 text-emerald-900 hover:text-emerald-950 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-xl transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer active:scale-95 shrink-0"
+                    title="الانتقال إلى العرض التفاعلي للصف (الامتحان الشفهي)"
+                    aria-label="الانتقال إلى الصف التفاعلي"
+                  >
+                    <Award className="w-4 h-4 text-emerald-700" />
+                    <span className="text-xs font-bold hidden sm:inline">الصف التفاعلي (الشفهي)</span>
+                  </button>
 
-                {/* الصف الدراسي والشُعب المتاحة بالجدول للفلترة الفورية */}
-                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white/95 border-2 border-[#BA916C]/40 rounded-xl shadow-2xs text-xs sm:text-sm font-black text-[#2F2822] flex-wrap">
-                  <span className="text-[#3A6C8F] font-black px-1">
-                    {currentModel.gradeLevel || (selectedGradeLevel === "ALL" ? "جميع الصفوف" : selectedGradeLevel)}
-                  </span>
-                  <span className="text-[#BA916C] font-bold select-none">•</span>
+                  {/* Rename Columns button */}
+                  <button
+                    type="button"
+                    onClick={() => setIsRenameColumnsModalOpen(true)}
+                    className="px-2.5 py-1.5 sm:py-2 text-[#1E293B] hover:text-[#2B6CB0] bg-white hover:bg-slate-100 border border-[#CBD5E1] rounded-xl transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer active:scale-95 shrink-0"
+                    title="إعادة تسمية عناوين أعمدة الجدول"
+                    aria-label="إعادة تسمية عناوين أعمدة الجدول"
+                  >
+                    <PenLine className="w-4 h-4 text-[#2B6CB0]" />
+                    <span className="text-xs font-bold hidden sm:inline">تسمية الأعمدة</span>
+                  </button>
 
-                  {/* أزرار الشُعب: جميع الشُعب + أ + ب ... */}
-                  <div className="inline-flex items-center gap-1 bg-[#F8F4EA] p-0.5 rounded-lg border border-[#D8CEBD]">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedSection('ALL')}
-                      className={`px-2 py-0.5 rounded-md text-xs font-black transition-all cursor-pointer ${
-                        selectedSection === 'ALL'
-                          ? 'bg-[#BA916C] text-white shadow-2xs'
-                          : 'text-[#6D4C2F] hover:bg-[#EBDDC8] hover:text-[#3D2612]'
-                      }`}
-                      title="عرض جميع الشُعب"
-                    >
-                      جميع الشُعب
-                    </button>
-                    {allSections.map((sec) => (
-                      <button
-                        key={sec}
-                        type="button"
-                        onClick={() => setSelectedSection(sec)}
-                        className={`px-2 py-0.5 rounded-md text-xs font-black transition-all cursor-pointer ${
-                          selectedSection === sec
-                            ? 'bg-[#3A6C8F] text-white shadow-2xs'
-                            : 'text-[#554A3E] hover:bg-[#EBDDC8] hover:text-[#2F2822]'
-                        }`}
-                        title={`عرض طلاب شعبة ${sec}`}
-                      >
-                        {sec}
-                      </button>
-                    ))}
-                  </div>
+                  {/* Person Head Icon Button: Opens Add / Import Students Modal - أيقونة بدون كتابة */}
+                  <button
+                    type="button"
+                    onClick={() => setIsBatchImportOpen(true)}
+                    className="p-2 sm:p-2.5 rounded-xl transition-all shadow-2xs flex items-center justify-center cursor-pointer active:scale-95 shrink-0 bg-[#FAF2EB] hover:bg-[#F2E4D8] text-[#4A2818] border border-[#D8BEB0]"
+                    title="إضافة أو استيراد كشف الطلاب"
+                    aria-label="إضافة أو استيراد كشف الطلاب"
+                  >
+                    <UserPlus className="w-4.5 h-4.5 sm:w-5 sm:h-5 text-[#BA916C]" />
+                  </button>
+
+                  {/* GitMerge button: تعديل أو دمج اسم الصف والشعب - مباشرة قبل أيقونة الطباعة */}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setManagingGrade(
+                        currentModel.gradeLevel ||
+                          (selectedGradeLevel !== 'ALL'
+                            ? selectedGradeLevel
+                            : userEnteredGrades[0] || 'الصف الأول')
+                      )
+                    }
+                    className="p-2 sm:p-2.5 text-[#4A2818] hover:text-[#2F2822] bg-[#FAF2EB] hover:bg-[#F2E4D8] border border-[#D8BEB0] rounded-xl transition-all shadow-2xs flex items-center justify-center cursor-pointer active:scale-95 shrink-0"
+                    title="تعديل أو دمج اسم الصف والشعب"
+                    aria-label="تعديل أو دمج اسم الصف والشعب"
+                  >
+                    <GitMerge className="w-4.5 h-4.5 sm:w-5 sm:h-5 text-[#BA916C]" />
+                  </button>
+
+                  {/* Print icon only */}
+                  <button
+                    type="button"
+                    onClick={requestPrint}
+                    className="p-2 sm:p-2.5 text-[#334155] hover:text-[#2B6CB0] bg-white hover:bg-slate-100 border border-[#CBD5E1] rounded-xl transition-all shadow-2xs flex items-center justify-center cursor-pointer active:scale-95 shrink-0"
+                    title={`طباعة كشف درجات ${currentModel.name}`}
+                    aria-label={`طباعة كشف درجات ${currentModel.name}`}
+                  >
+                    <Printer className="w-4.5 h-4.5 sm:w-5 sm:h-5 text-[#2B6CB0]" />
+                  </button>
+
+                  {/* Download Document icon only */}
+                  <button
+                    type="button"
+                    onClick={requestExportCSV}
+                    className="p-2 sm:p-2.5 text-[#15803D] hover:text-[#166534] bg-[#F0FDF4] hover:bg-[#DCFCE7] border border-emerald-300 rounded-xl transition-all shadow-2xs flex items-center justify-center cursor-pointer active:scale-95 shrink-0"
+                    title={`تنزيل مستند درجات ${currentModel.name} بصيغة Excel`}
+                    aria-label={`تنزيل مستند درجات ${currentModel.name} بصيغة Excel`}
+                  >
+                    <FileSpreadsheet className="w-4.5 h-4.5 sm:w-5 sm:h-5 text-[#15803D]" />
+                  </button>
                 </div>
               </div>
 
-              {/* Left: Opposite to the title - Clean View, Classroom View, Rename Columns, Print & Download Excel */}
-              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 flex-wrap">
+              {/* Bottom Row (Under "كشف درجات"): Subject, Grade, Teacher, Sections on the right + Numeral Toggle on the opposite side */}
+              <div className="flex items-center justify-between gap-2.5 flex-wrap pt-2 border-t border-[#E6DEC9]">
+                <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap min-w-0">
+                  {currentModel.subject && (
+                    <span className="text-emerald-800 font-extrabold text-xs sm:text-sm bg-emerald-100/90 border border-emerald-300 px-2.5 py-0.5 rounded-lg">
+                      {currentModel.subject}
+                    </span>
+                  )}
+                  {currentModel.gradeLevel && (
+                    <span className="text-[#3A6C8F] font-black text-xs sm:text-sm bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-lg">
+                      {currentModel.gradeLevel}
+                    </span>
+                  )}
+                  {currentModel.teacherName && (
+                    <span className="text-indigo-900 font-extrabold text-xs sm:text-sm bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-lg flex items-center gap-1">
+                      <User className="w-3.5 h-3.5 text-indigo-700" />
+                      <span>الأستاذ: {currentModel.teacherName}</span>
+                    </span>
+                  )}
+                  {currentModel.assignedSections && currentModel.assignedSections.length > 0 && (
+                    <span className="text-amber-900 font-bold text-xs bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-lg">
+                      الشُعب: {currentModel.assignedSections.join('، ')}
+                    </span>
+                  )}
 
-                    {/* Fullscreen Clean Table View button (الجدول الصافي مع التمرير الأفقي بدون أي أزرار) */}
-                    <button
-                      type="button"
-                      onClick={() => setIsCleanTableView(true)}
-                      className="px-2.5 py-1.5 sm:py-2 text-[#4A2818] hover:text-[#2F2822] bg-[#FAF2EB] hover:bg-[#F2E4D8] border border-[#D8BEB0] rounded-xl transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer active:scale-95 shrink-0"
-                      title="عرض الجدول بملء الشاشة مع التمرير الأفقي وبدون أي أزرار"
-                      aria-label="عرض الجدول بملء الشاشة"
-                    >
-                      <Maximize2 className="w-4 h-4 text-[#BA916C]" />
-                      <span className="text-xs font-bold hidden sm:inline">عرض الجدول الصافي (أفقي)</span>
-                    </button>
+                  {/* الصف الدراسي والشُعب المتاحة بالجدول للفلترة الفورية */}
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white/95 border-2 border-[#BA916C]/40 rounded-xl shadow-2xs text-xs sm:text-sm font-black text-[#2F2822] flex-wrap">
+                    <span className="text-[#3A6C8F] font-black px-1">
+                      {currentModel.gradeLevel || (selectedGradeLevel === "ALL" ? "جميع الصفوف" : selectedGradeLevel)}
+                    </span>
+                    <span className="text-[#BA916C] font-bold select-none">•</span>
 
-                {/* Switch to Interactive Classroom View button */}
-                <button
-                  type="button"
-                  onClick={() => setViewMode('interactive')}
-                  className="px-2.5 py-1.5 sm:py-2 text-emerald-900 hover:text-emerald-950 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-xl transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer active:scale-95 shrink-0"
-                  title="الانتقال إلى العرض التفاعلي للصف (الامتحان الشفهي)"
-                  aria-label="الانتقال إلى الصف التفاعلي"
-                >
-                  <Award className="w-4 h-4 text-emerald-700" />
-                  <span className="text-xs font-bold hidden sm:inline">الصف التفاعلي (الشفهي)</span>
-                </button>
+                    {/* أزرار الشُعب: جميع الشُعب + أ + ب ... */}
+                    <div className="inline-flex items-center gap-1 bg-[#F8F4EA] p-0.5 rounded-lg border border-[#D8CEBD] flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSection('ALL')}
+                        className={`px-2 py-0.5 rounded-md text-xs font-black transition-all cursor-pointer ${
+                          selectedSection === 'ALL'
+                            ? 'bg-[#BA916C] text-white shadow-2xs'
+                            : 'text-[#6D4C2F] hover:bg-[#EBDDC8] hover:text-[#3D2612]'
+                        }`}
+                        title="عرض جميع الشُعب"
+                      >
+                        جميع الشُعب
+                      </button>
+                      {allSections.map((sec) => (
+                        <button
+                          key={sec}
+                          type="button"
+                          onClick={() => setSelectedSection(sec)}
+                          className={`px-2 py-0.5 rounded-md text-xs font-black transition-all cursor-pointer ${
+                            selectedSection === sec
+                              ? 'bg-[#3A6C8F] text-white shadow-2xs'
+                              : 'text-[#554A3E] hover:bg-[#EBDDC8] hover:text-[#2F2822]'
+                          }`}
+                          title={`عرض طلاب شعبة ${sec}`}
+                        >
+                          {sec}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
 
-                {/* Rename Columns button */}
-                <button
-                  type="button"
-                  onClick={() => setIsRenameColumnsModalOpen(true)}
-                  className="px-2.5 py-1.5 sm:py-2 text-[#1E293B] hover:text-[#2B6CB0] bg-white hover:bg-slate-100 border border-[#CBD5E1] rounded-xl transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer active:scale-95 shrink-0"
-                  title="إعادة تسمية عناوين أعمدة الجدول"
-                  aria-label="إعادة تسمية عناوين أعمدة الجدول"
-                >
-                  <PenLine className="w-4 h-4 text-[#2B6CB0]" />
-                  <span className="text-xs font-bold hidden sm:inline">تسمية الأعمدة</span>
-                </button>
-
-            {/* Person Head Icon Button: Opens Add / Import Students Modal - أيقونة بدون كتابة */}
-            <button
-              type="button"
-              onClick={() => setIsBatchImportOpen(true)}
-              className="p-2 sm:p-2.5 rounded-xl transition-all shadow-2xs flex items-center justify-center cursor-pointer active:scale-95 shrink-0 bg-[#FAF2EB] hover:bg-[#F2E4D8] text-[#4A2818] border border-[#D8BEB0]"
-              title="إضافة أو استيراد كشف الطلاب"
-              aria-label="إضافة أو استيراد كشف الطلاب"
-            >
-              <UserPlus className="w-4.5 h-4.5 sm:w-5 sm:h-5 text-[#BA916C]" />
-            </button>
-
-            {/* GitMerge button: تعديل أو دمج اسم الصف والشعب - مباشرة قبل أيقونة الطباعة */}
-            <button
-              type="button"
-              onClick={() =>
-                setManagingGrade(
-                  currentModel.gradeLevel ||
-                    (selectedGradeLevel !== 'ALL'
-                      ? selectedGradeLevel
-                      : userEnteredGrades[0] || 'الصف الأول')
-                )
-              }
-              className="p-2 sm:p-2.5 text-[#4A2818] hover:text-[#2F2822] bg-[#FAF2EB] hover:bg-[#F2E4D8] border border-[#D8BEB0] rounded-xl transition-all shadow-2xs flex items-center justify-center cursor-pointer active:scale-95 shrink-0"
-              title="تعديل أو دمج اسم الصف والشعب"
-              aria-label="تعديل أو دمج اسم الصف والشعب"
-            >
-              <GitMerge className="w-4.5 h-4.5 sm:w-5 sm:h-5 text-[#BA916C]" />
-            </button>
-
-            {/* Print icon only */}
-            <button
-              type="button"
-              onClick={requestPrint}
-              className="p-2 sm:p-2.5 text-[#334155] hover:text-[#2B6CB0] bg-white hover:bg-slate-100 border border-[#CBD5E1] rounded-xl transition-all shadow-2xs flex items-center justify-center cursor-pointer active:scale-95 shrink-0"
-              title={`طباعة كشف درجات ${currentModel.name}`}
-              aria-label={`طباعة كشف درجات ${currentModel.name}`}
-            >
-              <Printer className="w-4.5 h-4.5 sm:w-5 sm:h-5 text-[#2B6CB0]" />
-            </button>
-
-            {/* Download Document icon only */}
-            <button
-              type="button"
-              onClick={requestExportCSV}
-              className="p-2 sm:p-2.5 text-[#15803D] hover:text-[#166534] bg-[#F0FDF4] hover:bg-[#DCFCE7] border border-emerald-300 rounded-xl transition-all shadow-2xs flex items-center justify-center cursor-pointer active:scale-95 shrink-0"
-              title={`تنزيل مستند درجات ${currentModel.name} بصيغة Excel`}
-              aria-label={`تنزيل مستند درجات ${currentModel.name} بصيغة Excel`}
-            >
-              <FileSpreadsheet className="w-4.5 h-4.5 sm:w-5 sm:h-5 text-[#15803D]" />
-            </button>
-          </div>
-        </div>
+                {/* Numeral Mode Toggle ("عربي ١٢٣ / EN 123") placed opposite to Subject under the sheet title */}
+                <NumeralModeToggle
+                  mode={numeralMode}
+                  onChange={handleNumeralModeChange}
+                  accent="camel"
+                />
+              </div>
+            </div>
 
         {/* Printable Sheet Header */}
         <div className="hidden print:block p-3 px-4 mb-2 border-b-2 border-slate-900 text-center">
@@ -2535,7 +2917,7 @@ export const MonthlySheetView: React.FC<Props> = ({
             <span className="text-base font-black text-slate-900">
               كشف درجات {currentModel.name} {currentModel.subject ? `(${currentModel.subject})` : ''}
             </span>
-            <span>السنة الدراسية: {currentModel.academicYear || profile.academicYear}</span>
+            <span>السنة الدراسية: {formatScoreDisplay(profile.academicYear?.trim() || currentModel.academicYear || getCurrentAcademicYear(), numeralMode)}</span>
           </div>
           {(currentModel.teacherName || profile.teacherName) && (
             <div className="text-[11px] text-slate-600 font-semibold">
@@ -2565,7 +2947,7 @@ export const MonthlySheetView: React.FC<Props> = ({
         <div
           ref={tableContainerRef}
           onScroll={checkNameColumnVisibility}
-          className="overflow-x-auto transition-all"
+          className="overflow-x-auto print:overflow-visible transition-all"
         >
           <table className="w-full text-right border-collapse border border-[#D5C8B2] bg-[#FAF7EC]">
             <thead>
@@ -2715,7 +3097,7 @@ export const MonthlySheetView: React.FC<Props> = ({
                 </th>
 
                 {/* Grade Level Column Header with inline dynamic title & small triangle */}
-                <th className={`py-1.5 px-1 w-auto min-w-[50px] max-w-[85px] print:w-auto print:min-w-0 print:px-0 text-center align-middle bg-[#EFE8D8] border border-[#D5C8B2] ${columnSlants['gradeLevel'] === 'vertical' ? 'min-w-[40px]' : ''}`}>
+                <th className={`py-1.5 px-1.5 w-auto min-w-[70px] print:w-auto print:min-w-0 print:px-1 text-center align-middle bg-[#EFE8D8] border border-[#D5C8B2] ${columnSlants['gradeLevel'] === 'vertical' ? 'min-w-[40px]' : ''}`}>
                   <div className="flex flex-col items-center justify-center gap-1">
                     {/* Screen edit & filter */}
                     <div className="print:hidden flex items-center justify-center w-full">
@@ -2766,7 +3148,7 @@ export const MonthlySheetView: React.FC<Props> = ({
 
                           {/* Relative container with dynamic title + small triangle + invisible native select */}
                           <div className="relative inline-flex items-center justify-center gap-1 px-1.5 py-0.5 rounded-lg bg-white/70 hover:bg-white border border-[#D5C8B2] hover:border-[#BA916C] shadow-2xs transition-all cursor-pointer group/grade w-full">
-                            <span className={`font-bold text-xs text-[#2F2822] whitespace-nowrap truncate ${getSlantClasses(columnSlants['gradeLevel'])}`}>
+                            <span className={`font-extrabold text-[11px] text-[#0F172A] whitespace-nowrap ${getSlantClasses(columnSlants['gradeLevel'])}`}>
                               {selectedGradeLevel === 'ALL' ? gradeLevelLabel : selectedGradeLevel}
                             </span>
                             <ChevronDown className="w-3 h-3 text-[#6B5E51] shrink-0 transition-transform group-hover/grade:translate-y-0.5" />
@@ -2790,7 +3172,7 @@ export const MonthlySheetView: React.FC<Props> = ({
 
                     {/* Print Only Header: displays selected grade (e.g. الأول متوسط) or الصف الدراسي without dropdown/arrow */}
                     <div className="hidden print:block text-center py-1">
-                      <span className={`font-bold text-xs text-[#2F2822] ${getSlantClasses(columnSlants['gradeLevel'])}`}>
+                      <span className={`font-extrabold text-[11px] text-[#0F172A] whitespace-nowrap ${getSlantClasses(columnSlants['gradeLevel'])}`}>
                         {selectedGradeLevel === 'ALL'
                           ? (gradeLevelLabel === 'الصف' ? 'الصف الدراسي' : gradeLevelLabel)
                           : selectedGradeLevel}
@@ -2888,25 +3270,29 @@ export const MonthlySheetView: React.FC<Props> = ({
                 </th>
 
                 {/* Subject Name Column - اسم المادة */}
-                <th className={`py-1.5 px-2 min-w-[85px] max-w-[130px] print:w-auto print:min-w-0 text-center align-middle bg-[#EFE8D8] border border-[#D5C8B2] ${columnSlants['subject'] === 'vertical' ? 'min-w-[45px]' : ''}`}>
+                <th className={`py-1.5 px-1.5 w-auto min-w-[60px] print:w-auto print:min-w-0 text-center align-middle bg-[#EFE8D8] border border-[#D5C8B2] ${columnSlants['subject'] === 'vertical' ? 'min-w-[42px]' : ''}`}>
                   <div className="flex flex-col items-center justify-center gap-1">
                     <div className="print:hidden flex items-center justify-center gap-1">
-                      <span className={`craft-table-header px-1.5 py-0.5 rounded-lg font-bold text-xs text-[#1E3A8A] inline-block ${getSlantClasses(columnSlants['subject'])}`}>
-                        المادة
-                      </span>
+                      <StackedHeaderLabel
+                        label="المادة"
+                        isVertical={columnSlants['subject'] === 'vertical'}
+                        className={`craft-table-header px-1.5 py-0.5 rounded-lg font-extrabold text-[11px] text-[#1E3A8A] ${getSlantClasses(columnSlants['subject'])}`}
+                      />
                       <SlantButton slant={columnSlants['subject']} onToggle={() => toggleColumnSlant('subject')} />
                     </div>
                     {/* Print Header */}
                     <div className="hidden print:block text-center py-1">
-                      <span className={`font-bold text-xs text-[#2F2822] ${getSlantClasses(columnSlants['subject'])}`}>
-                        المادة
-                      </span>
+                      <StackedHeaderLabel
+                        label="المادة"
+                        isVertical={columnSlants['subject'] === 'vertical'}
+                        className={`font-extrabold text-[11px] text-[#0F172A] ${getSlantClasses(columnSlants['subject'])}`}
+                      />
                     </div>
                   </div>
                 </th>
 
                 {/* Written Exam Header with editable "درجة التحريري بالورقة من [ input ]" and radio mode selector */}
-                <th className={`py-2.5 px-3 min-w-[210px] print:min-w-0 bg-[#F1F5F9] border border-[#CBD5E1] text-[#1E293B] text-center align-top ${columnSlants['writtenExam'] === 'vertical' ? 'min-w-[60px]' : ''}`}>
+                <th className={`py-2 px-2 min-w-[168px] print:min-w-0 bg-[#F1F5F9] border border-[#CBD5E1] text-[#1E293B] text-center align-top ${columnSlants['writtenExam'] === 'vertical' ? 'min-w-[55px]' : ''}`}>
                   <div className="space-y-1.5 print:hidden">
                     {/* Header Top Row: "درجة التحريري بالورقة من" + editable input */}
                     <div className="flex items-center justify-center gap-1.5">
@@ -2942,9 +3328,11 @@ export const MonthlySheetView: React.FC<Props> = ({
                         </div>
                       ) : (
                         <div className="flex items-center justify-center gap-1 group/header">
-                          <span className={`font-bold text-xs text-[#1E293B] whitespace-nowrap ${getSlantClasses(columnSlants['writtenExam'])}`}>
-                            {writtenExamLabel}
-                          </span>
+                          <StackedHeaderLabel
+                            label={writtenExamLabel}
+                            isVertical={columnSlants['writtenExam'] === 'vertical'}
+                            className={`font-extrabold text-[11px] text-[#0F172A] ${getSlantClasses(columnSlants['writtenExam'])}`}
+                          />
                           <button
                             type="button"
                             onClick={() => handleStartInlineEdit('writtenExam', writtenExamLabel)}
@@ -3020,6 +3408,38 @@ export const MonthlySheetView: React.FC<Props> = ({
                         </div>
                       )}
                     </div>
+
+                    {/* Voice Grade Entry Toggle Icon at bottom of Written column header */}
+                    <div className="pt-0.5 flex justify-center">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleVoiceForColumn('written')}
+                        className={`px-2.5 py-1 rounded-lg text-[10px] font-black flex items-center justify-center gap-1 transition-all cursor-pointer border shadow-2xs ${
+                          isVoiceScoreMode && activeKeypadCell?.columnType === 'written'
+                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700 ring-2 ring-emerald-500/25'
+                            : 'bg-white hover:bg-[#FAF2EB] text-[#4A2818] border-[#D8BEB0]'
+                        }`}
+                        title={
+                          isVoiceScoreMode && activeKeypadCell?.columnType === 'written'
+                            ? 'إيقاف الإدخال الصوتي للتحريري'
+                            : 'تفعيل الإدخال الصوتي لدرجات التحريري (أرقام فقط)'
+                        }
+                        aria-label="الإدخال الصوتي لدرجات التحريري"
+                      >
+                        <Mic
+                          className={`w-3.5 h-3.5 shrink-0 ${
+                            isVoiceScoreMode && activeKeypadCell?.columnType === 'written'
+                              ? 'text-white animate-pulse'
+                              : 'text-[#BA916C]'
+                          }`}
+                        />
+                        <span>
+                          {isVoiceScoreMode && activeKeypadCell?.columnType === 'written'
+                            ? 'إيقاف الصوت'
+                            : 'إدخال صوتي'}
+                        </span>
+                      </button>
+                    </div>
                   </div>
 
                   {/* Print Only Header: Strictly ONLY "التحريري" */}
@@ -3034,9 +3454,9 @@ export const MonthlySheetView: React.FC<Props> = ({
                 {(currentModel.customColumns || []).map((col) => (
                   <th
                     key={col.id}
-                    className={`py-2 px-3 min-w-[130px] print:min-w-0 bg-[#F1F5F9] border border-[#CBD5E1] text-[#1E293B] align-top ${columnSlants[col.id] === 'vertical' ? 'min-w-[50px]' : ''}`}
+                    className={`py-1.5 px-1.5 w-auto min-w-[72px] print:min-w-0 bg-[#F1F5F9] border border-[#CBD5E1] text-[#0F172A] align-top ${columnSlants[col.id] === 'vertical' ? 'min-w-[44px]' : ''}`}
                   >
-                    <div className="flex items-center justify-between gap-1">
+                    <div className="flex flex-col items-center justify-center gap-0.5">
                       {editingColumnKey === col.id ? (
                         <div className="flex items-center gap-1 w-full print:hidden">
                           <input
@@ -3069,26 +3489,32 @@ export const MonthlySheetView: React.FC<Props> = ({
                         </div>
                       ) : (
                         <>
-                          <div className="flex items-center gap-1 min-w-0 group/header">
-                            <span className={`font-bold truncate text-[#1E293B] ${getSlantClasses(columnSlants[col.id])}`}>{col.name}</span>
+                          <div className="flex items-center justify-center gap-1 print:hidden">
                             <button
                               type="button"
                               onClick={() => handleStartInlineEdit(col.id, col.name)}
-                              className="opacity-40 hover:opacity-100 p-0.5 text-slate-500 hover:text-[#2B6CB0] rounded transition-opacity shrink-0 cursor-pointer print:hidden"
+                              className="opacity-55 hover:opacity-100 p-0.5 text-slate-600 hover:text-[#2B6CB0] rounded transition-opacity shrink-0 cursor-pointer"
                               title={`إعادة تسمية عمود (${col.name})`}
                             >
                               <Pencil className="w-3 h-3" />
                             </button>
                             <SlantButton slant={columnSlants[col.id]} onToggle={() => toggleColumnSlant(col.id)} />
+                            <button
+                              type="button"
+                              onClick={() => requestDeleteColumn(col.id)}
+                              className="p-0.5 text-[#BD4B4B] hover:text-white hover:bg-[#BD4B4B] bg-[#FBEBEB] rounded-md transition-colors shrink-0 cursor-pointer"
+                              title={`حذف عمود (${col.name})`}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => requestDeleteColumn(col.id)}
-                            className="p-1 text-[#BD4B4B] hover:text-white hover:bg-[#BD4B4B] bg-[#FBEBEB] rounded-lg transition-colors shrink-0 cursor-pointer print:hidden"
-                            title={`حذف عمود (${col.name})`}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          <div className="flex items-center justify-center w-full group/header">
+                            <StackedHeaderLabel
+                              label={col.name}
+                              isVertical={columnSlants[col.id] === 'vertical'}
+                              className={`font-extrabold text-[11px] text-[#0F172A] text-center ${getSlantClasses(columnSlants[col.id])}`}
+                            />
+                          </div>
                         </>
                       )}
                     </div>
@@ -3107,15 +3533,53 @@ export const MonthlySheetView: React.FC<Props> = ({
                         </button>
                       </div>
                     ) : (
-                      <div className="text-[10px] text-[#64748B] font-semibold mt-1">
-                        (الدرجة: {col.maxScore})
+                      <div className="mt-0.5 flex flex-col items-center gap-1">
+                        <div className="text-[10px] text-[#475569] font-bold text-center whitespace-nowrap">
+                          (الدرجة: {formatScoreDisplay(col.maxScore, numeralMode)})
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleVoiceForColumn('custom', col)}
+                          className={`print:hidden px-2 py-0.5 rounded-md text-[10px] font-black flex items-center justify-center gap-1 transition-all cursor-pointer border shadow-2xs ${
+                            isVoiceScoreMode &&
+                            activeKeypadCell?.columnType === 'custom' &&
+                            activeKeypadCell?.columnId === col.id
+                              ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700 ring-1 ring-emerald-500/30'
+                              : 'bg-white hover:bg-[#FAF2EB] text-[#4A2818] border-[#D8BEB0]'
+                          }`}
+                          title={
+                            isVoiceScoreMode &&
+                            activeKeypadCell?.columnType === 'custom' &&
+                            activeKeypadCell?.columnId === col.id
+                              ? `إيقاف الإدخال الصوتي لعمود ${col.name}`
+                              : `تفعيل الإدخال الصوتي لعمود ${col.name} (أرقام فقط)`
+                          }
+                          aria-label={`الإدخال الصوتي لعمود ${col.name}`}
+                        >
+                          <Mic
+                            className={`w-3 h-3 shrink-0 ${
+                              isVoiceScoreMode &&
+                              activeKeypadCell?.columnType === 'custom' &&
+                              activeKeypadCell?.columnId === col.id
+                                ? 'text-white animate-pulse'
+                                : 'text-[#BA916C]'
+                            }`}
+                          />
+                          <span>
+                            {isVoiceScoreMode &&
+                            activeKeypadCell?.columnType === 'custom' &&
+                            activeKeypadCell?.columnId === col.id
+                              ? 'إيقاف'
+                              : 'صوتي'}
+                          </span>
+                        </button>
                       </div>
                     )}
                   </th>
                 ))}
 
                 {/* Divider '+' Button between Written / Custom Columns and Final Score */}
-                <th className="py-2 px-2 min-w-[95px] max-w-[110px] bg-[#F8FAFC] border border-[#CBD5E1] text-center align-middle no-print print:hidden select-none">
+                <th className="py-1.5 px-1.5 min-w-[78px] max-w-[92px] bg-[#F8FAFC] border border-[#CBD5E1] text-center align-middle no-print print:hidden select-none">
                   <div className="flex flex-col items-center justify-center gap-1.5 py-1">
                     <span className="text-[10px] font-bold text-[#2B6CB0] leading-snug text-center">
                       إذا أردت إضافة حقل اضغط هنا
@@ -3133,7 +3597,7 @@ export const MonthlySheetView: React.FC<Props> = ({
                 </th>
 
                 {/* Final Score Header - In print strictly ONLY "النهائي" */}
-                <th className={`py-2.5 px-3 min-w-[170px] print:min-w-0 bg-[#F1F5F9] border border-[#CBD5E1] text-[#1E293B] text-center align-top ${columnSlants['finalScore'] === 'vertical' ? 'min-w-[50px]' : ''}`}>
+                <th className={`py-2 px-2 min-w-[140px] print:min-w-0 bg-[#F1F5F9] border border-[#CBD5E1] text-[#1E293B] text-center align-top ${columnSlants['finalScore'] === 'vertical' ? 'min-w-[50px]' : ''}`}>
                   <div className="space-y-1.5 print:hidden">
                     {/* Header Top Row: Title + Slant Toggle + Edit Pencil + Operation Badge + Max Score Input */}
                     <div className="flex items-center justify-center gap-1.5">
@@ -3169,9 +3633,11 @@ export const MonthlySheetView: React.FC<Props> = ({
                         </div>
                       ) : (
                         <div className="flex items-center justify-center gap-1 group/header">
-                          <span className={`font-bold text-xs text-[#1E293B] whitespace-nowrap ${getSlantClasses(columnSlants['finalScore'])}`}>
-                            {finalScoreLabel}
-                          </span>
+                          <StackedHeaderLabel
+                            label={finalScoreLabel}
+                            isVertical={columnSlants['finalScore'] === 'vertical'}
+                            className={`font-extrabold text-[11px] text-[#0F172A] ${getSlantClasses(columnSlants['finalScore'])}`}
+                          />
                           <button
                             type="button"
                             onClick={() => handleStartInlineEdit('finalScore', finalScoreLabel)}
@@ -3306,7 +3772,7 @@ export const MonthlySheetView: React.FC<Props> = ({
 
                 {/* Rating Badge Header */}
                 {showRatingColumn && (
-                  <th className={`py-2.5 px-2 min-w-[85px] print:min-w-0 bg-[#F1F5F9] border border-[#CBD5E1] text-[#1E293B] text-center align-middle animate-in fade-in ${columnSlants['rating'] === 'vertical' ? 'min-w-[45px]' : ''}`}>
+                  <th className={`py-2 px-1.5 min-w-[68px] print:min-w-0 bg-[#F1F5F9] border border-[#CBD5E1] text-[#1E293B] text-center align-middle animate-in fade-in ${columnSlants['rating'] === 'vertical' ? 'min-w-[42px]' : ''}`}>
                     <div className="flex items-center justify-center gap-1">
                       {editingColumnKey === 'rating' ? (
                         <div className="flex items-center justify-center gap-1 print:hidden">
@@ -3340,7 +3806,11 @@ export const MonthlySheetView: React.FC<Props> = ({
                         </div>
                       ) : (
                         <div className="flex items-center justify-center gap-1 group/header">
-                          <span className={`font-bold text-xs text-[#1E293B] ${getSlantClasses(columnSlants['rating'])}`}>{ratingLabel}</span>
+                          <StackedHeaderLabel
+                            label={ratingLabel}
+                            isVertical={columnSlants['rating'] === 'vertical'}
+                            className={`font-extrabold text-[11px] text-[#0F172A] ${getSlantClasses(columnSlants['rating'])}`}
+                          />
                           <button
                             type="button"
                             onClick={() => handleStartInlineEdit('rating', ratingLabel)}
@@ -3429,7 +3899,7 @@ export const MonthlySheetView: React.FC<Props> = ({
 
                       {/* Row Index */}
                       <td className="py-1.5 px-2 text-center text-xs font-bold text-[#64748B] border border-[#CBD5E1] bg-[#F8FAFC]">
-                        {index + 1}
+                        {formatScoreDisplay(index + 1, numeralMode)}
                       </td>
 
                       {/* Student Name */}
@@ -3485,18 +3955,26 @@ export const MonthlySheetView: React.FC<Props> = ({
                       </td>
 
                       {/* Grade Level */}
-                      <td className="py-1 px-2 border border-[#CBD5E1]">
-                        <input
-                          type="text"
-                          value={student.gradeLevel}
-                          onFocus={(e) => handleScoreCellFocus(e, student)}
-                          onClick={(e) => handleScoreCellFocus(e, student)}
-                          onChange={(e) =>
-                            handleUpdateStudent(student.id, { gradeLevel: e.target.value })
-                          }
-                          placeholder="الصف"
-                          className="w-full px-1.5 py-1 border border-transparent hover:border-[#CBD5E1] focus:border-[#2B6CB0] focus:bg-white text-xs font-medium text-[#475569] focus:outline-none transition-colors text-center rounded-none sm:rounded-sm"
-                        />
+                      <td className="py-1 px-1.5 border border-[#CBD5E1] whitespace-nowrap text-center">
+                        <div className="inline-grid items-center justify-items-center min-w-full">
+                          <span
+                            aria-hidden="true"
+                            className="invisible col-start-1 row-start-1 px-1 py-1 text-[11px] font-bold whitespace-nowrap pointer-events-none"
+                          >
+                            {student.gradeLevel || 'الصف'}
+                          </span>
+                          <input
+                            type="text"
+                            value={student.gradeLevel}
+                            onFocus={(e) => handleScoreCellFocus(e, student)}
+                            onClick={(e) => handleScoreCellFocus(e, student)}
+                            onChange={(e) =>
+                              handleUpdateStudent(student.id, { gradeLevel: e.target.value })
+                            }
+                            placeholder="الصف"
+                            className="col-start-1 row-start-1 w-full min-w-0 px-1 py-1 border border-transparent hover:border-[#CBD5E1] focus:border-[#2B6CB0] focus:bg-white text-[11px] font-bold text-[#0F172A] focus:outline-none transition-colors text-center rounded-none sm:rounded-sm"
+                          />
+                        </div>
                       </td>
 
                       {/* Section */}
@@ -3528,6 +4006,7 @@ export const MonthlySheetView: React.FC<Props> = ({
                             id={`score-input-${student.id}-written`}
                             type="text"
                             inputMode="none"
+                            readOnly={isVoiceScoreMode}
                             data-score-cell="true"
                             value={formatScoreDisplay(student.writtenRawScore, numeralMode)}
                             onFocus={(e) => {
@@ -3677,17 +4156,17 @@ export const MonthlySheetView: React.FC<Props> = ({
                                   <div className="flex items-center gap-1 text-[11px]">
                                     {absentCount > 0 && (
                                       <span className="px-1.5 py-0.2 bg-rose-600 text-white rounded font-black text-[10px]">
-                                        غ: {absentCount}
+                                        غ: {formatScoreDisplay(absentCount, numeralMode)}
                                       </span>
                                     )}
                                     {excusedCount > 0 && (
                                       <span className="px-1.5 py-0.2 bg-blue-600 text-white rounded font-black text-[10px]">
-                                        م: {excusedCount}
+                                        م: {formatScoreDisplay(excusedCount, numeralMode)}
                                       </span>
                                     )}
                                     {presentCount > 0 && (
                                       <span className="px-1.5 py-0.2 bg-emerald-600 text-white rounded font-black text-[10px]">
-                                        ح: {presentCount}
+                                        ح: {formatScoreDisplay(presentCount, numeralMode)}
                                       </span>
                                     )}
                                     {cfg?.affectsGrade && gradeDelta !== 0 && (
@@ -3696,7 +4175,7 @@ export const MonthlySheetView: React.FC<Props> = ({
                                           gradeDelta < 0 ? 'text-rose-700' : 'text-emerald-700'
                                         }`}
                                       >
-                                        ({gradeDelta > 0 ? `+${gradeDelta}` : gradeDelta})
+                                        ({gradeDelta > 0 ? `+${formatScoreDisplay(gradeDelta, numeralMode)}` : formatScoreDisplay(gradeDelta, numeralMode)})
                                       </span>
                                     )}
                                   </div>
@@ -3716,6 +4195,7 @@ export const MonthlySheetView: React.FC<Props> = ({
                                 id={`score-input-${student.id}-${col.id}`}
                                 type="text"
                                 inputMode="none"
+                                readOnly={isVoiceScoreMode}
                                 data-score-cell="true"
                                 value={formatScoreDisplay(val, numeralMode)}
                                 onFocus={(e) => {
@@ -3753,10 +4233,10 @@ export const MonthlySheetView: React.FC<Props> = ({
                                       : `نسبة المشاركة: ${displayPercentage}`
                                   }
                                 >
-                                  <span>{displayPercentage}</span>
+                                  <span>{formatScoreDisplay(displayPercentage, numeralMode)}</span>
                                   {multipleBreakdown && (
                                     <span className="text-[10px] text-purple-700 font-normal">
-                                      ({multipleBreakdown})
+                                      ({formatScoreDisplay(multipleBreakdown, numeralMode)})
                                     </span>
                                   )}
                                 </span>
@@ -3772,7 +4252,13 @@ export const MonthlySheetView: React.FC<Props> = ({
                       </td>
 
                       {/* Mandatory Final Monthly Score */}
-                      <td className="py-1 px-3 text-center font-black border border-[#CBD5E1]">
+                      <td
+                        onClick={(e) => handleScoreCellFocus(e, student, true)}
+                        className={`py-1 px-3 text-center font-black border border-[#CBD5E1] cursor-pointer transition-colors ${
+                          activeStudentCloud?.studentId === student.id ? 'bg-amber-50/70' : 'hover:bg-slate-50/80'
+                        }`}
+                        title={`عرض اسم الطالب: ${student.name || 'بدون اسم'}`}
+                      >
                         {totalMonthly !== null ? (
                           <div className="flex flex-col items-center justify-center gap-0.5">
                             <span className="text-sm sm:text-base font-black text-[#1E293B] px-2.5 py-0.5 bg-slate-100 rounded-lg inline-block min-w-[45px] border border-slate-200">
@@ -3802,7 +4288,13 @@ export const MonthlySheetView: React.FC<Props> = ({
 
                       {/* Rating Badge */}
                       {showRatingColumn && (
-                        <td className="py-1 px-2 text-center border border-[#CBD5E1] animate-in fade-in">
+                        <td
+                          onClick={(e) => handleScoreCellFocus(e, student, true)}
+                          className={`py-1 px-2 text-center border border-[#CBD5E1] animate-in fade-in cursor-pointer transition-colors ${
+                            activeStudentCloud?.studentId === student.id ? 'bg-amber-50/70' : 'hover:bg-slate-50/80'
+                          }`}
+                          title={`عرض اسم الطالب: ${student.name || 'بدون اسم'}`}
+                        >
                           <span
                             className={`text-[11px] px-2.5 py-0.5 rounded-full font-bold border ${rating.badgeBg} ${rating.badgeText}`}
                           >
@@ -3873,11 +4365,11 @@ export const MonthlySheetView: React.FC<Props> = ({
           <span>
             عدد الطلاب:{' '}
             <strong className="text-[#2E2B27] font-bold">
-              {filteredStudents.length}
+              {formatScoreDisplay(filteredStudents.length, numeralMode)}
             </strong>{' '}
             من أصل{' '}
             <strong className="text-[#2E2B27] font-bold">
-              {relevantModelStudents.length}
+              {formatScoreDisplay(relevantModelStudents.length, numeralMode)}
             </strong>
           </span>
 
@@ -4358,12 +4850,15 @@ export const MonthlySheetView: React.FC<Props> = ({
         allModels={models}
         onCreate={handleModelCreated}
         profileSubject={profile.subject}
+        profileAcademicYear={profile.academicYear}
         currentUser={currentUser}
         onOpenSectionsSwap={(grade, subject) => {
           setSwapInitialGrade(grade || currentModel.gradeLevel);
           setSwapInitialSubject(subject || currentModel.subject);
           setIsSectionsSwapOpen(true);
         }}
+        onOpenProfileForSubject={onOpenProfileForSubject}
+        reopenFromProfileNonce={reopenCreateModelNonce}
       />
 
       {/* Grade Rename and Merge Modal (دمج وتعديل اسم الصف والشعب) */}
@@ -4397,7 +4892,7 @@ export const MonthlySheetView: React.FC<Props> = ({
 
       {/* Action Prompt Modal for Print / Export */}
       {actionPrompt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150 text-right">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150 text-right no-print">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-150">
             {/* Header */}
             <div className="px-5 py-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
@@ -4586,11 +5081,14 @@ export const MonthlySheetView: React.FC<Props> = ({
         currentUser={currentUser}
       />
 
-      {/* Floating Student Info Cloud during horizontal scrolling (only when names are scrolled out of view) */}
+      {/* Floating Student Info Cloud during horizontal scrolling, keypad typing, or clicking final score */}
       <StudentFloatingCloud
         info={activeStudentCloud}
-        isOpen={Boolean(activeStudentCloud) && !isNameColumnVisible}
-        onClose={() => setActiveStudentCloud(null)}
+        isOpen={Boolean(activeStudentCloud) && (!isNameColumnVisible || Boolean(activeKeypadCell) || isCloudForceVisible)}
+        onClose={() => {
+          setActiveStudentCloud(null);
+          setIsCloudForceVisible(false);
+        }}
       />
 
       {/* Attendance Record Modal for Individual Student */}
@@ -4667,10 +5165,38 @@ export const MonthlySheetView: React.FC<Props> = ({
         </div>
       )}
 
+      {/* Voice Score Entry Bar (replaces keypad until user requests showing custom keypad) */}
+      <VoiceScoreBar
+        isActive={isVoiceScoreMode}
+        isHiddenByKeypad={isKeypadExpanded}
+        onDisableVoiceMode={() => {
+          setIsVoiceScoreMode(false);
+          setIsKeypadExpanded(false);
+          setActiveKeypadCell(null);
+        }}
+        onShowKeypad={() => setIsKeypadExpanded(true)}
+        activeTarget={activeKeypadCell}
+        currentStudent={currentKeypadStudent}
+        nextStudent={nextKeypadStudent}
+        prevStudent={prevKeypadStudent}
+        currentValue={currentKeypadValue}
+        numeralMode={numeralMode}
+        onValueChangeForTarget={handleVoiceScoreValueChange}
+        onNext={handleKeypadNext}
+        onPrev={handleKeypadPrev}
+      />
+
       {/* Custom Bottom Numeric Keypad for Mobile/Touch Grade Entry */}
       <GradeNumericKeypad
-        isOpen={activeKeypadCell !== null}
-        onClose={() => setActiveKeypadCell(null)}
+        isOpen={activeKeypadCell !== null && (!isVoiceScoreMode || isKeypadExpanded)}
+        onClose={() => {
+          if (isVoiceScoreMode) {
+            setIsKeypadExpanded(false);
+          } else {
+            setActiveKeypadCell(null);
+            setIsKeypadExpanded(false);
+          }
+        }}
         currentStudent={currentKeypadStudent}
         nextStudent={nextKeypadStudent}
         prevStudent={prevKeypadStudent}
@@ -4703,6 +5229,7 @@ export const MonthlySheetView: React.FC<Props> = ({
           selectedSection={selectedSection}
           onGradeChange={setSelectedGradeLevel}
           onSectionChange={setSelectedSection}
+          numeralMode={numeralMode}
         />
       )}
     </div>

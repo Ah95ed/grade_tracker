@@ -141,3 +141,38 @@ export function formatRelativeIraq(dateOrIso?: string | number | Date | null): s
     return String(dateOrIso || 'غير مسجل');
   }
 }
+
+/**
+ * حساب العام الدراسي الحالي تلقائياً:
+ * يبدأ العام الدراسي من الشهر التاسع (أيلول / سبتمبر):
+ * - من شهر 9 إلى شهر 12: (السنة الحالية - السنة القادمة) مثل 2026 - 2027
+ * - من شهر 1 إلى شهر 8: (السنة السابقة - السنة الحالية) مثل 2025 - 2026
+ */
+export function getCurrentAcademicYear(date: Date = new Date()): string {
+  let year = date.getFullYear();
+  let month = date.getMonth() + 1; // 1..12
+
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: IRAQ_TIMEZONE,
+      year: 'numeric',
+      month: 'numeric',
+    }).formatToParts(date);
+    const yPart = parts.find((p) => p.type === 'year')?.value;
+    const mPart = parts.find((p) => p.type === 'month')?.value;
+    if (yPart && mPart) {
+      const parsedY = parseInt(yPart, 10);
+      const parsedM = parseInt(mPart, 10);
+      if (Number.isFinite(parsedY) && Number.isFinite(parsedM)) {
+        year = parsedY;
+        month = parsedM;
+      }
+    }
+  } catch {
+    // Fallback to local clock
+  }
+
+  const startYear = month >= 9 ? year : year - 1;
+  return `${startYear} - ${startYear + 1}`;
+}
+

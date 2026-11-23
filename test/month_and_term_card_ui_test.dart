@@ -53,7 +53,7 @@ void main() {
         child: ScreenUtilInit(
           designSize: const Size(1200, 800),
           minTextAdapt: true,
-          builder: (_, __) => const MaterialApp(
+          builder: (_, _) => const MaterialApp(
             home: Scaffold(
               body: Directionality(
                 textDirection: TextDirection.rtl,
@@ -134,7 +134,7 @@ void main() {
         child: ScreenUtilInit(
           designSize: const Size(1200, 800),
           minTextAdapt: true,
-          builder: (_, __) => const MaterialApp(
+          builder: (_, _) => const MaterialApp(
             home: Scaffold(
               body: Directionality(
                 textDirection: TextDirection.rtl,

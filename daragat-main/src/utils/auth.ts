@@ -15,6 +15,8 @@ import {
   saveCancelledEmailsToIndexedDB,
   loadCancelledEmailsFromIndexedDB,
   recordAdminCommandInIndexedDB,
+  saveActivationToIndexedDB,
+  saveStatusOverrideToIndexedDB,
   openGradebookDB,
 } from './indexedDB';
 import {
@@ -63,21 +65,21 @@ export const ADMIN_EMAILS_DEFAULT = [
   'm11287137@gmail.com',
 ];
 export const PRIMARY_ADMIN_EMAIL =
-  ((env.VITE_ADMIN_EMAIL as string | undefined)?.trim()) ||
-  ((env.ADMIN_EMAIL as string | undefined)?.trim()) ||
+  ((import.meta.env.VITE_ADMIN_EMAIL as string | undefined)?.trim()) ||
+  ((import.meta.env.ADMIN_EMAIL as string | undefined)?.trim()) ||
   'asmaomar5566@gmail.com';
 
 export const SUPPORT_PHONE_NUMBER =
-  ((env.VITE_SUPPORT_PHONE as string | undefined)?.trim()) ||
-  ((env.SUPPORT_PHONE as string | undefined)?.trim()) ||
-  '07706118982';
+  ((import.meta.env.VITE_SUPPORT_PHONE as string | undefined)?.trim()) ||
+  ((import.meta.env.SUPPORT_PHONE as string | undefined)?.trim()) ||
+  '07706118992';
 
-export const SUPPORT_PHONE_INTERNATIONAL = '+9647706118982';
+export const SUPPORT_PHONE_INTERNATIONAL = '+9647706118992';
 
 export const SUPPORT_WHATSAPP_NUMBER =
-  ((env.VITE_SUPPORT_WHATSAPP as string | undefined)?.trim()) ||
-  ((env.SUPPORT_WHATSAPP as string | undefined)?.trim()) ||
-  '9647706118982';
+  ((import.meta.env.VITE_SUPPORT_WHATSAPP as string | undefined)?.trim()) ||
+  ((import.meta.env.SUPPORT_WHATSAPP as string | undefined)?.trim()) ||
+  '9647706118992';
 
 const AUTH_KEYS = {
   CURRENT_USER: 'gradebook_auth_current_user_v2',
@@ -308,32 +310,66 @@ export async function syncAuthWithIndexedDB(): Promise<void> {
       loadUsersFromIndexedDB().catch(() => []),
     ]);
 
-    // 1. Sync cancelled emails
+    const localUsers = getAllUsers();
     const localCancelled = getCancelledEmails();
-    const mergedCancelled = Array.from(new Set([...localCancelled, ...idbCancelled])).filter(Boolean);
-    if (mergedCancelled.length > 0) {
-      localStorage.setItem(AUTH_KEYS.CANCELLED_ACCOUNTS, JSON.stringify(mergedCancelled));
-      saveCancelledEmailsToIndexedDB(mergedCancelled).catch(() => {});
+    const hasLocalCancelledKey = localStorage.getItem(AUTH_KEYS.CANCELLED_ACCOUNTS) !== null;
+    const rawCurStr = localStorage.getItem(AUTH_KEYS.CURRENT_USER);
+    const rawCur: AppUser | null = rawCurStr ? JSON.parse(rawCurStr) : null;
+
+    // 1. Merge users preferring most recent activity per uid/email & avoiding resurrection of stale states
+    const userMap = new Map<string, AppUser>();
+    const emailToKey = new Map<string, string>();
+
+    const pickWinner = (existing: AppUser | undefined, incoming: AppUser): AppUser => {
+      if (!existing) return incoming;
+      const exTs = parseSafeTimestamp(existing.lastActiveAt);
+      const inTs = parseSafeTimestamp(incoming.lastActiveAt);
+      const winner = inTs >= exTs ? incoming : existing;
+      const loser = winner === incoming ? existing : incoming;
+      const resolvedRole: 'admin_school' | 'teacher' =
+        winner.userRole === 'admin_school' || loser.userRole === 'admin_school' ? 'admin_school' : 'teacher';
+      return {
+        ...loser,
+        ...winner,
+        uid: !winner.uid?.startsWith('user-') ? winner.uid : (loser.uid || winner.uid),
+        userRole: resolvedRole,
+      };
+    };
+
+    for (const u of [...idbUsers, ...localUsers]) {
+      if (!u || (!u.uid && !u.email)) continue;
+      const cleanEmail = (u.email || '').trim().toLowerCase();
+      const mapKey = (u.uid && userMap.has(u.uid))
+        ? u.uid
+        : (cleanEmail && emailToKey.has(cleanEmail))
+        ? emailToKey.get(cleanEmail)!
+        : (u.uid || cleanEmail);
+
+      const merged = pickWinner(userMap.get(mapKey), u);
+      userMap.set(mapKey, merged);
+      if (cleanEmail) emailToKey.set(cleanEmail, mapKey);
     }
 
-    // 2. Sync users
-    const localUsers = getAllUsers();
-    const userMap = new Map<string, AppUser>();
-    for (const u of idbUsers) {
-      if (u && u.uid) userMap.set(u.uid, u);
-    }
-    for (const u of localUsers) {
-      if (u && u.uid) {
-        const idb = userMap.get(u.uid);
-        let resolvedRole: 'admin_school' | 'teacher' = 'teacher';
-        if (u.userRole === 'admin_school' || idb?.userRole === 'admin_school') {
-          resolvedRole = 'admin_school';
-        } else if (u.userRole === 'teacher' || idb?.userRole === 'teacher') {
-          resolvedRole = 'teacher';
-        }
-        userMap.set(u.uid, { ...idb, ...u, userRole: resolvedRole });
+    // 2. Sync cancelled emails cleanly without letting lagging IndexedDB re-cancel freshly verified active users
+    const mergedCancelledSet = new Set<string>(localCancelled);
+    for (const em of idbCancelled) {
+      if (!em) continue;
+      const cleanEm = em.trim().toLowerCase();
+      const mapKey = emailToKey.get(cleanEm);
+      const mergedUser = mapKey ? userMap.get(mapKey) : undefined;
+      const isFreshActiveLocal =
+        hasLocalCancelledKey &&
+        !localCancelled.includes(cleanEm) &&
+        ((rawCur && rawCur.email?.trim().toLowerCase() === cleanEm && rawCur.subscriptionStatus === 'active') ||
+          (mergedUser && mergedUser.subscriptionStatus === 'active'));
+      if (!isFreshActiveLocal) {
+        mergedCancelledSet.add(cleanEm);
       }
     }
+    const mergedCancelled = Array.from(mergedCancelledSet).filter(Boolean);
+
+    localStorage.setItem(AUTH_KEYS.CANCELLED_ACCOUNTS, JSON.stringify(mergedCancelled));
+    saveCancelledEmailsToIndexedDB(mergedCancelled).catch(() => {});
 
     const allMerged = Array.from(userMap.values()).map((u) => {
       const uEmail = (u.email || '').trim().toLowerCase();
@@ -348,17 +384,23 @@ export async function syncAuthWithIndexedDB(): Promise<void> {
       localStorage.setItem(AUTH_KEYS.ALL_USERS, JSON.stringify(allMerged));
       saveUsersToIndexedDB(allMerged).catch(() => {});
 
-      // Restore userRole into currentUser if missing or legacy
-      const cur = getCurrentUser();
-      if (cur) {
-        const curEmail = (cur.email || '').trim().toLowerCase();
+      if (rawCur) {
+        const curEmail = (rawCur.email || '').trim().toLowerCase();
         const match = allMerged.find(
-          (m) => (cur.uid && m.uid === cur.uid) || (curEmail && m.email && m.email.trim().toLowerCase() === curEmail)
+          (m) => (rawCur.uid && m.uid === rawCur.uid) || (curEmail && m.email && m.email.trim().toLowerCase() === curEmail)
         );
-        const targetRole: 'admin_school' | 'teacher' = match?.userRole === 'admin_school' ? 'admin_school' : (cur.userRole === 'admin_school' ? 'admin_school' : 'teacher');
-        if (cur.userRole !== targetRole) {
-          cur.userRole = targetRole;
-          saveCurrentUser(cur);
+        if (match) {
+          const targetRole: 'admin_school' | 'teacher' =
+            match.userRole === 'admin_school' ? 'admin_school' : (rawCur.userRole === 'admin_school' ? 'admin_school' : 'teacher');
+          const matchTs = parseSafeTimestamp(match.lastActiveAt);
+          const curTs = parseSafeTimestamp(rawCur.lastActiveAt);
+          if (mergedCancelled.includes(curEmail) && curEmail !== PRIMARY_ADMIN_EMAIL.toLowerCase()) {
+            const nextCur: AppUser = { ...rawCur, subscriptionStatus: 'cancelled', userRole: targetRole };
+            localStorage.setItem(AUTH_KEYS.CURRENT_USER, JSON.stringify(nextCur));
+          } else if (matchTs > curTs || rawCur.userRole !== targetRole) {
+            const nextCur: AppUser = { ...rawCur, ...match, userRole: targetRole };
+            localStorage.setItem(AUTH_KEYS.CURRENT_USER, JSON.stringify(nextCur));
+          }
         }
       }
     }
@@ -670,32 +712,31 @@ export async function fetchRemoteUsersDetailed(retryCount = 1): Promise<RemoteUs
       };
     }
 
-    const cancelledList = getCancelledEmails();
-
-    // Authoritative remote list from Cloudflare D1
+    // Authoritative remote list from Cloudflare D1 (D1 always overrides stale local cancelled flags)
     const remoteList: AppUser[] = data.users.map((ru: any) => {
       const ruEmail = (ru.email || '').trim().toLowerCase();
-      const isCancelled =
-        (ruEmail !== PRIMARY_ADMIN_EMAIL.toLowerCase() && cancelledList.includes(ruEmail)) ||
-        ru.subscriptionStatus === 'cancelled';
+      const isCancelled = ru.subscriptionStatus === 'cancelled' || ru.subscriptionStatus === 'suspended';
 
       if (isCancelled && ruEmail) {
         markAccountCancelled(ruEmail);
+      } else if (ru.subscriptionStatus === 'active' && ruEmail) {
+        unmarkAccountCancelled(ruEmail);
       }
 
       const existingRole = ru.userRole || ru.user_role;
       const role: 'admin_school' | 'teacher' =
         existingRole === 'admin_school' ? 'admin_school' : 'teacher';
 
+      const subType = ru.subscriptionType || 'monthly';
       return {
         uid: ru.uid,
         email: ru.email,
         displayName: ru.displayName || ru.email,
         isAdmin: isAdminUser(ru.email) || Boolean(ru.isAdmin),
-        isTrial: ru.isTrial || ru.subscriptionType === 'trial',
-        subscriptionType: ru.subscriptionType || 'monthly',
+        isTrial: (subType === 'trial' && ru.subscriptionStatus !== 'active') || Boolean(ru.uid?.startsWith('trial-')),
+        subscriptionType: subType,
         subscriptionStatus: isCancelled ? ('cancelled' as const) : (ru.subscriptionStatus || 'active'),
-        expiresAt: ru.expiresAt,
+        expiresAt: subType === 'lifetime' && ru.subscriptionStatus === 'active' ? undefined : (ru.expiresAt || undefined),
         lastActiveAt: ru.lastActiveAt || new Date().toISOString(),
         createdAt: ru.createdAt || new Date().toISOString(),
         authProvider: ru.authProvider || (ru.uid?.startsWith('trial-') ? 'trial' : 'email'),
@@ -871,6 +912,7 @@ export async function updateUserRoleByAdmin(
   const targetEmail = (index >= 0 ? all[index].email : cleanEmail) || 'user@example.com';
 
   const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+  let serverUser: any = null;
   if (isOnline) {
     try {
       const headers = await getAuthHeaders();
@@ -893,6 +935,11 @@ export async function updateUserRoleByAdmin(
         } catch {}
         throw new Error(errorMsg);
       }
+
+      const data = await res.json().catch(() => null);
+      if (data && data.message !== 'D1 not configured' && data.success && data.user) {
+        serverUser = data.user;
+      }
     } catch (e: any) {
       console.error('Failed to update user role on server:', e);
       throw e;
@@ -900,7 +947,9 @@ export async function updateUserRoleByAdmin(
   }
 
   let updated: AppUser;
-  if (index >= 0) {
+  if (serverUser) {
+    updated = await syncUserStoresFromServer(serverUser, index >= 0 ? all[index] : undefined);
+  } else if (index >= 0) {
     updated = {
       ...all[index],
       userRole: role,
@@ -908,33 +957,36 @@ export async function updateUserRoleByAdmin(
       lastActiveAt: new Date().toISOString(),
     };
     all[index] = updated;
+    saveAllUsers(all);
+    try {
+      await saveUsersToIndexedDB(all);
+    } catch {}
   } else {
     updated = {
       uid: targetUid,
       email: targetEmail,
       displayName: `أ. ${targetEmail.split('@')[0]}`,
-      isTrial: false,
+      isTrial: !isAdminUser(targetEmail),
       createdAt: new Date().toISOString(),
       lastActiveAt: new Date().toISOString(),
-      subscriptionType: 'monthly',
-      subscriptionStatus: 'active',
+      subscriptionType: isAdminUser(targetEmail) ? 'lifetime' : 'trial',
+      subscriptionStatus: isAdminUser(targetEmail) ? 'active' : 'pending',
       authProvider: 'email',
       isAdmin: isAdminUser(targetEmail),
       userRole: role,
       institutionType,
     };
     all.push(updated);
+    saveAllUsers(all);
+    try {
+      await saveUsersToIndexedDB(all);
+    } catch {}
   }
-
-  saveAllUsers(all);
-  try {
-    await saveUsersToIndexedDB(all);
-  } catch {}
 
   const current = getCurrentUser();
   if (current && (current.uid === targetUid || (current.email && current.email.toLowerCase() === targetEmail.toLowerCase()))) {
-    current.userRole = role;
-    current.institutionType = institutionType;
+    current.userRole = updated.userRole;
+    current.institutionType = updated.institutionType;
     saveCurrentUser(current);
   }
 
@@ -1033,6 +1085,154 @@ export function isAccountCancelled(email?: string): boolean {
   }
 }
 
+/**
+ * المزامنة الذرية الموحدة لحالة الاشتراك القادمة من Cloudflare D1 إلى كافة المخازن المحلية (LocalStorage و IndexedDB):
+ * - إذا كانت الحالة في السيرفر cancelled / suspended / expired تُفرض فوراً وتُبطَل أي بيانات active محلية قديمة.
+ * - إذا كانت الحالة في السيرفر active وصالحة تُحذف علامة الإلغاء وتُحدّث كل النسخ بنوع الاشتراك وتاريخ الانتهاء الفعليين.
+ */
+export async function syncUserStoresFromServer(
+  serverUser: any,
+  fallbackUser?: Partial<AppUser>
+): Promise<AppUser> {
+  const cleanEmail = (serverUser?.email || fallbackUser?.email || '').trim().toLowerCase();
+  const cleanUid = (serverUser?.uid || fallbackUser?.uid || '').trim();
+  const subType: SubscriptionType = serverUser?.subscriptionType || fallbackUser?.subscriptionType || 'trial';
+  const rawStatus = serverUser?.subscriptionStatus || fallbackUser?.subscriptionStatus || 'pending';
+  const isAdmin = isAdminUser(cleanEmail) || Boolean(serverUser?.isAdmin || fallbackUser?.isAdmin);
+  const isCancelled = !isAdmin && (rawStatus === 'cancelled' || rawStatus === 'suspended');
+  const isLifetimeActive = (subType === 'lifetime' && rawStatus === 'active') || isAdmin;
+
+  const normalizedExpiresAt = isLifetimeActive
+    ? undefined
+    : serverUser?.expiresAt
+    ? toNormalizedIsoString(serverUser.expiresAt)
+    : fallbackUser?.expiresAt;
+
+  const candidate: AppUser = {
+    uid: cleanUid,
+    email: serverUser?.email || fallbackUser?.email || cleanEmail,
+    displayName: serverUser?.displayName || fallbackUser?.displayName || `أ. ${(cleanEmail || 'أستاذ').split('@')[0]}`,
+    photoURL: fallbackUser?.photoURL,
+    isAdmin,
+    isTrial: !isAdmin && (rawStatus === 'active' ? subType === 'trial' : (subType === 'trial' || Boolean(fallbackUser?.isTrial))),
+    createdAt: serverUser?.createdAt ? toNormalizedIsoString(serverUser.createdAt) : (fallbackUser?.createdAt || new Date().toISOString()),
+    expiresAt: normalizedExpiresAt,
+    lastActiveAt: new Date().toISOString(),
+    subscriptionType: isAdmin ? 'lifetime' : subType,
+    subscriptionStatus: isCancelled ? 'cancelled' : (rawStatus === 'active' ? 'active' : (rawStatus as SubscriptionStatus)),
+    authProvider: serverUser?.authProvider || fallbackUser?.authProvider || (cleanEmail.endsWith('@gmail.com') ? 'google' : 'email'),
+    userRole: serverUser?.userRole || serverUser?.user_role || fallbackUser?.userRole || 'teacher',
+    institutionType: (serverUser?.institutionType || serverUser?.institution_type || fallbackUser?.institutionType) === 'university' ? 'university' : 'school',
+  };
+
+  if (!isAdmin && candidate.subscriptionStatus === 'active' && isSubscriptionExpired(candidate)) {
+    candidate.subscriptionStatus = 'expired';
+  }
+
+  // 1. تحديث علامة الإلغاء و app_meta في IndexedDB طبقاً للحالة الرسمية من السيرفر
+  if (candidate.subscriptionStatus === 'cancelled') {
+    if (cleanEmail) markAccountCancelled(cleanEmail);
+    try {
+      localStorage.setItem(
+        'gradebook_active_cancelled_user',
+        JSON.stringify({ email: cleanEmail, message: 'تم إلغاء حسابك من قِبل إدارة النظام.' })
+      );
+    } catch {}
+    await saveCancelledEmailsToIndexedDB(getCancelledEmails()).catch(() => {});
+    await saveStatusOverrideToIndexedDB({
+      uid: candidate.uid,
+      email: cleanEmail,
+      status: 'cancelled',
+      subscriptionType: candidate.subscriptionType,
+      expiresAt: candidate.expiresAt,
+    }).catch(() => {});
+  } else if (candidate.subscriptionStatus === 'expired') {
+    if (cleanEmail) unmarkAccountCancelled(cleanEmail);
+    try {
+      const raw = localStorage.getItem('gradebook_active_cancelled_user');
+      if (raw) {
+        const p = JSON.parse(raw);
+        if (!p.email || p.email.trim().toLowerCase() === cleanEmail) {
+          localStorage.removeItem('gradebook_active_cancelled_user');
+        }
+      }
+    } catch {}
+    await saveCancelledEmailsToIndexedDB(getCancelledEmails()).catch(() => {});
+    await saveStatusOverrideToIndexedDB({
+      uid: candidate.uid,
+      email: cleanEmail,
+      status: 'expired',
+      subscriptionType: candidate.subscriptionType,
+      expiresAt: candidate.expiresAt,
+    }).catch(() => {});
+  } else if (candidate.subscriptionStatus === 'active') {
+    if (cleanEmail) unmarkAccountCancelled(cleanEmail);
+    try {
+      const raw = localStorage.getItem('gradebook_active_cancelled_user');
+      if (raw) {
+        const p = JSON.parse(raw);
+        if (!p.email || p.email.trim().toLowerCase() === cleanEmail) {
+          localStorage.removeItem('gradebook_active_cancelled_user');
+        }
+      }
+    } catch {}
+    await saveCancelledEmailsToIndexedDB(getCancelledEmails()).catch(() => {});
+    await saveActivationToIndexedDB({
+      uid: candidate.uid,
+      email: cleanEmail,
+      subscriptionType: candidate.subscriptionType,
+      expiresAt: candidate.expiresAt,
+      activatedAt: candidate.lastActiveAt,
+    }).catch(() => {});
+  }
+
+  // 2. تحديث سجل الحسابات المخزنة storedAccounts لمنع بقاء حالة قديمة
+  try {
+    const accounts = getStoredAccounts();
+    const accIdx = accounts.findIndex(
+      (a) => (candidate.uid && a.uid === candidate.uid) || (cleanEmail && a.email?.trim().toLowerCase() === cleanEmail)
+    );
+    if (accIdx >= 0) {
+      accounts[accIdx] = {
+        ...accounts[accIdx],
+        uid: candidate.uid || accounts[accIdx].uid,
+        subscriptionType: candidate.subscriptionType,
+        subscriptionStatus: candidate.subscriptionStatus,
+        expiresAt: candidate.expiresAt,
+      };
+      saveStoredAccounts(accounts);
+    }
+  } catch {}
+
+  // 3. تحديث ALL_USERS مع إزالة أي تكرارات قديمة لنفس البريد أو المعرف ثم الحفظ في IndexedDB
+  try {
+    const currentAll = getAllUsers().filter((u) => {
+      const uEmail = (u.email || '').trim().toLowerCase();
+      const sameUid = Boolean(candidate.uid && u.uid === candidate.uid);
+      const sameEmail = Boolean(cleanEmail && uEmail === cleanEmail);
+      return !sameUid && !sameEmail;
+    });
+    currentAll.unshift(candidate);
+    saveAllUsers(currentAll);
+    await saveUsersToIndexedDB(currentAll).catch(() => {});
+  } catch {}
+
+  // 4. تحديث CURRENT_USER في LocalStorage إذا كان هو الحساب الحالي أو بديلاً عنه
+  try {
+    const rawCur = localStorage.getItem(AUTH_KEYS.CURRENT_USER);
+    const existingCur: AppUser | null = rawCur ? JSON.parse(rawCur) : null;
+    const isSameCurrent =
+      !existingCur ||
+      (candidate.uid && existingCur.uid === candidate.uid) ||
+      (cleanEmail && existingCur.email?.trim().toLowerCase() === cleanEmail);
+    if (isSameCurrent) {
+      localStorage.setItem(AUTH_KEYS.CURRENT_USER, JSON.stringify(candidate));
+    }
+  } catch {}
+
+  return candidate;
+}
+
 export async function cancelUserAccount(uid: string, email: string): Promise<boolean> {
   if (!email || typeof email !== 'string') return false;
   const cleanEmail = email.trim().toLowerCase();
@@ -1041,10 +1241,59 @@ export async function cancelUserAccount(uid: string, email: string): Promise<boo
     return false;
   }
 
-  // 1. Mark in cancelled registry (localStorage + IndexedDB)
-  markAccountCancelled(cleanEmail);
+  const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+  if (!isOnline) {
+    throw new Error('لا يوجد اتصال بالإنترنت — يتعذر حفظ إلغاء الحساب في السيرفر.');
+  }
 
-  // 2. Record command in IndexedDB
+  // 1. إرسال قرار الإلغاء إلى Cloudflare D1 أولاً والتحقق من نجاح الحفظ
+  const buildBody = () => JSON.stringify({
+    uid,
+    email: cleanEmail,
+    subscriptionStatus: 'cancelled',
+  });
+
+  let headers = await getAuthHeaders();
+  let res = await fetch('/api/users', {
+    method: 'PUT',
+    headers,
+    body: buildBody(),
+  }).catch(() => null);
+
+  if (res && (res.status === 401 || res.status === 403) && auth?.currentUser) {
+    try {
+      const fresh = await auth.currentUser.getIdToken(true);
+      if (fresh) {
+        saveCachedIdToken(fresh);
+        headers = await getAuthHeaders();
+        res = await fetch('/api/users', {
+          method: 'PUT',
+          headers,
+          body: buildBody(),
+        }).catch(() => null);
+      }
+    } catch {}
+  }
+
+  if (!res || !res.ok) {
+    const errData = res ? await res.json().catch(() => null) : null;
+    throw new Error(errData?.error || 'تعذر حفظ إلغاء الحساب في قاعدة البيانات السحابية.');
+  }
+
+  const data = await res.json().catch(() => null);
+  if (data?.message === 'D1 not configured') {
+    throw new Error('قاعدة البيانات المركزية (Cloudflare D1) غير مربوطة على السيرفر.');
+  }
+
+  // 2. بعد التأكد من الحفظ في السيرفر، نحدّث جميع النسخ المحلية و IndexedDB
+  if (data?.user) {
+    await syncUserStoresFromServer(data.user, { uid, email: cleanEmail });
+  } else {
+    markAccountCancelled(cleanEmail);
+    await saveCancelledEmailsToIndexedDB(getCancelledEmails()).catch(() => {});
+    await saveStatusOverrideToIndexedDB({ uid, email: cleanEmail, status: 'cancelled' }).catch(() => {});
+  }
+
   recordAdminCommandInIndexedDB({
     action: 'cancel',
     uid,
@@ -1053,204 +1302,220 @@ export async function cancelUserAccount(uid: string, email: string): Promise<boo
     details: { message: 'تم إلغاء حسابك من قِبل إدارة النظام.' },
   }).catch(() => {});
 
-  // 3. Store active cancelled state for UI blocking
-  try {
-    localStorage.setItem(
-      'gradebook_active_cancelled_user',
-      JSON.stringify({
-        email: cleanEmail,
-        message: 'تم إلغاء حسابك من قِبل إدارة النظام.',
-      })
-    );
-  } catch {}
-
-  // 4. Update in all users cache (localStorage + IndexedDB)
-  const all = getAllUsers();
-  const index = all.findIndex((u) => (u && u.uid === uid) || (u && u.email && u.email.trim().toLowerCase() === cleanEmail));
-  if (index >= 0) {
-    all[index] = {
-      ...all[index],
-      subscriptionStatus: 'cancelled',
-      lastActiveAt: new Date().toISOString(),
-    };
-    saveAllUsers(all);
-  }
-
-  // 5. Update stored account if present
-  const accounts = getStoredAccounts();
-  const accIndex = accounts.findIndex((a) => (a && a.uid === uid) || (a && a.email && a.email.trim().toLowerCase() === cleanEmail));
-  if (accIndex >= 0) {
-    accounts[accIndex].subscriptionStatus = 'cancelled';
-    saveStoredAccounts(accounts);
-  }
-
-  // 6. If this is currently logged in user, update their session
-  const current = getCurrentUser();
-  if (current && (current.uid === uid || current.email.toLowerCase() === cleanEmail)) {
-    saveCurrentUser({
-      ...current,
-      subscriptionStatus: 'cancelled',
-    });
-  }
-
-  // 7. Sync cancellation to Cloudflare D1 (SQLite) and local server
-  try {
-    const headers = await getAuthHeaders();
-    await fetch('/api/users', {
-      method: 'PUT',
-      headers,
-      body: JSON.stringify({
-        uid,
-        email: cleanEmail,
-        subscriptionStatus: 'cancelled',
-      }),
-    });
-    return true;
-  } catch (e) {
-    console.warn('Sync cancellation to D1 failed:', e);
-    return false;
-  }
+  return true;
 }
 
 export async function reactivateUserSubscription(
   uid: string,
   email: string,
-  type: SubscriptionType = 'lifetime'
+  type: SubscriptionType = 'yearly'
 ): Promise<AppUser | null> {
   const cleanEmail = email.trim().toLowerCase();
+  if (!cleanEmail) {
+    throw new Error('البريد الإلكتروني مطلوب لتفعيل الحساب.');
+  }
 
-  // 1. Unmark from cancelled registry (localStorage + IndexedDB)
-  unmarkAccountCancelled(cleanEmail);
+  const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+  if (!isOnline) {
+    throw new Error('لا يوجد اتصال بالإنترنت — يتعذر إتمام التفعيل في قاعدة البيانات المركزية.');
+  }
 
-  // 2. Remove blocked cancelled account flag from localStorage
-  try {
-    const raw = localStorage.getItem('gradebook_active_cancelled_user');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (!parsed.email || parsed.email.toLowerCase() === cleanEmail) {
-        localStorage.removeItem('gradebook_active_cancelled_user');
-      }
-    }
-  } catch {}
-
-  // 3. Update user subscription on server via PUT (strict check: throws on failure)
-  const updated = await updateUserSubscription(uid, type, 'active', cleanEmail);
+  // مهم: لا نحذف علامة الإلغاء محلياً قبل نجاح التفعيل والتحقق منه في السيرفر!
+  // 1. إرسال طلب التفعيل للسيرفر via PUT (مع تأجيل مسح الإلغاء المحلي حتى يكتمل التحقق)
+  const updated = await updateUserSubscription(uid, type, 'active', cleanEmail, true);
   if (!updated) {
     throw new Error('تعذر إرسال طلب التفعيل إلى السيرفر.');
   }
 
-  // 4. التحقق الصارم من السيرفر: بعد PUT ناجح، نعيد GET للتأكد 100% أن subscriptionStatus === 'active' في السيرفر
-  const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
-  if (isOnline) {
-    const headers = await getAuthHeaders();
-    const verifyRes = await fetch(
-      `/api/users?uid=${encodeURIComponent(updated.uid)}&email=${encodeURIComponent(cleanEmail)}`,
-      { cache: 'no-store', headers }
-    ).catch(() => null);
+  // 2. التحقق الصارم من السيرفر: إعادة القراءة عبر GET للتأكد من حفظ الحالة والنوع وتاريخ الانتهاء في D1
+  let headers = await getAuthHeaders();
+  let verifyRes = await fetch(
+    `/api/users?uid=${encodeURIComponent(updated.uid)}&email=${encodeURIComponent(cleanEmail)}`,
+    { cache: 'no-store', headers }
+  ).catch(() => null);
 
-    if (verifyRes && verifyRes.ok) {
-      const data = await verifyRes.json().catch(() => null);
-      const serverUser = data?.user;
-      if (!serverUser || serverUser.subscriptionStatus !== 'active') {
-        throw new Error('لم يتفعل الحساب في قاعدة البيانات المركزية — حالة السيرفر ليست نشطة بعد.');
+  if (verifyRes && (verifyRes.status === 401 || verifyRes.status === 403) && auth?.currentUser) {
+    try {
+      const fresh = await auth.currentUser.getIdToken(true);
+      if (fresh) {
+        saveCachedIdToken(fresh);
+        headers = await getAuthHeaders();
+        verifyRes = await fetch(
+          `/api/users?uid=${encodeURIComponent(updated.uid)}&email=${encodeURIComponent(cleanEmail)}`,
+          { cache: 'no-store', headers }
+        ).catch(() => null);
       }
-      // مزامنة أي بيانات قادمة من السيرفر
-      updated.subscriptionStatus = 'active';
-      updated.subscriptionType = serverUser.subscriptionType || type;
-      updated.expiresAt = serverUser.subscriptionType === 'lifetime' ? undefined : serverUser.expiresAt;
-      saveCurrentUser(updated);
-      upsertUserInRegistry(updated);
-    } else if (verifyRes && !verifyRes.ok) {
-      throw new Error(`فشل التحقق من تفعيل الحساب على السيرفر (رمز الاستجابة: ${verifyRes.status})`);
-    }
+    } catch {}
   }
 
-  // 5. Unmark in stored accounts
-  const accounts = getStoredAccounts();
-  const accIndex = accounts.findIndex((a) => a.uid === uid || a.email.toLowerCase() === cleanEmail);
-  if (accIndex >= 0) {
-    accounts[accIndex].subscriptionStatus = 'active';
-    accounts[accIndex].subscriptionType = type;
-    accounts[accIndex].expiresAt = updated.expiresAt;
-    saveStoredAccounts(accounts);
+  if (!verifyRes) {
+    throw new Error('تعذر التحقق من حفظ التفعيل على السيرفر — يرجى فحص الاتصال والمحاولة مجدداً.');
   }
+
+  if (!verifyRes.ok) {
+    throw new Error(`فشل التحقق من تفعيل الحساب على السيرفر (رمز الاستجابة: ${verifyRes.status})`);
+  }
+
+  const data = await verifyRes.json().catch(() => null);
+  if (data?.message === 'D1 not configured') {
+    throw new Error('قاعدة البيانات المركزية (Cloudflare D1) غير مربوطة على السيرفر — لم يتم تفعيل الحساب للمستخدم.');
+  }
+
+  const serverUser = data?.user;
+  if (!serverUser || serverUser.subscriptionStatus !== 'active') {
+    throw new Error('لم يتفعل الحساب في قاعدة البيانات المركزية — حالة السيرفر ليست نشطة بعد.');
+  }
+
+  // التحقق من تطابق نوع الاشتراك المحفوظ مع ما اختاره الأدمن
+  if (serverUser.subscriptionType !== type) {
+    throw new Error(`نوع الاشتراك المحفوظ في السيرفر (${serverUser.subscriptionType}) لا يطابق المطلوب (${type}).`);
+  }
+
+  // التحقق من صحة وتطابق تاريخ الانتهاء
+  const nowMs = Date.now();
+  if (type === 'yearly') {
+    const expMs = serverUser.expiresAt ? parseSafeTimestamp(serverUser.expiresAt) : 0;
+    if (!expMs || expMs <= nowMs + 300 * 24 * 60 * 60 * 1000) {
+      throw new Error('تاريخ انتهاء الاشتراك السنوي المحفوظ في السيرفر غير صالح أو منقوص.');
+    }
+  } else if (type === 'monthly') {
+    const expMs = serverUser.expiresAt ? parseSafeTimestamp(serverUser.expiresAt) : 0;
+    if (!expMs || expMs <= nowMs + 20 * 24 * 60 * 60 * 1000) {
+      throw new Error('تاريخ انتهاء الاشتراك الشهري المحفوظ في السيرفر غير صالح أو منقوص.');
+    }
+  } else if (type === 'lifetime' && serverUser.expiresAt) {
+    throw new Error('الاشتراك الدائم لا يجب أن يحتوي على تاريخ انتهاء في السيرفر.');
+  }
+
+  // 3. الآن فقط — بعد نجاح الحفظ والتحقق الكامل من السيرفر — نحذف علامات الإلغاء ونحدّث كافة المخازن المحلية و IndexedDB
+  const syncedUser = await syncUserStoresFromServer(serverUser, updated);
 
   // Record command in IndexedDB
   recordAdminCommandInIndexedDB({
     action: 'reactivate',
-    uid: updated.uid,
+    uid: syncedUser.uid,
     email: cleanEmail,
     timestamp: new Date().toISOString(),
-    details: { type },
+    details: { type: syncedUser.subscriptionType, expiresAt: syncedUser.expiresAt },
   }).catch(() => {});
 
-  return updated;
+  return syncedUser;
 }
 
 export async function checkLiveSubscriptionByEmail(
   email: string
-): Promise<{ active: boolean; user?: AppUser }> {
+): Promise<{
+  active: boolean;
+  user?: AppUser;
+  status?: SubscriptionStatus;
+  message?: string;
+  needsRelogin?: boolean;
+  offline?: boolean;
+}> {
   const cleanEmail = email.trim().toLowerCase();
   try {
-    const headers = await getAuthHeaders();
-    const res = await fetch(`/api/users?email=${encodeURIComponent(cleanEmail)}`, {
+    let headers = await getAuthHeaders();
+    let res = await fetch(`/api/users?email=${encodeURIComponent(cleanEmail)}`, {
       cache: 'no-store',
       headers,
     }).catch(() => null);
 
-    if (res && res.ok) {
-      const data = await res.json().catch(() => null);
-      if (data && data.success && data.user) {
-        const sUser = data.user;
-        const subStatus = sUser.subscriptionStatus || 'active';
-        if (subStatus === 'active') {
-          unmarkAccountCancelled(cleanEmail);
-          try {
-            localStorage.removeItem('gradebook_active_cancelled_user');
-          } catch {}
-          const activeUser: AppUser = {
-            uid: sUser.uid,
-            email: sUser.email,
-            displayName: sUser.displayName || sUser.email,
-            isAdmin: Boolean(sUser.isAdmin),
-            isTrial: Boolean(sUser.isTrial),
-            subscriptionType: sUser.subscriptionType || 'monthly',
-            subscriptionStatus: 'active',
-            expiresAt: sUser.expiresAt,
-            lastActiveAt: new Date().toISOString(),
-            createdAt: sUser.createdAt || new Date().toISOString(),
-            authProvider: sUser.authProvider || 'email',
-          };
-          // (1) localStorage للجلسة الحالية
-          saveCurrentUser(activeUser);
-          // (2) سجل المستخدمين
-          upsertUserInRegistry(activeUser);
-          const allUsers = getAllUsers();
-          saveAllUsers(allUsers);
-          // (3) IndexedDB مع await
-          try {
-            await saveUsersToIndexedDB(allUsers);
-            await saveCancelledEmailsToIndexedDB(getCancelledEmails());
-          } catch {}
-          return { active: true, user: activeUser };
+    if (res && res.status === 401 && auth?.currentUser) {
+      try {
+        const fresh = await auth.currentUser.getIdToken(true);
+        if (fresh) {
+          saveCachedIdToken(fresh);
+          headers = await getAuthHeaders();
+          res = await fetch(`/api/users?email=${encodeURIComponent(cleanEmail)}`, {
+            cache: 'no-store',
+            headers,
+          }).catch(() => null);
         }
+      } catch {}
+    }
+
+    if (res && res.status === 404 && auth?.currentUser) {
+      const fbEmail = (auth.currentUser.email || '').trim().toLowerCase();
+      if (fbEmail === cleanEmail) {
+        try {
+          const postRes = await fetch('/api/users', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              uid: auth.currentUser.uid,
+              email: cleanEmail,
+              displayName: auth.currentUser.displayName || `أ. ${cleanEmail.split('@')[0]}`,
+            }),
+          }).catch(() => null);
+          if (postRes && postRes.ok) {
+            res = await fetch(`/api/users?email=${encodeURIComponent(cleanEmail)}`, {
+              cache: 'no-store',
+              headers,
+            }).catch(() => null);
+          }
+        } catch {}
       }
     }
 
-    const all = getAllUsers();
-    const local = all.find((u) => u.email.toLowerCase() === cleanEmail);
-    if (local && local.subscriptionStatus === 'active') {
-      unmarkAccountCancelled(cleanEmail);
-      try {
-        localStorage.removeItem('gradebook_active_cancelled_user');
-      } catch {}
-      saveCurrentUser(local);
-      return { active: true, user: local };
+    if (!res) {
+      return {
+        active: false,
+        offline: true,
+        message: 'تعذر الاتصال بالسيرفر حالياً. تأكد من اتصال الإنترنت ثم أعد المحاولة.',
+      };
     }
 
-    return { active: false };
+    if (res.status === 401) {
+      return {
+        active: false,
+        needsRelogin: true,
+        message: 'انتهت جلسة تسجيل الدخول على هذا الجهاز. يرجى الضغط على «تسجيل الدخول بحساب آخر» ثم تسجيل الدخول بنفس بريدك لجلب التفعيل فوراً.',
+      };
+    }
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => null);
+      return {
+        active: false,
+        message: errData?.error || `تعذر التحقق من السيرفر (${res.status}).`,
+      };
+    }
+
+    const data = await res.json().catch(() => null);
+    if (!data || data.message === 'D1 not configured') {
+      return {
+        active: false,
+        message: 'قاعدة البيانات السحابية غير متاحة حالياً.',
+      };
+    }
+
+    if (data.success && data.user) {
+      const synced = await syncUserStoresFromServer(data.user);
+      if (synced.subscriptionStatus === 'active' && !isSubscriptionExpired(synced)) {
+        return { active: true, user: synced, status: 'active' };
+      }
+      return {
+        active: false,
+        user: synced,
+        status: synced.subscriptionStatus,
+        message:
+          synced.subscriptionStatus === 'cancelled'
+            ? 'ما زال الحساب ملغياً في قاعدة البيانات المركزية. يرجى التواصل مع الإدارة.'
+            : 'ما زال الحساب غير مفعل في قاعدة البيانات المركزية.',
+      };
+    }
+
+    // لا نسمح مطلقاً بالرجوع إلى بيانات محلية قديمة بحالة Active عند فشل أو رفض السيرفر!
+    return {
+      active: false,
+      message: 'لم يتم العثور على اشتراك نشط في السيرفر.',
+    };
   } catch {
-    return { active: false };
+    return {
+      active: false,
+      offline: true,
+      message: 'تعذر الاتصال بالسيرفر حالياً. تأكد من اتصال الإنترنت.',
+    };
   }
 }
 
@@ -1258,11 +1523,12 @@ export async function updateUserSubscription(
   uid: string,
   type: SubscriptionType,
   status: SubscriptionStatus = 'active',
-  emailFallback?: string
+  emailFallback?: string,
+  deferLocalActivationSync = false
 ): Promise<AppUser | null> {
   const all = getAllUsers();
   const cleanFallback = (emailFallback || '').trim().toLowerCase();
-  let index = all.findIndex((u) => (uid && u.uid === uid) || (cleanFallback && u.email.toLowerCase() === cleanFallback));
+  const index = all.findIndex((u) => (uid && u.uid === uid) || (cleanFallback && u.email.toLowerCase() === cleanFallback));
 
   const now = new Date();
   let expiresAt: string | undefined = undefined;
@@ -1289,98 +1555,150 @@ export async function updateUserSubscription(
 
   // 1. مزامنة التحديث مباشرة مع السيرفر السحابي (Cloudflare D1) مع التحقق الصارم من res.ok وعدم ابتلاع الأخطاء
   const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
-  if (isOnline) {
-    try {
-      const headers = await getAuthHeaders();
-      const res = await fetch('/api/users', {
-        method: 'PUT',
-        headers,
-        body: JSON.stringify({
-          uid: targetUid,
-          email: userEmail,
-          subscriptionType: type,
-          subscriptionStatus: status,
-          // عند مدى الحياة ونشط، يجب أن يكون null في السيرفر
-          expiresAt: type === 'lifetime' && status === 'active' ? null : (expiresAt || null),
-        }),
-      });
-
-      if (!res.ok) {
-        let errorMsg = 'لم يتم الحفظ في قاعدة البيانات السحابية — أعد المحاولة';
-        try {
-          const errData = await res.json();
-          if (errData && errData.error) {
-            errorMsg = errData.error;
-          }
-        } catch {}
-        if (res.status === 403) {
-          errorMsg = 'مرفوض: ليس لديك صلاحية المشرف العام (أدمن) لتعديل الاشتراكات في السيرفر.';
-        } else if (res.status === 400) {
-          errorMsg = `خطأ في بيانات التفعيل: ${errorMsg}`;
-        }
-        throw new Error(errorMsg);
-      }
-    } catch (e: any) {
-      if (e.message && (e.message.includes('مرفوض') || e.message.includes('لم يتم الحفظ') || e.message.includes('خطأ في بيانات'))) {
-        throw e;
-      }
-      throw new Error(`لم يتم الحفظ في قاعدة البيانات السحابية — أعد المحاولة (${e.message || 'خطأ في الاتصال'})`);
-    }
+  if (!isOnline) {
+    throw new Error('لا يوجد اتصال بالإنترنت — يتعذر حفظ التفعيل في قاعدة البيانات السحابية.');
   }
 
-  // 2. تحديث الحالة محلياً فقط بعد نجاح الحفظ في السيرفر (أو في وضع أوفلاين مع تخزين الأمر)
+  let serverReturnedUser: any = null;
+  let serverReturnedUid: string | undefined;
+  let serverReturnedExpiresAt: string | undefined;
+  try {
+    const buildBody = () => JSON.stringify({
+      uid: targetUid,
+      email: userEmail,
+      subscriptionType: type,
+      subscriptionStatus: status,
+      // عند مدى الحياة ونشط، يجب أن يكون null في السيرفر
+      expiresAt: type === 'lifetime' && status === 'active' ? null : (expiresAt || null),
+    });
+
+    let headers = await getAuthHeaders();
+    let res = await fetch('/api/users', {
+      method: 'PUT',
+      headers,
+      body: buildBody(),
+    });
+
+    if ((res.status === 401 || res.status === 403) && auth?.currentUser) {
+      try {
+        const fresh = await auth.currentUser.getIdToken(true);
+        if (fresh) {
+          saveCachedIdToken(fresh);
+          headers = await getAuthHeaders();
+          res = await fetch('/api/users', {
+            method: 'PUT',
+            headers,
+            body: buildBody(),
+          });
+        }
+      } catch {}
+    }
+
+    if (!res.ok) {
+      let errorMsg = 'لم يتم الحفظ في قاعدة البيانات السحابية — أعد المحاولة';
+      try {
+        const errData = await res.json();
+        if (errData && errData.error) {
+          errorMsg = errData.error;
+        }
+      } catch {}
+      if (res.status === 401) {
+        errorMsg = 'انتهت جلسة المشرف — يرجى تحديث الصفحة أو إعادة تسجيل الدخول بحساب المشرف.';
+      } else if (res.status === 403) {
+        errorMsg = 'مرفوض: ليس لديك صلاحية المشرف العام (أدمن) لتعديل الاشتراكات في السيرفر.';
+      } else if (res.status === 400) {
+        errorMsg = `خطأ في بيانات التفعيل: ${errorMsg}`;
+      }
+      throw new Error(errorMsg);
+    }
+
+    const putData = await res.json().catch(() => null);
+    if (putData?.message === 'D1 not configured') {
+      throw new Error('قاعدة البيانات المركزية (Cloudflare D1) غير مربوطة على الخادم — لم يتم حفظ التفعيل.');
+    }
+    if (putData?.user) {
+      serverReturnedUser = putData.user;
+      serverReturnedUid = putData.user.uid;
+      if (putData.user.expiresAt) {
+        serverReturnedExpiresAt = putData.user.expiresAt;
+      }
+    }
+  } catch (e: any) {
+    if (
+      e.message &&
+      (e.message.includes('مرفوض') ||
+        e.message.includes('لم يتم الحفظ') ||
+        e.message.includes('خطأ في بيانات') ||
+        e.message.includes('انتهت جلسة') ||
+        e.message.includes('قاعدة البيانات المركزية'))
+    ) {
+      throw e;
+    }
+    throw new Error(`لم يتم الحفظ في قاعدة البيانات السحابية — أعد المحاولة (${e.message || 'خطأ في الاتصال'})`);
+  }
+
+  const resolvedUid = serverReturnedUid || targetUid;
+  const resolvedExpiresAt = type === 'lifetime' && status === 'active'
+    ? undefined
+    : (serverReturnedExpiresAt || expiresAt);
+
+  const existingBase = index >= 0 ? all[index] : undefined;
+  const updated: AppUser = {
+    ...(existingBase || {
+      createdAt: now.toISOString(),
+      authProvider: 'email' as const,
+      displayName: `أ. ${userEmail.split('@')[0]}`,
+      isAdmin: isAdminUser(userEmail),
+    }),
+    uid: resolvedUid,
+    email: userEmail,
+    isTrial: type === 'trial',
+    expiresAt: resolvedExpiresAt,
+    lastActiveAt: now.toISOString(),
+    subscriptionType: type,
+    subscriptionStatus: status,
+  };
+
+  if (deferLocalActivationSync) {
+    return updated;
+  }
+
+  // 2. تحديث كافة المخازن المحلية و IndexedDB بعد نجاح السيرفر
+  if (serverReturnedUser) {
+    return await syncUserStoresFromServer(serverReturnedUser, updated);
+  }
+
   if (status === 'cancelled') {
     markAccountCancelled(userEmail);
+    await saveStatusOverrideToIndexedDB({ uid: resolvedUid, email: userEmail, status: 'cancelled', subscriptionType: type, expiresAt: resolvedExpiresAt }).catch(() => {});
+  } else if (status === 'expired') {
+    await saveStatusOverrideToIndexedDB({ uid: resolvedUid, email: userEmail, status: 'expired', subscriptionType: type, expiresAt: resolvedExpiresAt }).catch(() => {});
   } else if (status === 'active') {
     unmarkAccountCancelled(userEmail);
     try {
       localStorage.removeItem('gradebook_active_cancelled_user');
     } catch {}
+    await saveActivationToIndexedDB({ uid: resolvedUid, email: userEmail, subscriptionType: type, expiresAt: resolvedExpiresAt }).catch(() => {});
   }
 
-  let updated: AppUser;
   if (index >= 0) {
-    updated = {
-      ...all[index],
-      uid: targetUid,
-      subscriptionType: type,
-      subscriptionStatus: status,
-      expiresAt: type === 'lifetime' && status === 'active' ? undefined : expiresAt,
-      lastActiveAt: now.toISOString(),
-    };
     all[index] = updated;
   } else {
-    updated = {
-      uid: targetUid,
-      email: userEmail,
-      displayName: `أ. ${userEmail.split('@')[0]}`,
-      isTrial: type === 'trial',
-      createdAt: now.toISOString(),
-      expiresAt: type === 'lifetime' && status === 'active' ? undefined : expiresAt,
-      lastActiveAt: now.toISOString(),
-      subscriptionType: type,
-      subscriptionStatus: status,
-      authProvider: 'email',
-      isAdmin: isAdminUser(userEmail),
-    };
     all.push(updated);
   }
-
   saveAllUsers(all);
 
-  // If this is current user, update current user too
   const current = getCurrentUser();
-  if (current && (current.uid === targetUid || current.email.toLowerCase() === userEmail.toLowerCase())) {
+  if (current && (current.uid === resolvedUid || current.email.toLowerCase() === userEmail.toLowerCase())) {
     saveCurrentUser(updated);
   }
 
-  // Record command in IndexedDB
   recordAdminCommandInIndexedDB({
     action: status === 'cancelled' ? 'cancel' : status === 'active' ? 'reactivate' : 'update_plan',
     uid: updated.uid,
     email: updated.email,
     timestamp: now.toISOString(),
-    details: { type, status, expiresAt },
+    details: { type, status, expiresAt: resolvedExpiresAt },
   }).catch(() => {});
 
   return updated;
@@ -1447,7 +1765,8 @@ export async function verifyUserWithCloudflareD1(
     return { status: 'active', user };
   }
 
-  // الحساب التجريبي محلي بالكامل (بدون جلسة Firebase أو حساب مسجل) ولا يُتحقق منه من السيرفر
+  // الحساب التجريبي المجهول بدون حساب Firebase هو فقط المحلي بالكامل؛
+  // أما المسجلون عبر Google أو Email فيجب التحقق منهم دائماً من السيرفر حتى لو كانوا في فترة التجربة
   if (user.authProvider === 'trial' || user.uid?.startsWith('trial-') || user.email?.includes('@jok.nom')) {
     return { status: 'active', user };
   }
@@ -1455,11 +1774,25 @@ export async function verifyUserWithCloudflareD1(
   try {
     const cleanUid = encodeURIComponent(user.uid);
     const cleanEmail = encodeURIComponent(user.email);
-    const headers = await getAuthHeaders();
-    const res = await fetch(`/api/users?uid=${cleanUid}&email=${cleanEmail}`, {
+    let headers = await getAuthHeaders();
+    let res = await fetch(`/api/users?uid=${cleanUid}&email=${cleanEmail}`, {
       cache: 'no-store',
       headers,
     });
+
+    if (res.status === 401 && auth?.currentUser) {
+      try {
+        const fresh = await auth.currentUser.getIdToken(true);
+        if (fresh) {
+          saveCachedIdToken(fresh);
+          headers = await getAuthHeaders();
+          res = await fetch(`/api/users?uid=${cleanUid}&email=${cleanEmail}`, {
+            cache: 'no-store',
+            headers,
+          });
+        }
+      } catch {}
+    }
 
     if (!localStorage.getItem(AUTH_KEYS.CURRENT_USER)) {
       return { status: 'logged_out' };
@@ -1485,43 +1818,26 @@ export async function verifyUserWithCloudflareD1(
 
     if (res.ok) {
       const data = await res.json().catch(() => null);
-      if (data && data.success && data.user) {
-        const serverUser = data.user;
-        const subStatus = serverUser.subscriptionStatus || 'active';
+      if (data && data.message !== 'D1 not configured' && data.success && data.user) {
+        const synced = await syncUserStoresFromServer(data.user, user);
 
-        if (subStatus === 'cancelled' || subStatus === 'suspended') {
-          markAccountCancelled(user.email);
-          const cancelledUser: AppUser = { ...user, subscriptionStatus: 'cancelled' };
-          saveCurrentUser(cancelledUser);
+        if (synced.subscriptionStatus === 'cancelled') {
           return {
             status: 'cancelled_or_deleted',
+            user: synced,
             message: 'تم إلغاء وتجميد حسابك من قِبل إدارة النظام.',
           };
         }
 
-        if (subStatus === 'expired') {
-          const expiredUser: AppUser = { ...user, subscriptionStatus: 'expired' };
-          saveCurrentUser(expiredUser);
+        if (synced.subscriptionStatus === 'expired' || isSubscriptionExpired(synced)) {
           return {
             status: 'expired',
-            user: expiredUser,
+            user: synced,
             message: 'انتهت صلاحية اشتراكك، يرجى التواصل مع الإدارة للتجديد.',
           };
         }
 
-        const activeUser: AppUser = {
-          ...user,
-          subscriptionType: serverUser.subscriptionType || user.subscriptionType,
-          subscriptionStatus: 'active',
-          expiresAt: serverUser.subscriptionType === 'lifetime' ? undefined : serverUser.expiresAt,
-          isAdmin: Boolean(serverUser.isAdmin || user.isAdmin),
-          lastActiveAt: new Date().toISOString(),
-          userRole: serverUser.userRole || serverUser.user_role || user.userRole,
-        };
-        saveCurrentUser(activeUser);
-        upsertUserInRegistry(activeUser);
-        saveUsersToIndexedDB(getAllUsers()).catch(() => {});
-        return { status: 'active', user: activeUser };
+        return { status: 'active', user: synced };
       }
     }
 
@@ -1571,11 +1887,30 @@ export function resetTrialExtractionsCount(): void {
 
 export function isSubscriptionExpired(user: AppUser): boolean {
   if (user.isAdmin) return false;
-  // المستخدمون المشتركون فعلاً (المشتركون القدامى والجدد الذين تم تفعيلهم من قبل الأدمن) لا تنتهي صلاحيتهم أبداً
-  if (user.subscriptionStatus === 'active') return false;
+
+  // 1. الحساب الملغي أو المنتهي صراحة
   if (user.subscriptionStatus === 'expired' || user.subscriptionStatus === 'cancelled') return true;
 
-  // للمستخدمين الجدد غير المفعلين من قِبل الإدارة: فترة تجريبية مجانية لمدة 3 أيام من تاريخ التسجيل
+  // 2. اشتراك دائم مدى الحياة ونشط (لا ينتهي أبداً ومحصّن ضد أي تواريخ قديمة للمشتركين السابقين)
+  if (user.subscriptionType === 'lifetime' && user.subscriptionStatus === 'active') {
+    return false;
+  }
+
+  // 3. فحص تاريخ الانتهاء الصريح للاشتراكات المحددة بمدة (سنوي 365 يوماً، أو شهري 30 يوماً):
+  // إذا تجاوز تاريخ الجهاز تاريخ انتهاء الاشتراك، ينتهي الاشتراك فوراً حتى بدون إنترنت (Offline)
+  if (user.expiresAt && (user.subscriptionType === 'yearly' || user.subscriptionType === 'monthly' || user.isTrial || user.subscriptionStatus === 'pending')) {
+    const expiresMs = parseSafeTimestamp(user.expiresAt);
+    if (expiresMs > 0 && Date.now() >= expiresMs) {
+      return true;
+    }
+  }
+
+  // 4. إذا كان الحساب نشطاً وتاريخ الانتهاء السنوي لم يأتِ بعد (أو اشتراك مفعل سابقاً)
+  if (user.subscriptionStatus === 'active') {
+    return false;
+  }
+
+  // 5. للمستخدمين الجدد غير المفعلين من قِبل الإدارة: فترة تجريبية مجانية لمدة 48 ساعة من تاريخ التسجيل
   if (user.subscriptionStatus === 'pending' || user.isTrial) {
     const createdMs = parseSafeTimestamp(user.createdAt);
     if (createdMs > 0 && Date.now() - createdMs >= TRIAL_DURATION_MS) {
@@ -1583,15 +1918,7 @@ export function isSubscriptionExpired(user: AppUser): boolean {
     }
   }
 
-  // فحص تاريخ الانتهاء الصريح
-  if (user.expiresAt) {
-    const expiresMs = parseSafeTimestamp(user.expiresAt);
-    if (expiresMs > 0 && Date.now() >= expiresMs) {
-      return true;
-    }
-  }
-
-  // حماية ضد التلاعب بساعة وتاريخ الجهاز في وضع الـ offline:
+  // 6. حماية ضد التلاعب بساعة وتاريخ الجهاز في وضع الـ offline:
   // إذا تم إرجاع ساعة الجهاز للخلف بأكثر من 15 دقيقة عن آخر وقت نشاط مسجل، يُقفل النظام
   if (user.lastActiveAt) {
     const lastActiveMs = parseSafeTimestamp(user.lastActiveAt);
@@ -1605,19 +1932,40 @@ export function isSubscriptionExpired(user: AppUser): boolean {
 
 export async function checkLiveSubscription(
   user: AppUser
-): Promise<{ active: boolean; updatedUser?: AppUser; message?: string }> {
+): Promise<{
+  active: boolean;
+  updatedUser?: AppUser;
+  message?: string;
+  needsRelogin?: boolean;
+  emailNotVerified?: boolean;
+}> {
   const cleanUid = (user.uid || '').trim();
   const cleanEmail = (user.email || '').trim().toLowerCase();
 
   try {
-    const headers = await getAuthHeaders();
+    let headers = await getAuthHeaders();
     let res = await fetch(
       `/api/users?uid=${encodeURIComponent(cleanUid)}&email=${encodeURIComponent(cleanEmail)}`,
       { cache: 'no-store', headers }
     ).catch(() => null);
 
+    // إذا انتهت صلاحية التوكن (401)، نجدده قسراً من Firebase إن وجدت جلسة نشطة ونعيد المحاولة
+    if (res && res.status === 401 && auth?.currentUser) {
+      try {
+        const fresh = await auth.currentUser.getIdToken(true);
+        if (fresh) {
+          saveCachedIdToken(fresh);
+          headers = await getAuthHeaders();
+          res = await fetch(
+            `/api/users?uid=${encodeURIComponent(cleanUid)}&email=${encodeURIComponent(cleanEmail)}`,
+            { cache: 'no-store', headers }
+          ).catch(() => null);
+        }
+      } catch {}
+    }
+
     // إذا كانت الاستجابة 404: 404 تعني "لا يوجد سجل في D1" وليس "تم الإلغاء".
-    // لا يتم حذف الحساب نهائياً، بل نحاول تسجيله عبر POST /api/users ثم إعادة المحاولة
+    // نحاول تسجيله عبر POST /api/users ثم إعادة المحاولة
     if (res && res.status === 404) {
       try {
         const postRes = await fetch('/api/users', {
@@ -1632,138 +1980,98 @@ export async function checkLiveSubscription(
         }).catch(() => null);
 
         if (postRes && postRes.ok) {
-          // إعادة المحاولة GET بعد التسجيل
           res = await fetch(
             `/api/users?uid=${encodeURIComponent(cleanUid)}&email=${encodeURIComponent(cleanEmail)}`,
             { cache: 'no-store', headers }
           ).catch(() => null);
-        } else {
-          // في حال فشل POST: الحفاظ على بيانات المستخدم المحلية والجلسة سليمة
-          return {
-            active: false,
-            updatedUser: user,
-            message: 'الحساب غير مسجّل في النظام، تواصل مع الإدارة للتفعيل.',
-          };
+        } else if (postRes && postRes.status === 403) {
+          const errBody = await postRes.json().catch(() => null);
+          if (errBody?.code === 'EMAIL_NOT_VERIFIED') {
+            return {
+              active: false,
+              updatedUser: user,
+              emailNotVerified: true,
+              message: 'حسابك بانتظار تأكيد البريد الإلكتروني عبر الرابط المرسل إلى بريدك، ثم تسجيل الدخول مجدداً.',
+            };
+          }
         }
-      } catch {
+      } catch {}
+    }
+
+    if (res && res.status === 401) {
+      return {
+        active: false,
+        updatedUser: user,
+        needsRelogin: true,
+        message: 'انتهت جلسة تسجيل الدخول على هذا الجهاز. يرجى الضغط على «تسجيل الخروج والتبديل» بالأسفل ثم إعادة تسجيل الدخول بنفس حسابك ليتم جلب التفعيل فوراً.',
+      };
+    }
+
+    if (res && res.status === 403) {
+      const errBody = await res.json().catch(() => null);
+      if (errBody?.code === 'EMAIL_NOT_VERIFIED') {
         return {
           active: false,
           updatedUser: user,
-          message: 'الحساب غير مسجّل في النظام، تواصل مع الإدارة للتفعيل.',
+          emailNotVerified: true,
+          message: 'حسابك بانتظار تأكيد البريد الإلكتروني عبر الرابط المرسل لبريدك، أو يمكنك تسجيل الدخول بحساب Google.',
         };
       }
+      return {
+        active: false,
+        updatedUser: user,
+        message: errBody?.error || 'تعذر التحقق من صلاحية الحساب في السيرفر.',
+      };
     }
 
     // عند فشل الشبكة أو تعذر الاتصال بالسيرفر (offline):
     if (!res || !res.ok) {
-      // إذا كانت الحالة المحلية 'expired' أو 'cancelled' نرجع active: false مع رسالة واضحة دون مسح أي شيء
-      if (user.subscriptionStatus === 'expired' || user.subscriptionStatus === 'cancelled' || isAccountCancelled(user.email)) {
-        return {
-          active: false,
-          updatedUser: user,
-          message: 'لا يوجد اتصال بالإنترنت للتحقق من حالة اشتراكك، يرجى الاتصال بالإنترنت والمحاولة مجدداً.',
-        };
-      }
-      // إذا كان الحساب نشطاً محلياً، نعتمد على التحقق المحلي للأوفلاين
-      const expired = isSubscriptionExpired(user);
       return {
-        active: !expired,
+        active: false,
         updatedUser: user,
-        message: expired
-          ? 'انتهت صلاحية الاشتراك محلياً. يرجى الاتصال بالإنترنت لتجديد الاشتراك.'
-          : 'وضع العمل بدون إنترنت (الاشتراك نشط محلياً).',
+        message: 'تعذر الاتصال بقاعدة البيانات السحابية حالياً. يرجى التأكد من اتصال الإنترنت ثم المحاولة مرة أخرى.',
       };
     }
 
     const data = await res.json().catch(() => null);
-    if (data && data.success && data.user) {
-      const serverUser = data.user;
-      const subStatus = serverUser.subscriptionStatus || 'active';
-      const isNowActive = subStatus === 'active';
+    if (data && data.message !== 'D1 not configured' && data.success && data.user) {
+      const updatedUser = await syncUserStoresFromServer(data.user, user);
 
-      if (subStatus === 'cancelled' || subStatus === 'suspended') {
-        markAccountCancelled(cleanEmail);
-        const cancelledUser: AppUser = {
-          ...user,
-          subscriptionStatus: 'cancelled',
-          lastActiveAt: new Date().toISOString(),
-        };
-        saveCurrentUser(cancelledUser);
-        upsertUserInRegistry(cancelledUser);
+      if (updatedUser.subscriptionStatus === 'cancelled') {
         return {
           active: false,
-          updatedUser: cancelledUser,
+          updatedUser,
           message: 'تم إلغاء حسابك من قِبل إدارة النظام. يرجى التواصل مع الإدارة.',
         };
       }
 
-      unmarkAccountCancelled(cleanEmail);
-      try {
-        localStorage.removeItem('gradebook_active_cancelled_user');
-      } catch {}
-
-      const updatedUser: AppUser = {
-        ...user,
-        subscriptionType: serverUser.subscriptionType || user.subscriptionType,
-        subscriptionStatus: isNowActive ? 'active' : subStatus,
-        expiresAt: serverUser.subscriptionType === 'lifetime' ? undefined : serverUser.expiresAt,
-        isAdmin: Boolean(serverUser.isAdmin || user.isAdmin),
-        lastActiveAt: new Date().toISOString(),
-        userRole: serverUser.userRole || serverUser.user_role || user.userRole,
-        institutionType: serverUser.institutionType || serverUser.institution_type || user.institutionType || 'school',
-      };
-
-      // عند استلام active من السيرفر: التحديث يشمل الأماكن الثلاثة كلها بالترتيب وبشكل مؤكد
-      if (isNowActive) {
-        // (1) localStorage لجلسة المستخدم الحالية عبر saveCurrentUser
-        saveCurrentUser(updatedUser);
-
-        // (2) سجل المستخدمين المحلي عبر upsertUserInRegistry و saveAllUsers
-        upsertUserInRegistry(updatedUser);
-        const allUsers = getAllUsers();
-        saveAllUsers(allUsers);
-
-        // (3) IndexedDB عبر saveUsersToIndexedDB(allUsers) مع await لضمان الكتابة الدائمة قبل العودة
-        try {
-          await saveUsersToIndexedDB(allUsers);
-          await saveCancelledEmailsToIndexedDB(getCancelledEmails());
-        } catch (idbErr) {
-          console.warn('Error awaiting IndexedDB sync in checkLiveSubscription:', idbErr);
-        }
-      } else {
-        saveCurrentUser(updatedUser);
-        upsertUserInRegistry(updatedUser);
-        saveUsersToIndexedDB(getAllUsers()).catch(() => {});
+      if (updatedUser.subscriptionStatus === 'active' && !isSubscriptionExpired(updatedUser)) {
+        return {
+          active: true,
+          updatedUser,
+          message: 'تم تفعيل الحساب بنجاح من قِبل الإدارة!',
+        };
       }
 
       return {
-        active: isNowActive,
-        updatedUser,
-        message: isNowActive
-          ? 'تم تفعيل الحساب بنجاح من قِبل الإدارة!'
-          : 'الحساب بانتظار تفعيل الإدارة.',
-      };
-    }
-
-    if (user.subscriptionStatus === 'expired' || user.subscriptionStatus === 'cancelled') {
-      return {
         active: false,
-        updatedUser: user,
-        message: 'الحساب بانتظار تفعيل الإدارة.',
+        updatedUser,
+        message: 'لم يتم تفعيل الحساب بعد من قِبل الإدارة في قاعدة البيانات. يرجى التواصل عبر الواتساب لتأكيد الدفع والتفعيل الفوري.',
       };
     }
 
-    return { active: !isSubscriptionExpired(user), updatedUser: user };
+    return {
+      active: false,
+      updatedUser: user,
+      message: 'لم يتم العثور على اشتراك نشط في قاعدة البيانات السحابية. تواصل مع الإدارة لتفعيل حسابك.',
+    };
   } catch (err) {
     console.warn('Subscription check error:', err);
-    if (user.subscriptionStatus === 'expired' || user.subscriptionStatus === 'cancelled' || isAccountCancelled(user.email)) {
-      return {
-        active: false,
-        updatedUser: user,
-        message: 'لا يوجد اتصال بالإنترنت للتحقق من حالة اشتراكك، يرجى الاتصال بالإنترنت والمحاولة مجدداً.',
-      };
-    }
-    return { active: !isSubscriptionExpired(user), updatedUser: user };
+    return {
+      active: false,
+      updatedUser: user,
+      message: 'تعذر الاتصال بقاعدة البيانات السحابية. يرجى التأكد من اتصال الإنترنت والمحاولة مرة أخرى.',
+    };
   }
 }
 
@@ -2195,11 +2503,25 @@ export async function reconcileCurrentUserWithServer(): Promise<AppUser | null> 
   const cleanEmail = cur.email.trim().toLowerCase();
 
   try {
-    const headers = await getAuthHeaders();
+    let headers = await getAuthHeaders();
     let res = await fetch(
       `/api/users?uid=${encodeURIComponent(cleanUid)}&email=${encodeURIComponent(cleanEmail)}`,
       { cache: 'no-store', headers }
     ).catch(() => null);
+
+    if (res && res.status === 401 && auth?.currentUser) {
+      try {
+        const fresh = await auth.currentUser.getIdToken(true);
+        if (fresh) {
+          saveCachedIdToken(fresh);
+          headers = await getAuthHeaders();
+          res = await fetch(
+            `/api/users?uid=${encodeURIComponent(cleanUid)}&email=${encodeURIComponent(cleanEmail)}`,
+            { cache: 'no-store', headers }
+          ).catch(() => null);
+        }
+      } catch {}
+    }
 
     if (res && res.status === 404) {
       // المستخدم غير مسجل في D1 بعد: تسجيله فوراً مع إعادة المحاولة
@@ -2214,38 +2536,8 @@ export async function reconcileCurrentUserWithServer(): Promise<AppUser | null> 
 
     if (res && res.ok) {
       const data = await res.json().catch(() => null);
-      if (data && data.success && data.user) {
-        const s = data.user;
-        const isServerActive = s.subscriptionStatus === 'active';
-        const isServerLifetime = s.subscriptionType === 'lifetime';
-
-        if (s.subscriptionStatus === 'cancelled' || s.subscriptionStatus === 'suspended') {
-          markAccountCancelled(cleanEmail);
-          const cancelledUser: AppUser = { ...cur, subscriptionStatus: 'cancelled' };
-          saveCurrentUser(cancelledUser);
-          return cancelledUser;
-        }
-
-        unmarkAccountCancelled(cleanEmail);
-        try {
-          localStorage.removeItem('gradebook_active_cancelled_user');
-        } catch {}
-
-        const updated: AppUser = {
-          ...cur,
-          displayName: s.displayName || cur.displayName,
-          subscriptionType: s.subscriptionType || cur.subscriptionType,
-          subscriptionStatus: isServerActive ? 'active' : (s.subscriptionStatus || cur.subscriptionStatus),
-          expiresAt: isServerLifetime ? undefined : s.expiresAt,
-          isAdmin: Boolean(s.isAdmin || cur.isAdmin),
-          lastActiveAt: new Date().toISOString(),
-          userRole: s.userRole !== undefined ? s.userRole : cur.userRole,
-          institutionType: (s.institutionType || s.institution_type || cur.institutionType) === 'university' ? 'university' : 'school',
-        };
-        saveCurrentUser(updated);
-        upsertUserInRegistry(updated);
-        saveUsersToIndexedDB(getAllUsers()).catch(() => {});
-        return updated;
+      if (data && data.message !== 'D1 not configured' && data.success && data.user) {
+        return await syncUserStoresFromServer(data.user, cur);
       }
     }
   } catch (err) {
@@ -2264,12 +2556,11 @@ async function finalizeFirebaseLogin(
   displayName?: string
 ): Promise<AppUser> {
   const email = (fbUser.email || '').trim().toLowerCase();
-  if (isAccountCancelled(email)) {
-    await firebaseSignOut(auth).catch(() => {});
-    throw cancelledError(email);
-  }
-
   const name = displayName?.trim() || fbUser.displayName || undefined;
+
+  // حفظ التوكن الحديث مباشرة قبل استدعاء التسجيل في السيرفر لضمان نجاح المصادقة
+  const initialToken = await fbUser.getIdToken().catch(() => null);
+  if (initialToken) saveCachedIdToken(initialToken);
 
   // تسجيل موثوق في السيرفر مع إعادة المحاولة
   const registration = await registerUserWithServerDetailed(
@@ -2289,8 +2580,9 @@ async function finalizeFirebaseLogin(
   }
 
   let server: any = null;
+  let serverReachable = false;
   try {
-    const idToken = await fbUser.getIdToken().catch(() => null);
+    const idToken = initialToken || (await fbUser.getIdToken().catch(() => null));
     if (idToken) saveCachedIdToken(idToken);
     const headers = await getAuthHeaders(idToken ? { Authorization: `Bearer ${idToken}` } : {});
     const res = await fetch(`/api/users?email=${encodeURIComponent(email)}&uid=${encodeURIComponent(fbUser.uid)}`, {
@@ -2299,38 +2591,53 @@ async function finalizeFirebaseLogin(
     });
     if (res.ok) {
       const data = await res.json().catch(() => null);
-      if (data && data.success && data.user) server = data.user;
+      if (data && data.message !== 'D1 not configured' && data.success && data.user) {
+        server = data.user;
+        serverReachable = true;
+      }
     }
   } catch {
-    /* offline: نكمل بالقيم الافتراضية للواجهة، والسيرفر هو من يفرض الصلاحيات */
+    /* offline: نستخدم الكاش المحلي إن وجد بدون حذف أي بيانات */
   }
 
+  // إذا رد السيرفر بإلغاء الحساب: نحفظ علامة الإلغاء مع الإبقاء على التوكن لتتمكن شاشة الإلغاء من الفحص التلقائي
   if (server && (server.subscriptionStatus === 'cancelled' || server.subscriptionStatus === 'suspended')) {
-    markAccountCancelled(email);
-    await firebaseSignOut(auth).catch(() => {});
+    await syncUserStoresFromServer(server, { uid: fbUser.uid, email, displayName: name, authProvider: provider });
+    throw cancelledError(email);
+  }
+
+  // فقط في حال عدم الاتصال بالسيرفر، نرجع للتحقق من الحظر المحلي
+  if (!serverReachable && isAccountCancelled(email)) {
     throw cancelledError(email);
   }
 
   migrateLegacyLocalData(email, fbUser.uid);
 
   const now = new Date();
-  const isAdmin = Boolean(server?.isAdmin || isAdminUser(email));
-  const isServerActive = server?.subscriptionStatus === 'active';
-  const isLifetime = server?.subscriptionType === 'lifetime' || isAdmin;
+  const existingLocalMatch = (() => {
+    try {
+      const curLocal = getCurrentUser();
+      if (curLocal && ((fbUser.uid && curLocal.uid === fbUser.uid) || (curLocal.email && curLocal.email.trim().toLowerCase() === email))) {
+        return curLocal;
+      }
+      return getAllUsers().find(
+        (u) => (fbUser.uid && u.uid === fbUser.uid) || (u.email && u.email.trim().toLowerCase() === email)
+      ) || null;
+    } catch {
+      return null;
+    }
+  })();
+
+  const isAdmin = Boolean(server?.isAdmin || existingLocalMatch?.isAdmin || isAdminUser(email));
+  const effectiveSource = server || existingLocalMatch;
+  const isSourceActive = effectiveSource?.subscriptionStatus === 'active';
+  const isLifetime = effectiveSource?.subscriptionType === 'lifetime' || isAdmin;
   const trialExpiresAt = new Date(now.getTime() + TRIAL_DURATION_MS).toISOString();
 
   // Resolve userRole: Preserve admin_school or teacher if already selected;
   // All legacy users and users without a role automatically become 'teacher'
   const cloudRole = server?.userRole || server?.user_role;
-  const localRegistryRole = (() => {
-    try {
-      const all = getAllUsers();
-      const m = all.find((u) => (fbUser.uid && u.uid === fbUser.uid) || (u.email && u.email.toLowerCase() === email));
-      return m?.userRole;
-    } catch {
-      return undefined;
-    }
-  })();
+  const localRegistryRole = existingLocalMatch?.userRole;
   let resolvedRole: 'admin_school' | 'teacher' = 'teacher';
   if (cloudRole === 'admin_school' || localRegistryRole === 'admin_school') {
     resolvedRole = 'admin_school';
@@ -2341,37 +2648,57 @@ async function finalizeFirebaseLogin(
   }
 
   const cloudInst = server?.institutionType || server?.institution_type;
-  const localRegistryInst = (() => {
-    try {
-      const all = getAllUsers();
-      const m = all.find((u) => (fbUser.uid && u.uid === fbUser.uid) || (u.email && u.email.toLowerCase() === email));
-      return m?.institutionType;
-    } catch {
-      return undefined;
-    }
-  })();
+  const localRegistryInst = existingLocalMatch?.institutionType;
   const resolvedInstType: InstitutionType = (cloudInst === 'university' || localRegistryInst === 'university') ? 'university' : 'school';
+
+  const resolvedSubType: SubscriptionType = isAdmin
+    ? 'lifetime'
+    : (effectiveSource?.subscriptionType || 'trial');
+  const resolvedSubStatus: 'active' | 'pending' | 'expired' | 'cancelled' = (isAdmin || isSourceActive)
+    ? 'active'
+    : (effectiveSource?.subscriptionStatus || 'pending');
 
   const user: AppUser = {
     uid: fbUser.uid,
     email,
-    displayName: server?.displayName || name || `أ. ${email.split('@')[0]}`,
+    displayName: effectiveSource?.displayName || name || `أ. ${email.split('@')[0]}`,
     photoURL: fbUser.photoURL || undefined,
-    isTrial: !isAdmin && !isServerActive,
-    createdAt: server?.createdAt ? toNormalizedIsoString(server.createdAt) : now.toISOString(),
+    isTrial: !isAdmin && (resolvedSubType === 'trial' || !isSourceActive),
+    createdAt: effectiveSource?.createdAt ? toNormalizedIsoString(effectiveSource.createdAt) : now.toISOString(),
     lastActiveAt: now.toISOString(),
-    expiresAt: isLifetime ? undefined : (server?.expiresAt ? toNormalizedIsoString(server.expiresAt) : trialExpiresAt),
-    subscriptionType: isAdmin ? 'lifetime' : (server?.subscriptionType || 'trial'),
-    subscriptionStatus: (isAdmin || isServerActive) ? 'active' : (server?.subscriptionStatus || 'pending'),
+    expiresAt: isLifetime
+      ? undefined
+      : effectiveSource?.expiresAt
+        ? toNormalizedIsoString(effectiveSource.expiresAt)
+        : isSourceActive
+          ? undefined
+          : trialExpiresAt,
+    subscriptionType: resolvedSubType,
+    subscriptionStatus: resolvedSubStatus,
     authProvider: provider,
     isAdmin,
     userRole: resolvedRole,
     institutionType: resolvedInstType,
   };
 
+  if (server) {
+    const syncedUser = await syncUserStoresFromServer(server, user);
+    // If server had no role for this user, push resolved role in background so it's permanently recorded
+    if (!cloudRole) {
+      getAuthHeaders().then((headers) => {
+        fetch('/api/users', {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({ userRole: resolvedRole, institutionType: resolvedInstType }),
+        }).catch(() => {});
+      });
+    }
+    return syncedUser;
+  }
+
   saveCurrentUser(user);
   upsertUserInRegistry(user);
-  saveUsersToIndexedDB(getAllUsers()).catch(() => {});
+  await saveUsersToIndexedDB(getAllUsers()).catch(() => {});
 
   // If server had no role for this user, push resolved role in background so it's permanently recorded
   if (!cloudRole) {
@@ -2416,7 +2743,6 @@ function firebaseAuthMessage(error: any): string {
 
 export async function loginWithEmail(email: string, password: string): Promise<AppUser> {
   const normalizedEmail = email.trim().toLowerCase();
-  if (isAccountCancelled(normalizedEmail)) throw cancelledError(normalizedEmail);
   if (!normalizedEmail || !normalizedEmail.includes('@')) {
     throw new Error('يرجى إدخال بريد إلكتروني صالح.');
   }
@@ -2426,6 +2752,9 @@ export async function loginWithEmail(email: string, password: string): Promise<A
   try {
     cred = await signInWithEmailAndPassword(auth, normalizedEmail, password);
   } catch (error: any) {
+    if (error?.code === 'auth/network-request-failed' && isAccountCancelled(normalizedEmail)) {
+      throw cancelledError(normalizedEmail);
+    }
     throw new Error(firebaseAuthMessage(error));
   }
   return finalizeFirebaseLogin(cred.user, 'email');
@@ -2437,7 +2766,6 @@ export async function registerWithEmail(
   displayName?: string
 ): Promise<AppUser> {
   const normalizedEmail = email.trim().toLowerCase();
-  if (isAccountCancelled(normalizedEmail)) throw cancelledError(normalizedEmail);
   if (!normalizedEmail || !normalizedEmail.includes('@')) {
     throw new Error('يرجى إدخال بريد إلكتروني صالح.');
   }
@@ -2449,6 +2777,9 @@ export async function registerWithEmail(
   try {
     cred = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
   } catch (error: any) {
+    if (error?.code === 'auth/network-request-failed' && isAccountCancelled(normalizedEmail)) {
+      throw cancelledError(normalizedEmail);
+    }
     throw new Error(firebaseAuthMessage(error));
   }
   // رسالة التفعيل يرسلها السيرفر (Resend) أثناء finalizeFirebaseLogin، والحساب لا يدخل قبل التفعيل
