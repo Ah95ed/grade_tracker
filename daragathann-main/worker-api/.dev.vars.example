@@ -1,0 +1,4 @@
+# Local Wrangler secrets for worker-api (never commit real secrets)
+FIREBASE_PROJECT_ID=gen-lang-client-0369327125
+ADMIN_EMAILS=asmaomar5566@gmail.com,m11287137@gmail.com
+CORS_ORIGIN=*

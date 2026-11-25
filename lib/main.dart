@@ -3,6 +3,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:grade_tracker/views/auth/auth_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
@@ -107,12 +108,12 @@ class GradeTrackerApp extends StatelessWidget {
               ],
               home: Consumer<AuthController>(
                 builder: (context, auth, _) {
-                //   return auth.isAuthenticated
-                //       ? const HomeScreen()
-                //       : const AuthScreen();
-                // },
-                return const HomeScreen();
+                  return auth.isAuthenticated
+                      ? const HomeScreen()
+                      : const AuthScreen();
                 },
+                // return const HomeScreen();
+                // },
               ),
             );
           },

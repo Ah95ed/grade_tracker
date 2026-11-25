@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "daragat-worker-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-04-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "FIREBASE_PROJECT_ID": "gen-lang-client-0369327125",
+    "ADMIN_EMAILS": "asmaomar5566@gmail.com,m11287137@gmail.com",
+    "CORS_ORIGIN": "*"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "daragat",
+      "database_id": "6383cedf-faa1-4cff-b8fc-1dec9a3c79f5",
+      "migrations_dir": "migrations"
+    }
+  ]
+}
